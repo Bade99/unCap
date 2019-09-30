@@ -33,12 +33,18 @@
     <ClInclude Include="Open_Save_FileHandler.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
+    <ClInclude Include="SubtitleFile.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
     <ClCompile Include="SrtFix-Win32.cpp">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
+    <ClCompile Include="SubtitleFile.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
   </ItemGroup>
