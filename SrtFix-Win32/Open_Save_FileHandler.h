@@ -1,4 +1,7 @@
 #pragma once
+#include <shobjidl.h>
+#include <shlwapi.h>
+#include <new>
 
 class CDialogEventHandler : public IFileDialogEvents,
 	public IFileDialogControlEvents

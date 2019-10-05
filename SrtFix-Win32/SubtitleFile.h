@@ -1,4 +1,10 @@
 #pragma once
+#include <string>
+#include <fstream>
+#include <locale>
+#include <codecvt>
+#include <sstream>
+#include <Windows.h>
 
 enum Encoding { UTF8, UTF16, ANSI };
 
@@ -9,6 +15,7 @@ private:
 	std::wstring text;
 	Encoding encoding;
 public:
+	SubtitleFile();
 	SubtitleFile(std::wstring file_fullpath);//TODO(fran): we could throw an exception at creation time if file is invalid
 	~SubtitleFile();
 

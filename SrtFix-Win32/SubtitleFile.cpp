@@ -1,5 +1,10 @@
-﻿#include "stdafx.h"
+﻿//#include "stdafx.h"
 #include "SubtitleFile.h"
+
+
+SubtitleFile::SubtitleFile()
+{
+}
 
 SubtitleFile::SubtitleFile(std::wstring file_fullpath)
 {
