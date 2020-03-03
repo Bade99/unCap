@@ -18,3 +18,5 @@
 *.iobj
 *.ipdb
 *.aps
+*.vcxproj
+*.vcxproj.filters

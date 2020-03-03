@@ -49,7 +49,7 @@ const wchar_t *file_not_existent_T[] = {
 	L"El archivo no existe"
 };
 
-const wchar_t *multi_file_drop_T[] = {
+const wchar_t *multi_file_drop_T[] = { //INFO: now this will be supported
 	L"Dropping multiple files is not supported",
 	L"No está soportado recibir multiples archivos"
 };
@@ -64,7 +64,17 @@ const wchar_t *file_drop_failed_T[] = {
 	L"No se pudo obtener el archivo"
 };
 
-const wchar_t *exe_path_failed_T[] = {
+const wchar_t *file_comment_found[] = {
+	L"Found a comment with: ",
+	L"Encontré un comentario con: "
+};
+
+const wchar_t *file_comment_not_found[] = {
+	L"Didn´t find any comments",
+	L"No encontré ningún comentario"
+};
+
+const wchar_t *exe_path_failed_T[] = { //INFO: this wont be used anymore, we go to appdata
 	L"Couldn't get the path for the executable.\nSaving information to C:\\Temp",
 	L"No se pudo obtener la dirección del ejecutable.\nGuardando información en C:\\Temp"
 };
@@ -78,7 +88,7 @@ const wchar_t *file_T[] = {
 
 const wchar_t *open_T[] = {
 	L"Open		Ctrl+O",
-	L"Abrir			Ctrl+O" //hmm, should the accelerator table change too?
+	L"Abrir			Ctrl+O" //TODO(fran): hmm, should the accelerator table change too?
 };
 
 const wchar_t *save_T[] = {
