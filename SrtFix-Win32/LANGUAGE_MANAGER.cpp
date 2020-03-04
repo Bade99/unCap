@@ -25,6 +25,23 @@ BOOL LANGUAGE_MANAGER::AddDynamicText(HWND hwnd, UINT messageID)
 	return TRUE;
 }
 
+BOOL LANGUAGE_MANAGER::AddMenuDrawingHwnd(HWND MenuDrawer)
+{
+	//TODO(fran): check HWND is valid
+	if (MenuDrawer) {
+		this->MenuDrawers.push_back(MenuDrawer);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOL LANGUAGE_MANAGER::AddMenuText(HMENU hmenu, UINT_PTR ID, UINT stringID)
+{
+	BOOL res = UpdateMenu(hmenu, ID, stringID);
+	if (res) this->Menus[std::make_pair(hmenu, ID)] = stringID;
+	return res;
+}
+
 BOOL LANGUAGE_MANAGER::AddWindowText(HWND hwnd, UINT stringID)
 {
 	BOOL res = UpdateHwnd(hwnd, stringID);
@@ -63,6 +80,14 @@ LANGID LANGUAGE_MANAGER::ChangeLanguage(LANGUAGE newLang)
 		this->UpdateDynamicHwnd(hwnd_msg.first, hwnd_msg.second);
 	}
 
+	for (auto const& hmenu_id_sid : this->Menus) {
+		this->UpdateMenu(hmenu_id_sid.first.first, hmenu_id_sid.first.second, hmenu_id_sid.second);
+	}
+	for (auto const& menudrawer : this->MenuDrawers) {
+		DrawMenuBar(menudrawer);
+		UpdateWindow(menudrawer);
+	}
+
 	return (lang_res == newLANGID ? lang_res : -3);//is this NULL when failed?
 }
 
@@ -94,6 +119,18 @@ inline BOOL LANGUAGE_MANAGER::UpdateCombo(HWND hwnd, UINT ID, UINT stringID)
 	return res != CB_ERR && res != CB_ERRSPACE;//TODO(fran): can I check for >=0 with lresult?
 }
 
+inline BOOL LANGUAGE_MANAGER::UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID)
+{
+	MENUITEMINFOW menu_setter;
+	menu_setter.cbSize = sizeof(MENUITEMINFOW);
+	menu_setter.fMask = MIIM_STRING;
+	std::wstring temp_text = this->RequestString(stringID);
+	//menu_setter.dwTypeData = _wcsdup(this->RequestString(stringID).c_str()); //TODO(fran): can we avoid dupping, if not free memory
+	menu_setter.dwTypeData = (LPWSTR)temp_text.c_str();
+	BOOL res = SetMenuItemInfoW(hmenu, ID, FALSE, &menu_setter);
+	return res;
+}
+
 LCID LANGUAGE_MANAGER::GetLCID(LANGUAGE lang)
 {
 	switch (lang) {
@@ -118,3 +155,4 @@ LANGID LANGUAGE_MANAGER::GetLANGID(LANGUAGE lang)
 		return NULL;
 	}
 }
+

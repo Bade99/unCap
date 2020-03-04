@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <map>
+#include <vector>
 
 //Request string
 #define RS(stringID) LANGUAGE_MANAGER::Instance().RequestString(stringID)
@@ -13,6 +14,9 @@
 
 //Add combobox string in specific ID (Nth element of the list)
 #define ACT(hwnd,ID,stringID) LANGUAGE_MANAGER::Instance().AddComboboxText(hwnd, ID, stringID);
+
+//Add menu string
+#define AMT(hmenu,ID,stringID) LANGUAGE_MANAGER::Instance().AddMenuText(hmenu,ID,stringID);
 
 class LANGUAGE_MANAGER
 {
@@ -66,6 +70,12 @@ public://TODO(fran): add lang to the rest of the classes: outmgr,duplmgr,...
 	//One hwnd can only be linked to one messageID
 	BOOL AddDynamicText(HWND hwnd, UINT messageID);
 
+	//Menus are not draw by themselves, instead their owner window draws them, so if you want a menu to be redrawn you need to use this function
+	//to indicate which window to call for its menus to be redrawn
+	BOOL AddMenuDrawingHwnd(HWND MenuDrawer);
+
+	BOOL AddMenuText(HMENU hmenu, UINT_PTR ID, UINT stringID);
+
 private:
 	LANGUAGE_MANAGER();
 	~LANGUAGE_MANAGER();
@@ -76,11 +86,15 @@ private:
 	std::map<HWND, UINT> Hwnds;
 	std::map<HWND, UINT> DynamicHwnds;
 	std::map<std::pair<HWND, UINT>, UINT> Comboboxes;
+	
+	std::vector<HWND> MenuDrawers;
+	std::map<std::pair<HMENU, UINT_PTR>, UINT> Menus;
 	//Add list of hwnd that have dynamic text, therefore need to know when there was a lang change to update their text
 
 	inline BOOL UpdateHwnd(HWND hwnd, UINT stringID);
 	inline BOOL UpdateDynamicHwnd(HWND hwnd, UINT messageID);
 	inline BOOL UpdateCombo(HWND hwnd, UINT ID, UINT stringID);
+	inline BOOL UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID);
 
 	LCID GetLCID(LANGUAGE lang);
 
