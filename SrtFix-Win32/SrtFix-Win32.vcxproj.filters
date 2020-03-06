@@ -93,5 +93,14 @@
     <Image Include="Earth16.bmp">
       <Filter>Archivos de recursos</Filter>
     </Image>
+    <Image Include="icon1.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="combo.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="icon2.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
   </ItemGroup>
 </Project>
