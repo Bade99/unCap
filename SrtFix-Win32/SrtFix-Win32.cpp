@@ -206,7 +206,7 @@ void				AcceptedFile(wstring);
 bool				IsAcceptedFile();
 void				CustomCommentRemoval(HWND);
 unsigned char		GetTextEncoding(wstring);
-wstring				ReadText(wstring);
+//wstring				ReadText(wstring);
 //int					LineCount(wifstream&);
 void				SetOptionsComboBox(HWND&, bool);
 //void				SetLocaleW(int);
@@ -1458,33 +1458,6 @@ unsigned char GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 	}
 }
 
-DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
-	
-	PGLP parameters = (PGLP)lpParam;
-	
-	unsigned char encoding = GetTextEncoding(parameters->file);
-
-	wifstream file(parameters->file, ios::binary);
-
-	if (file.is_open()) {
-
-		//set encoding for getline
-		if ( encoding == UTF8)
-			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
-		else if (encoding == UTF16)
-			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
-		//if encoding is ASCII we do nothing
-
-		wstringstream buffer;
-		buffer << file.rdbuf();
-		//wstring for_testing = buffer.str();
-		(*((PGLP)lpParam)->text) = buffer.str();
-
-		file.close();
-	}
-	return 0;
-}
-
 COMMENT_TYPE CommentTypeFound(wstring &text) {//TODO(fran): this should not notify but return the combobox position the corresponds with that char
 	//TODO(fran): search for all the possibilities and then notify on all finds
 	//TODO(fran): option to not check this
@@ -1507,6 +1480,65 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {//TODO(fran): this should not noti
 	}
 }
 
+DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
+
+	PGLP parameters = (PGLP)lpParam; 
+
+	unsigned char encoding = GetTextEncoding(parameters->file);
+
+	wifstream file(parameters->file, ios::binary);
+
+	if (file.is_open()) {
+
+		//set encoding for getline
+		if (encoding == UTF8)
+			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+		else if (encoding == UTF16)
+			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+		//if encoding is ASCII we do nothing
+
+		wstringstream buffer;
+		buffer << file.rdbuf();
+		//wstring for_testing = buffer.str();
+		(*((PGLP)lpParam)->text) = buffer.str();
+
+		file.close();
+	}
+	return 0;
+}
+
+/// <summary>
+/// 
+/// </summary>
+/// <param name="filepath">path to the file you want read</param>
+/// <param name="text">place where the read file's text will be stored</param>
+/// <returns>TRUE if successful, FALSE otherwise</returns>
+BOOL ReadText(wstring filepath, wstring& text) {
+
+	unsigned char encoding = GetTextEncoding(filepath);
+
+	wifstream file(filepath, ios::binary);
+
+	if (file.is_open()) {
+
+		//set encoding for getline
+		if (encoding == UTF8)
+			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+		else if (encoding == UTF16)
+			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+		//if encoding is ASCII we do nothing
+
+		wstringstream buffer;
+		buffer << file.rdbuf();
+		text = buffer.str();
+
+		file.close();
+		return TRUE;
+	}
+	else return FALSE;
+}
+
+//TODO(fran): we could try to offload the entire procedure of AcceptedFile to a new thread so in case we receive multiple files we process them in parallel
 void AcceptedFile(wstring filename) {
 
 	isAcceptedFile = true; //TODO(fran): this has to go
@@ -1524,14 +1556,13 @@ void AcceptedFile(wstring filename) {
 	//accepted_file_ext = filename.substr(filename.find_last_of(L".")+1);
 
 	//show file contents (new thread)
+#if 0
 	wstring text;
 	PGLP parameters = (PGLP)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(GLP));
 	parameters->text = &text;
 	wcsncpy(parameters->file, filename.c_str(), sizeof(parameters->file) / sizeof(parameters->file[0]));
 	HANDLE hReadTextThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)ReadTextThread, parameters, 0, NULL);
-	//TODO(fran): the entire AcceptedFile function should go multithreaded
-
-
+	
 	//show filename in top bar
 	//SetWindowTextW(hFile, accepted_file.c_str());
 	
@@ -1541,6 +1572,9 @@ void AcceptedFile(wstring filename) {
 	CloseHandle(hReadTextThread);
 	HeapFree(GetProcessHeap(), 0, parameters);
 	parameters = NULL;
+#endif
+	wstring text;
+	ReadText(filename, text);
 
 	TEXT_INFO text_data;
 	wcsncpy(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
