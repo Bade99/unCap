@@ -27,9 +27,6 @@
     <ClInclude Include="SrtFix-Win32.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="text.h">
-      <Filter>Archivos de encabezado</Filter>
-    </ClInclude>
     <ClInclude Include="Open_Save_FileHandler.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
