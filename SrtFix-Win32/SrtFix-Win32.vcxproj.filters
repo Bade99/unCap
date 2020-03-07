@@ -102,5 +102,11 @@
     <Image Include="icon2.ico">
       <Filter>Archivos de recursos</Filter>
     </Image>
+    <Image Include="icon3.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="cross.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
   </ItemGroup>
 </Project>

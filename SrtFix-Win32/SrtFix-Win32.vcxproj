@@ -199,10 +199,12 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="combo.ico" />
+    <Image Include="cross.ico" />
     <Image Include="Cross16.bmp" />
     <Image Include="Earth16.bmp" />
     <Image Include="icon1.ico" />
     <Image Include="icon2.ico" />
+    <Image Include="icon3.ico" />
     <Image Include="small.ico" />
     <Image Include="SrtFix-Win32.ico" />
     <Image Include="SrtFixE.ico" />
