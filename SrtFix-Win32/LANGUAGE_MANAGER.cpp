@@ -42,6 +42,11 @@ BOOL LANGUAGE_MANAGER::AddMenuText(HMENU hmenu, UINT_PTR ID, UINT stringID)
 	return res;
 }
 
+LANGUAGE_MANAGER::LANGUAGE LANGUAGE_MANAGER::GetCurrentLanguage()
+{
+	return this->CurrentLanguage;
+}
+
 BOOL LANGUAGE_MANAGER::AddWindowText(HWND hwnd, UINT stringID)
 {
 	BOOL res = UpdateHwnd(hwnd, stringID);
@@ -115,7 +120,10 @@ inline BOOL LANGUAGE_MANAGER::UpdateCombo(HWND hwnd, UINT ID, UINT stringID)
 	UINT currentSelection = SendMessage(hwnd, CB_GETCURSEL, 0, 0);//TODO(fran): is there truly no better solution than having to do all this just to change a string?
 	SendMessage(hwnd, CB_DELETESTRING, ID, 0);
 	LRESULT res = SendMessage(hwnd, CB_INSERTSTRING, ID, (LPARAM)this->RequestString(stringID).c_str());
-	if (currentSelection != CB_ERR)SendMessage(hwnd, CB_SETCURSEL, currentSelection, 0);
+	if (currentSelection != CB_ERR) {
+		SendMessage(hwnd, CB_SETCURSEL, currentSelection, 0);
+		InvalidateRect(hwnd, NULL, TRUE);
+	}
 	return res != CB_ERR && res != CB_ERRSPACE;//TODO(fran): can I check for >=0 with lresult?
 }
 

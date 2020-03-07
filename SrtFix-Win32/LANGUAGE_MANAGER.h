@@ -24,7 +24,7 @@ public://TODO(fran): add lang to the rest of the classes: outmgr,duplmgr,...
 
 	enum LANGUAGE
 	{
-		ENGLISH = 0, SPANISH
+		ENGLISH = 1, SPANISH
 	};
 
 	static BOOL IsValidLanguage(int lang) {//TODO(fran): simpler way to check for valid enum without having to add each lang here
@@ -75,6 +75,8 @@ public://TODO(fran): add lang to the rest of the classes: outmgr,duplmgr,...
 	BOOL AddMenuDrawingHwnd(HWND MenuDrawer);
 
 	BOOL AddMenuText(HMENU hmenu, UINT_PTR ID, UINT stringID);
+
+	LANGUAGE_MANAGER::LANGUAGE GetCurrentLanguage();
 
 private:
 	LANGUAGE_MANAGER();
