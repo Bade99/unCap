@@ -1868,6 +1868,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 			TextOut(hdc, xPos, yPos, Text, len);
 		}
 		EndPaint(hWnd, &ps);
+		//test
 
 		return 0;
 	}
