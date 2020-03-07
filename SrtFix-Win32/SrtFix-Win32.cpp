@@ -5,15 +5,17 @@
 #pragma comment(lib,"propsys.lib") //open save file handler
 #pragma comment(lib,"shlwapi.lib") //open save file handler
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"") 
+//#pragma comment(lib,"User32.lib")
 
 using namespace std;
 namespace fs = std::experimental::filesystem;
 
 #define Assert(assertion) if(!(assertion))*(int*)NULL=0
 
-//TODO:
-//Tab control:	https://docs.microsoft.com/en-us/windows/win32/controls/tab-controls
-//				https://docs.microsoft.com/en-us/windows/win32/controls/create-a-tab-control-in-the-main-window
+//TODOs:
+//Draw my own Scrollbars
+//Draw my own menu
+//Draw my own non client area
 
 //PROBLEMS:
 // - 2001 a space odyssey srt en español tiene encoding ansi y cuando llega a í se caga, por qué????
@@ -425,24 +427,6 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     return RegisterClassExW(&wcex);
 }
 
-//void RegisterSubtitleWindowClass(HINSTANCE hInstance, wstring ClassName, LPCWSTR Cursor, int Color)
-//{
-//	WNDCLASSEXW wcex;//TODO(fran): do I need to free this?
-//
-//	wcex.cbSize = sizeof(WNDCLASSEX);
-//	wcex.style = CS_HREDRAW | CS_VREDRAW;
-//	wcex.lpfnWndProc = &SubtitleWindow::SubProc;
-//	wcex.cbClsExtra = 0;
-//	wcex.cbWndExtra = 0;
-//	wcex.hInstance = hInstance;
-//	wcex.hCursor = LoadCursor(nullptr, Cursor);
-//	wcex.hbrBackground = (HBRUSH)Color;
-//	wcex.lpszClassName = ClassName.c_str();
-//
-//	RegisterClassExW(&wcex);
-//}
-
-
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    hInst = hInstance; // Almacenar identificador de instancia en una variable global
@@ -591,7 +575,6 @@ void DoSave(HWND textControl, wstring save_file) { //got to pass the encoding to
 		SetWindowTextW(hFile, save_file.c_str()); //Update text editor
 		
 		SetCurrentTabTitle(save_file.substr(save_file.find_last_of(L"\\") + 1)); //Update tab name
-		//IMPORTANT TODO(fran): there is some weird update problem with the text editor and the tab control when we update the name
 
 		//TODO(fran): this is a bit cheating since we are not actually showing the new file but the old one, so if there was some error or mismatch
 		//when saving the user wouldnt know
@@ -800,7 +783,6 @@ void AddMenus(HWND hWnd) {
 	hMenu = CreateMenu();
 	hFileMenu = CreateMenu();
 	hFileMenuLang = CreateMenu();
-	//TODO(fran): auto update menu lang
 	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"");
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
 
@@ -825,7 +807,6 @@ void AddMenus(HWND hWnd) {
 	
 	AppendMenuW(hFileMenuLang, MF_STRING, LANGUAGE_MANAGER::LANGUAGE::ENGLISH , L"English");
 	AppendMenuW(hFileMenuLang, MF_STRING, LANGUAGE_MANAGER::LANGUAGE::SPANISH, L"Español");
-	//TODO(fran): add checkmark or similar to the currently selected language
 
 	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK));
 	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CROSS));
@@ -841,7 +822,7 @@ void AddMenus(HWND hWnd) {
 	//https://docs.microsoft.com/es-es/windows/desktop/menurc/using-menus#using-custom-check-mark-bitmaps
 	//https://www.daniweb.com/programming/software-development/threads/490612/win32-can-i-change-the-hbitmap-structure-for-be-transparent
 
-	//Add tick mark for language selected //TODO(fran): some automatic way to add it to all langs?
+	//TODO(fran): some automatic way to add this to all langs?
 	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, MF_BYCOMMAND, NULL, bTick);
 	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, MF_BYCOMMAND, NULL, bTick);
 
@@ -912,7 +893,6 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 
 	RECT tab_rec,text_rec;
 	GetClientRect(TabControl,&tab_rec);
-	//SendMessage(TabControl, TCM_ADJUSTRECT, FALSE, (LPARAM)&text_rec); //TODO(fran): calculate area for tex control
 	text_rec.left = TabOffset.leftOffset;
 	text_rec.top = TabOffset.topOffset;
 	text_rec.right = tab_rec.right - TabOffset.rightOffset;
@@ -921,7 +901,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	HWND TextControl = CreateWindowExW(NULL, L"Edit", NULL, WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | WS_HSCROLL //|WS_VISIBLE
 		, text_rec.left, text_rec.top, text_rec.right - text_rec.left, text_rec.bottom - text_rec.top
 		,TabControl //IMPORTANT INFO TODO(fran): this is not right, the parent should be the individual tab not the whole control, not sure though if that control will show our edit control
-		, NULL, NULL, NULL); //TODO(fran): RECTWIDTH & RECTHEIGHT
+		, NULL, NULL, NULL); 
 	//INFO: the text control starts hidden
 	SendMessageW(TextControl, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 
@@ -930,7 +910,6 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	SetWindowSubclass(TextControl,EditProc,0,0);
 
 	//TEXT_INFO* text_info = (TEXT_INFO*)HeapAlloc(GetProcessHeap(), HEAP_NO_SERIALIZE| HEAP_ZERO_MEMORY,sizeof(TEXT_INFO));
-	//TODO(fran): this MUST be freed on deletion
 	//Assert(text_info);
 	//text_info->hText = TextControl;
 
@@ -939,7 +918,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	newItem.tab_info.pszText = TabName;
 	//newItem.tab_info.cchTextMax = (wcslen(TabName)+1)*sizeof(*TabName); I think this is wrong and should be in chars/wchars not bytes
 	newItem.tab_info.iImage = -1;
-	newItem.extra_info = text_data;//TODO(fran): can I do this?
+	newItem.extra_info = text_data;
 	newItem.extra_info.hText = TextControl;
 
 	return SendMessage(TabControl, TCM_INSERTITEM, position, (LPARAM)&newItem);
@@ -1067,6 +1046,7 @@ void CleanTabRelatedControls() {//TODO(fran): probably should ask for a blank TE
 }
 
 LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+	//INFO: if I ever feel like managing WM_PAINT: https://social.msdn.microsoft.com/Forums/expression/en-US/d25d08fb-acf1-489e-8e6c-55ac0f3d470d/tab-controls-in-win32-api?forum=windowsuidevelopment
 	switch (Msg) {
 	case TCM_RESIZETABS:
 	{
@@ -1192,7 +1172,7 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	hOptions = CreateWindowW(L"ComboBox", NULL, WS_VISIBLE | WS_CHILD| CBS_DROPDOWNLIST|WS_TABSTOP
 		, 195, y_place + 31/*30*/, 130, 90/*20*/, hWnd, (HMENU)COMBO_BOX, hInstance, NULL);
 	//SetOptionsComboBox(hOptions, TRUE);
-	ACT(hOptions, COMMENT_TYPE::brackets, LANG_CONTROL_CHAROPTIONS_BRACKETS);//TODO(fran): should use ENUM instead of plain numbers
+	ACT(hOptions, COMMENT_TYPE::brackets, LANG_CONTROL_CHAROPTIONS_BRACKETS);
 	ACT(hOptions, COMMENT_TYPE::parenthesis, LANG_CONTROL_CHAROPTIONS_PARENTHESIS);
 	ACT(hOptions, COMMENT_TYPE::braces, LANG_CONTROL_CHAROPTIONS_BRACES);
 	ACT(hOptions, COMMENT_TYPE::other, LANG_CONTROL_CHAROPTIONS_OTHER);
@@ -1316,7 +1296,7 @@ void ChooseFile(wstring ext) {
 		//this always happens? Meanwhile I'll use IsMultiFile
 		BOOL multifile = isMultiFile(new_file.lpstrFile, new_file.nFileOffset);
 
-		std::vector<std::wstring> files; //TODO(fran): do vectors work with non "fixed-size" objects?
+		std::vector<std::wstring> files;
 
 		if (multifile) {
 			for (int i = new_file.nFileOffset - 1;;i++) {
@@ -1327,7 +1307,7 @@ void ChooseFile(wstring ext) {
 						onefile += L'\\';
 						onefile += &new_file.lpstrFile[i+1];
 						files.push_back(onefile);
-						i += wcslen(&new_file.lpstrFile[i + 1]);//TODO(fran): check this actually faster
+						i += wcslen(&new_file.lpstrFile[i + 1]);//TODO(fran): check this is actually faster
 					}
 				}
 			}
@@ -1342,7 +1322,7 @@ void ChooseFile(wstring ext) {
 }
 
 //Returns complete path of all the files found, if a folder is found files are searched inside it
-std::vector<wstring> GetFiles(LPCWSTR s)//, int dir_lenght)//TODO(fran): specify better where dir_lenght should point to, last char,\\,...
+std::vector<wstring> GetFiles(LPCWSTR s)//, int dir_lenght)
 {
 	std::vector<wstring> files; //capaz deberia ser = L"";
 	for (auto& p : std::experimental::filesystem::recursive_directory_iterator(s)) {
@@ -1458,9 +1438,7 @@ unsigned char GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 	}
 }
 
-COMMENT_TYPE CommentTypeFound(wstring &text) {//TODO(fran): this should not notify but return the combobox position the corresponds with that char
-	//TODO(fran): search for all the possibilities and then notify on all finds
-	//TODO(fran): option to not check this
+COMMENT_TYPE CommentTypeFound(wstring &text) {
 	if (text.find_first_of(L'{') != wstring::npos) {
 	//	MessageBoxW(hWnd, RCS(LANG_COMMENT_FOUND) + L' ' + L'{', L"", MB_OK);
 		return COMMENT_TYPE::braces;
@@ -1544,7 +1522,7 @@ void AcceptedFile(wstring filename) {
 	isAcceptedFile = true; //TODO(fran): this has to go
 
 	//save file dir+name+ext
-	//accepted_file = filename; //TODO(fran): this has to go
+	//accepted_file = filename;
 
 	//save file dir
 	last_accepted_file_dir = filename.substr(0, filename.find_last_of(L"\\")+1);
@@ -1600,7 +1578,7 @@ void AcceptedFile(wstring filename) {
 		//enable buttons and text editor
 		EnableWindow(hRemove, TRUE); //TODO(fran): this could also be a saved parameter
 		//EnableWindow(hSave, TRUE);
-		//EnableWindow(text_data.hText, TRUE);//TODO(fran): I dont think the window needs to start disabled
+		//EnableWindow(text_data.hText, TRUE);
 
 		ChangeTabSelected(res);
 	}
@@ -1738,12 +1716,12 @@ void CheckInfoFile() {	//changes default values if file exists
 	}
 }
 
-//wstring GetExecFolder() { //TODO(fran): this wont be used anymore, we go to appdata
+//wstring GetExecFolder() {
 //	WCHAR ownPth[MAX_PATH_LENGTH];
 //	HMODULE hModule = GetModuleHandle(NULL);
 //	if (hModule != NULL) GetModuleFileName(hModule, ownPth, (sizeof(ownPth)));//INFO: that sizeof is probably wrong
 //	else { 
-//		MessageBoxW(hWnd,L"TODO" /*exe_path_failed_T[global_locale]*/, NULL, MB_ICONERROR); 
+//		MessageBoxW(hWnd,L"" /*exe_path_failed_T[global_locale]*/, NULL, MB_ICONERROR); 
 //		return L"C:\\Temp\\";
 //	}
 //	wstring dir = ownPth;
@@ -1759,7 +1737,7 @@ bool FileOrDirExists(const wstring& file) {
 void SetLocaleW(int locale) {
 	global_locale = locale;
 	//Menu text
-	MENUITEMINFOW menu_setter; //TODO(fran): useful for the new lang "api"
+	MENUITEMINFOW menu_setter;
 	menu_setter.cbSize = sizeof(MENUITEMINFOW);
 	menu_setter.fMask = MIIM_STRING;
 	menu_setter.dwTypeData = _wcsdup(file_T[global_locale]);
@@ -1800,7 +1778,6 @@ void ResizeWindows(HWND mainWindow) {
 	//@No se si actualizar las demas
 	MoveWindow(TextContainer, 10, y_place + 134, wnd.sizex - 36, wnd.sizey - 212, TRUE);
 	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
-	//TODO(fran): make TextContainer update all of its tabs
 }
 
 struct vec2d {
@@ -2052,7 +2029,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 
 	//case WM_NCDESTROY:
 	//{
-	//	RemoveWindowSubclass(hWnd, this->ComboProc, uIdSubclass);//TODO(fran): is this necessary
+	//	RemoveWindowSubclass(hWnd, this->ComboProc, uIdSubclass);
 	//	break;
 	//}
 
@@ -2139,7 +2116,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				wstring text = GetTabTitle(index);
 
 				TEXTMETRIC tm;
-				GetTextMetrics(item->hDC, &tm); //TODO(fran): check if we need to select the font into the hdc
+				GetTextMetrics(item->hDC, &tm);
 				// Calculate vertical position for the item string so that it will be vertically centered
 				
 				int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
@@ -2175,7 +2152,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SetTextColor(item->hDC, old_txt_color);
 
 				//Draw close button 
-				//TODO(fran): use a close icon
 
 				POINT button_topleft;
 				button_topleft.x = item->rcItem.right - TabCloseButtonInfo.rightPadding - TabCloseButtonInfo.icon.cx;
@@ -2344,6 +2320,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
+	//case WM_SYSCOMMAND:
+	//	if (wParam == SC_MINIMIZE)
+	//	{
+	//		//MinimizeWndToTray(hWnd);
+
+	//		// Return 0 to tell DefDlgProc that we handled the message, and set
+	//		// DWL_MSGRESULT to 0 to say that we handled WM_SYSCOMMAND
+	//		//SetWindowLong(hWnd, DWL_MSGRESULT, 0);
+
+	//		RECT rcFrom, rcTo;
+	//		GetWindowRect(hWnd, &rcFrom);
+	//		GetTrayWndRect(&rcTo);
+	//		MyAnimate(hWnd, { rcFrom.left,rcFrom.top }, { rcTo.left,rcTo.top }, 200);
+
+	//		return 0;
+	//	}
+	//	return DefWindowProc(hWnd, message, wParam, lParam);
 	case WM_DESTROY:
 		CreateInfoFile(hWnd);
 		PostQuitMessage(0);
@@ -2353,6 +2346,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	return 0;
 }
+
 
 /* small comments when mouseover
 HWND CreateToolTip(int toolID, HWND hDlg, LPWSTR pszText){
