@@ -115,7 +115,7 @@ wstring last_accepted_file_dir = L""; //path of last valid file dir
 //wstring accepted_file_name_with_ext = L"";
 //wstring accepted_file_ext = L"";
 
-bool isAcceptedFile = false; //IMPORTANT TODO(fran): remove this guy
+//bool isAcceptedFile = false; //IMPORTANT TODO(fran): remove this guy
 
 struct mainWindow { //main window size and position
 	int posx = 75;
@@ -205,7 +205,7 @@ void				CreateInfoFile(HWND);
 void				CheckInfoFile();
 void				CreateFonts();
 void				AcceptedFile(wstring);
-bool				IsAcceptedFile();
+//bool				IsAcceptedFile();
 void				CustomCommentRemoval(HWND);
 unsigned char		GetTextEncoding(wstring);
 //wstring				ReadText(wstring);
@@ -466,9 +466,9 @@ void CreateFonts()
 	}
 }
 
-bool IsAcceptedFile() {
-	return isAcceptedFile;
-}
+//bool IsAcceptedFile() {
+//	return isAcceptedFile;
+//}
 
 //si hay /n antes del corchete que lo borre tmb (y /r tmb)
 
@@ -1519,7 +1519,7 @@ BOOL ReadText(wstring filepath, wstring& text) {
 //TODO(fran): we could try to offload the entire procedure of AcceptedFile to a new thread so in case we receive multiple files we process them in parallel
 void AcceptedFile(wstring filename) {
 
-	isAcceptedFile = true; //TODO(fran): this has to go
+	//isAcceptedFile = true; //TODO(fran): this has to go
 
 	//save file dir+name+ext
 	//accepted_file = filename;
@@ -2221,49 +2221,53 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case REMOVE:
-			if (IsAcceptedFile()) {
+			//if (IsAcceptedFile()) {
 				switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
-				case 0:
+				case COMMENT_TYPE::brackets:
 					CommentRemoval(GetCurrentTabExtraInfo().hText,L'[', L']');
 					break;
-				case 1:
+				case COMMENT_TYPE::parenthesis:
 					CommentRemoval(GetCurrentTabExtraInfo().hText,L'(', L')');
 					break;
-				case 2:
+				case COMMENT_TYPE::braces:
 					CommentRemoval(GetCurrentTabExtraInfo().hText,L'{', L'}');
 					break;
-				case 3:
+				case COMMENT_TYPE::other:
 					CustomCommentRemoval(GetCurrentTabExtraInfo().hText);
 					break;
 				}
-			}
+			//}
 			break;
 
 		case SAVE_FILE:
 		case ID_SAVE:
-			if (IsAcceptedFile()) {
-				if (GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED) DoBackup();
+		{
+			//if (IsAcceptedFile()) {
+			if (GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED) DoBackup();
 
-				int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
+			int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
-				wstring text(text_length, L'\0');
-				GetWindowTextW(hFile, &text[0], text_length);
+			wstring text(text_length, L'\0');
+			GetWindowTextW(hFile, &text[0], text_length);
 
-				TEXT_INFO text_data = GetCurrentTabExtraInfo();
+			TEXT_INFO text_data = GetCurrentTabExtraInfo();
 
-				if (text[0] != L'\0')
-					DoSave(text_data.hText, text);
-				//TODO(fran): error handling
+			if (text[0] != L'\0')
+				DoSave(text_data.hText, text);
+			//TODO(fran): error handling
 
-			}
+			//}
 			break;
+		}
 		case SAVE_AS_FILE:
 		case ID_SAVE_AS:
-			if (IsAcceptedFile()) {
-				TEXT_INFO text_data = GetCurrentTabExtraInfo();
-				DoSaveAs(text_data.hText); //also manages DoBackup internally <<-- //TODO(fran): Why?
-				//TODO(fran): error handling
-			}
+			//if (IsAcceptedFile()) {
+
+			//TODO(fran): DoSaveAs allows for saving of file when no tab is created and sets all the controls but doesnt create an empty tab,
+			//should we create the tab or not allow to save?
+			DoSaveAs(GetCurrentTabExtraInfo().hText); //No DoBackup() for Save As since the idea is the user saves to a new file obviously
+
+			//}
 			break;
 		case LANGUAGE_MANAGER::LANGUAGE::ENGLISH://INFO: this relates to the menu item, TODO(fran): a way to check a range of numbers, from first lang to last
 		{
