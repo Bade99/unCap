@@ -1,6 +1,7 @@
 [Dd]ebug/
 [Rr]elease/
 .vs/
+unCapTest/
 *.rsuser
 *.suo
 *.user
