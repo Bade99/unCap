@@ -16,6 +16,7 @@ namespace fs = std::experimental::filesystem;
 //Draw my own Scrollbars
 //Draw my own menu
 //Draw my own non client area
+//Parametric sizes for everything
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 
 #ifdef _DEBUG
@@ -50,7 +51,7 @@ enum ENCODING {
 #define CR_ENTER 3
 
 #define MAX_PATH_LENGTH MAX_PATH
-#define MAX_TEXT_LENGTH 288000
+#define MAX_TEXT_LENGTH 288000 //Edit controls have their text limit set by default at 32767, we need to change that
 
 #define MAX_LOADSTRING 100
 
@@ -898,10 +899,10 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 		, text_rec.left, text_rec.top, text_rec.right - text_rec.left, text_rec.bottom - text_rec.top
 		,TabControl //IMPORTANT INFO TODO(fran): this is not right, the parent should be the individual tab not the whole control, not sure though if that control will show our edit control
 		, NULL, NULL, NULL); 
-	//INFO: the text control starts hidden
+
 	SendMessageW(TextControl, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 
-	SendMessageW(TextControl, EM_SETLIMITTEXT, (WPARAM)MAX_TEXT_LENGTH, NULL);
+	SendMessageW(TextControl, EM_SETLIMITTEXT, (WPARAM)MAX_TEXT_LENGTH, NULL); //Change default text limit of 32767 to a bigger value
 
 	SetWindowSubclass(TextControl,EditProc,0,0);
 
