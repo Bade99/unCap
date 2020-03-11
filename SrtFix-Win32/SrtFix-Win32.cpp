@@ -18,9 +18,6 @@ namespace fs = std::experimental::filesystem;
 //Draw my own non client area
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 
-//PROBLEMS:
-// - 2001 a space odyssey srt en español tiene encoding ansi y cuando llega a í se caga, por qué????
-
 #ifdef _DEBUG
 	#define RELEASE 0 //As I didnt find how to know when the compiler is on Release or Debug I created my own manual one
 #else
@@ -39,10 +36,6 @@ namespace fs = std::experimental::filesystem;
 
 #define TCM_RESIZETABS (WM_USER+50) //Sent to a tab control for it to tell its tabs' controls to resize. wParam = lParam = 0
 #define TCM_RESIZE (WM_USER+51) //wParam= pointer to SIZE of the tab control ; lParam = 0
-
-//#define ASCII 1 //NOTE: should really be ANSI 
-//#define UTF8 2
-//#define UTF16 3
 
 enum ENCODING {
 	ANSI=1,
@@ -473,12 +466,8 @@ void CreateFonts()
 	}
 }
 
-//bool IsAcceptedFile() {
-//	return isAcceptedFile;
-//}
 
 //si hay /n antes del corchete que lo borre tmb (y /r tmb)
-
 void CommentRemoval(HWND hText, WCHAR start,WCHAR end) {//@@tenemos la opcion de buscar mas de un solo caracter
 	int text_length = GetWindowTextLengthW(hText) + 1;
 	wstring text(text_length, L'\0');
@@ -1225,30 +1214,6 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	TabCloseButtonInfo.icon.cy = TabCloseButtonInfo.icon.cx;
 	TabCloseButtonInfo.rightPadding = (tabHeight-TabCloseButtonInfo.icon.cx)/2.f;
 
-	//TEXT_INFO test_info;
-	//wcsncpy(test_info.filePath, L"First Path", sizeof(test_info.filePath) / sizeof(test_info.filePath[0]));
-	//test_info.commentType = COMMENT_TYPE::other;
-	//
-	//AddTab(TextContainer, 0, (LPWSTR)L"First",test_info);
-
-	//wcsncpy(test_info.filePath, L"Second Path", sizeof(test_info.filePath)/ sizeof(test_info.filePath[0]));
-	//test_info.commentType = COMMENT_TYPE::brackets;
-
-	//AddTab(TextContainer, 1, (LPWSTR)L"Second",test_info);
-
-	//SendMessage(TextContainer, TCM_SETCURSEL, 0, 0);
-
-	//@@@Multiple tabs support?
-	/*
-	hSubs = CreateWindowExW(WS_EX_ACCEPTFILES|WS_EX_TOPMOST, L"Edit",NULL, WS_VISIBLE | WS_CHILD | WS_BORDER// | WS_DISABLED
-		| ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | WS_HSCROLL	//@this last two should appear only when needed
-		, 10, y_place + 134, 664 - 50, 588, hWnd, (HMENU)SUBS_WND,NULL,NULL);
-
-	SetWindowSubclass(hSubs, EditCatchDrop, 0, 0); //adds extra handler for catching dropped files
-
-	SendMessageW(hSubs, EM_SETLIMITTEXT, (WPARAM)MAX_TEXT_LENGTH, NULL); //cantidad de caracteres que el usuario puede escribir(asi le dejo editar)
-	*/
-
 	SendMessageW(hFile, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessageW(hRemoveCommentWith, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessageW(hOptions, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
@@ -1257,8 +1222,6 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	SendMessageW(hFinalText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessageW(hFinalChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessageW(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	//SendMessageW(hSave, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	//SendMessageW(hSubs, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessageW(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(TextContainer, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 }
@@ -1365,7 +1328,7 @@ std::vector<wstring> GetFiles2(LPCWSTR dir) {//dir should not contain \\ in the 
 	return files;
 }
 
-void CatchDrop(WPARAM wParam) {
+void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 	HDROP hDrop = (HDROP)wParam;
 	WCHAR lpszFile[MAX_PATH_LENGTH] = { 0 };
 	lpszFile[0] = '\0';
@@ -1397,25 +1360,8 @@ void CatchDrop(WPARAM wParam) {
 	DragFinish(hDrop); //free mem
 }
 
-//TEXT ENCONDING
-
-//bool is_ascii(const signed char *c, size_t len) {
-//	for (size_t i = 0; i < len; i++) {
-//		if (c[i] < 0) return false;
-//	}
-//	return true;
-//}
-
 ENCODING GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 	
-	//wstring confusing_utf8 = L"aϒáϢϴ";
-	//wofstream new_file("C:\\Users\\Brenda-Vero-Frank\\Desktop\\hola.txt", ios::binary);
-	//if (new_file.is_open()) {
-	//	new_file.imbue(locale(new_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, generate_header>));
-	//	new_file << confusing_utf8;
-	//	new_file.close();
-	//}
-
 	HANDLE hFile;
 	DWORD  dwBytesRead = 0;
 	BYTE   header[4] = { 0 };
@@ -1474,20 +1420,8 @@ ENCODING GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 		return ENCODING::ANSI;
 	}
 
-	//char header[4]; //no usar wchar asi leo de a un byte, lo mismo con ifstream en vez de wifstream
-	//ifstream file(filename, ios::in | ios::binary); //@@Can this read unicode filenames??
-	//if (!file) {
-	//	return UTF8;//parcheo rapido de momento
-	//}
-	//else {
-	//	file.read(header, 3);
-	//	file.close();
-	//	
-	//	if		(header[0] == (char)0XEF && header[1] == (char)0XBB && header[2] == (char)0XBF)	return UTF8;
-	//	else if (header[0] == (char)0xFF && header[1] == (char)0xFE)							return UTF16LE;
-	//	else if (header[0] == (char)0xFE && header[1] == (char)0xFF)							return UTF16BE;
 	//	else {//do manual checking
-	//		wifstream file(filename, ios::in | ios::binary);//@@no se si wifstream o ifstream (afecta a stringstream)
+	//		wifstream file(filename, ios::in | ios::binary);
 	//		wstringstream buffer;
 	//		buffer << file.rdbuf(); 
 	//		file.close();
@@ -1558,38 +1492,6 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {
 //	return 0;
 //}
 
-//void TEST(wstring& path) {
-//	//HANDLE hFile;
-//	//DWORD  dwBytesRead = 0;
-//	//BYTE   ReadBuffer[50000] = { 0 };
-//
-//	//hFile = CreateFile(path.c_str(),// file to open
-//	//	GENERIC_READ,          // open for reading
-//	//	FILE_SHARE_READ,       // share for reading
-//	//	NULL,                  // default security
-//	//	OPEN_EXISTING,         // existing file only
-//	//	FILE_ATTRIBUTE_NORMAL, // normal file
-//	//	NULL);                 // no attr. template
-//
-//	//Assert(hFile == INVALID_HANDLE_VALUE);
-//
-//	//BOOL read_res = ReadFile(hFile, ReadBuffer, 50000, &dwBytesRead, NULL);
-//	//Assert(read_res);
-//
-//	//CloseHandle(hFile);
-//
-//
-//	ifstream ifs(path);
-//	Assert(ifs);
-//
-//	istreambuf_iterator<char> it(ifs.rdbuf());
-//	istreambuf_iterator<char> eos;
-//
-//	bool res =  utf8::is_valid(it, eos);
-//
-//	int a = 2 * 3;
-//}
-
 /// <summary>
 /// 
 /// </summary>
@@ -1599,8 +1501,6 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {
 BOOL ReadText(wstring filepath, wstring& text) {
 
 	unsigned char encoding = GetTextEncoding(filepath);
-
-	//TEST(filepath);
 
 	wifstream file(filepath, ios::binary);
 
@@ -2461,43 +2361,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 }
 
 
-/* small comments when mouseover
-HWND CreateToolTip(int toolID, HWND hDlg, LPWSTR pszText){
-if (!toolID || !hDlg || !pszText) return FALSE;
-// Get the window of the tool.
-HWND hwndTool = GetDlgItem(hDlg, toolID);
-
-// Create the tooltip. g_hInst is the global instance handle.
-HWND hwndTip = CreateWindowExW(NULL, TOOLTIPS_CLASS, NULL,
-WS_POPUP | TTS_ALWAYSTIP //| TTS_BALLOON
-,CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-hDlg, NULL,hInst, NULL);
-
-if (!hwndTool || !hwndTip) return (HWND)NULL;
-
-// Associate the tooltip with the tool.
-TOOLINFO toolInfo = { 0 };
-toolInfo.cbSize = TTTOOLINFOA_V1_SIZE;
-toolInfo.hwnd = hDlg;
-toolInfo.uFlags = TTF_IDISHWND | TTF_SUBCLASS;
-toolInfo.uId = (UINT_PTR)hwndTool;
-toolInfo.lpszText = pszText;
-
-SendMessageW(hwndTip, TTM_ACTIVATE, TRUE, 0);
-if (!SendMessageW(hwndTip, TTM_ADDTOOL, 0, (LPARAM)&toolInfo)) { //Will add the Tool Tip on Control
-int err = GetLastError();
-MessageBox(NULL, L"Couldn't create the ToolTip control.WTF", L"Error", MB_OK);
-}
-return hwndTip;
-}
-*/
-
-//hCheckBox = CreateWindowW(L"Button", /*L"Backup file"*/L"Keep SDH file", WS_VISIBLE| WS_CHILD| BS_AUTOCHECKBOX
-//	, 552 - 50, y_place + 27, 125, 30, hWnd, NULL/*(HMENU)BACKUP*/, NULL, NULL);
-//SendMessageW(hCheckBox, BM_SETCHECK, BST_CHECKED, 0); //@@Convertirlo en un menu
-//WCHAR explain_backup[] = L"Only for the Remove function";
-//CreateToolTip(BACKUP, hWnd, explain_backup);
-
 //CommentRemoval old
 //wifstream file(accepted_file);
 //wstring line;
@@ -2561,25 +2424,6 @@ return hwndTip;
 //
 //https://msdn.microsoft.com/en-us/library/Bb776913(v=VS.85).aspx
 //}
-
-//@@creo q no hace falta declarar estos externs
-//menu text
-//extern const wchar_t *file_T[];
-//extern const wchar_t *open_T[];
-//extern const wchar_t *save_T[];
-//extern const wchar_t *save_as_T[];
-//extern const wchar_t *backup_T[];
-//extern const wchar_t *language_T[];
-
-//controls text
-//extern const wchar_t *remove_comment_with_T[];
-//extern const wchar_t *brackets_T[];
-//extern const wchar_t *parenthesis_T[];
-//extern const wchar_t *braces_T[];
-//extern const wchar_t *other_T[];
-//extern const wchar_t *initial_char_T[];
-//extern const wchar_t *final_char_T[];
-//extern const wchar_t *remove_button_T[];
 
 //int GetLineSeparation(wifstream &file) {
 //	wstringstream buffer;
