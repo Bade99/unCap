@@ -167,6 +167,8 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
     </ClInclude>
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="text_encoding_detect.h" />
+    <ClInclude Include="utf8.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LANGUAGE_MANAGER.cpp" />
@@ -189,6 +191,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
     </ClCompile>
+    <ClCompile Include="text_encoding_detect.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SrtFix-Win32.rc" />

@@ -16,6 +16,7 @@ namespace fs = std::experimental::filesystem;
 //Draw my own Scrollbars
 //Draw my own menu
 //Draw my own non client area
+//Move error messages from a separate dialog window into the space on the right of the Remove controls
 
 //PROBLEMS:
 // - 2001 a space odyssey srt en español tiene encoding ansi y cuando llega a í se caga, por qué????
@@ -39,10 +40,16 @@ namespace fs = std::experimental::filesystem;
 #define TCM_RESIZETABS (WM_USER+50) //Sent to a tab control for it to tell its tabs' controls to resize. wParam = lParam = 0
 #define TCM_RESIZE (WM_USER+51) //wParam= pointer to SIZE of the tab control ; lParam = 0
 
-#define ASCII 1 //NOTE: should really be ANSI //IMPORTANT(fran): decision -> I'd say no ASCII/ANSI support , o podría agregar un boton ANSI
-//ASCII is easily encoded in utf8 without problems
-#define UTF8 2
-#define UTF16 3
+//#define ASCII 1 //NOTE: should really be ANSI 
+//#define UTF8 2
+//#define UTF16 3
+
+enum ENCODING {
+	ANSI=1,
+	UTF8,
+	UTF16, //Big endian or Little endian
+	//ASCII is easily encoded in utf8 without problems
+};
 
 #define NO_SEPARATION 0
 #define ENTER 1
@@ -207,7 +214,7 @@ void				CreateFonts();
 void				AcceptedFile(wstring);
 //bool				IsAcceptedFile();
 void				CustomCommentRemoval(HWND);
-unsigned char		GetTextEncoding(wstring);
+ENCODING			GetTextEncoding(wstring);
 //wstring				ReadText(wstring);
 //int					LineCount(wifstream&);
 void				SetOptionsComboBox(HWND&, bool);
@@ -1390,7 +1397,16 @@ void CatchDrop(WPARAM wParam) {
 	DragFinish(hDrop); //free mem
 }
 
-unsigned char GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
+//TEXT ENCONDING
+
+//bool is_ascii(const signed char *c, size_t len) {
+//	for (size_t i = 0; i < len; i++) {
+//		if (c[i] < 0) return false;
+//	}
+//	return true;
+//}
+
+ENCODING GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 	
 	//wstring confusing_utf8 = L"aϒáϢϴ";
 	//wofstream new_file("C:\\Users\\Brenda-Vero-Frank\\Desktop\\hola.txt", ios::binary);
@@ -1400,42 +1416,99 @@ unsigned char GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 	//	new_file.close();
 	//}
 
-	char header[4]; //no usar wchar asi leo de a un byte, lo mismo con ifstream en vez de wifstream
-	ifstream file(filename, ios::in | ios::binary); //@@Can this read unicode filenames??
-	if (!file) {
-		return UTF8;//parcheo rapido de momento
+	HANDLE hFile;
+	DWORD  dwBytesRead = 0;
+	BYTE   header[4] = { 0 };
+
+	hFile = CreateFile(filename.c_str(),// file to open
+		GENERIC_READ,          // open for reading
+		FILE_SHARE_READ,       // share for reading
+		NULL,                  // default security
+		OPEN_EXISTING,         // existing file only
+		FILE_ATTRIBUTE_NORMAL, // normal file
+		NULL);                 // no attr. template
+
+	Assert(hFile != INVALID_HANDLE_VALUE);
+
+	BOOL read_res = ReadFile(hFile, header, 4, &dwBytesRead, NULL);
+	Assert(read_res);
+
+	CloseHandle(hFile);
+
+	if (header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)	return ENCODING::UTF8; //File has UTF8 BOM
+	else if (header[0] == (char)0xFF && header[1] == (char)0xFE)		return ENCODING::UTF16; //File has UTF16LE BOM, INFO: this could actually be UTF32LE but I've never seen a subtitle file enconded in utf32 so no real need to do the extra checks
+	else if (header[0] == (char)0xFE && header[1] == (char)0xFF)		return ENCODING::UTF16; //File has UTF16BE BOM
+	else {//Do manual check
+
+		//Check for UTF8
+
+		ifstream ifs(filename); //TODO(fran): can ifstream open wstring (UTF16 encoded) filenames?
+		Assert(ifs);
+
+		istreambuf_iterator<char> it(ifs.rdbuf());
+		istreambuf_iterator<char> eos;
+
+		bool isUTF8 = utf8::is_valid(it, eos); //there's also https://unicodebook.readthedocs.io/guess_encoding.html
+
+		ifs.close();
+
+		if (isUTF8) return ENCODING::UTF8; //File is valid UTF8
+
+		//Check for UTF16
+
+		hFile = CreateFile(filename.c_str(),GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL); //Open file for reading
+		Assert(hFile != INVALID_HANDLE_VALUE);
+
+		BYTE fixedBuffer[50000] = {0}; //We dont need the entire file, just enough data for the functions to be as accurate as possible. Pd. this is probably too much already
+		read_res = ReadFile(hFile, fixedBuffer, 50000, &dwBytesRead, NULL);
+		Assert(read_res);
+
+		CloseHandle(hFile);
+
+		AutoIt::Common::TextEncodingDetect textDetect;
+		bool isUTF16 = textDetect.isUTF16(fixedBuffer,dwBytesRead);
+
+		if (isUTF16) return ENCODING::UTF16;
+
+		//Give up and return ANSI
+		return ENCODING::ANSI;
 	}
-	else {
-		file.read(header, 3);
-		file.close();
-		
-		if		(header[0] == (char)0XEF && header[1] == (char)0XBB && header[2] == (char)0XBF)	return UTF8;
-		else if (header[0] == (char)0XEF && header[1] == (char)0XBB)							return UTF8;
-		else if (header[0] == (char)0xFF && header[1] == (char)0xFE)							return UTF16;//little-endian
-		else if (header[0] == (char)0xFE && header[1] == (char)0xFF)							return UTF16;//big-ending
-		else {//do manual checking
-			wifstream file(filename, ios::in | ios::binary);//@@no se si wifstream o ifstream (afecta a stringstream)
-			wstringstream buffer;
-			buffer << file.rdbuf(); 
-			file.close();
-			buffer.seekg(0, ios::end);
-			int length = buffer.tellg();//long enough length
-			buffer.clear();
-			buffer.seekg(0, ios::beg);
-			//https://unicodebook.readthedocs.io/guess_encoding.html
-			//NOTE: creo q esto testea UTF16 asi que probablemente haya errores, y toma ascii como utf
-			int test;
-			test = IS_TEXT_UNICODE_ILLEGAL_CHARS;
-			if (IsTextUnicode(buffer.str().c_str(), length, &test)) return ASCII;
-			test = IS_TEXT_UNICODE_STATISTICS;
-			if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-			test = IS_TEXT_UNICODE_REVERSE_STATISTICS;
-			if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-			test = IS_TEXT_UNICODE_ASCII16;
-			if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-			return ASCII; 
-		}
-	}
+
+	//char header[4]; //no usar wchar asi leo de a un byte, lo mismo con ifstream en vez de wifstream
+	//ifstream file(filename, ios::in | ios::binary); //@@Can this read unicode filenames??
+	//if (!file) {
+	//	return UTF8;//parcheo rapido de momento
+	//}
+	//else {
+	//	file.read(header, 3);
+	//	file.close();
+	//	
+	//	if		(header[0] == (char)0XEF && header[1] == (char)0XBB && header[2] == (char)0XBF)	return UTF8;
+	//	else if (header[0] == (char)0xFF && header[1] == (char)0xFE)							return UTF16LE;
+	//	else if (header[0] == (char)0xFE && header[1] == (char)0xFF)							return UTF16BE;
+	//	else {//do manual checking
+	//		wifstream file(filename, ios::in | ios::binary);//@@no se si wifstream o ifstream (afecta a stringstream)
+	//		wstringstream buffer;
+	//		buffer << file.rdbuf(); 
+	//		file.close();
+	//		buffer.seekg(0, ios::end);
+	//		int length = buffer.tellg();//long enough length
+	//		buffer.clear();
+	//		buffer.seekg(0, ios::beg);
+	//		//https://unicodebook.readthedocs.io/guess_encoding.html
+	//		//NOTE: creo q esto testea UTF16 asi que probablemente haya errores, y toma ascii como utf
+	//		int test;
+	//		test = IS_TEXT_UNICODE_ILLEGAL_CHARS;
+	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return ASCII;
+	//		test = IS_TEXT_UNICODE_STATISTICS;
+	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
+	//		test = IS_TEXT_UNICODE_REVERSE_STATISTICS;
+	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
+	//		test = IS_TEXT_UNICODE_ASCII16;
+	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
+	//		return ASCII; 
+	//	}
+	//}
 }
 
 COMMENT_TYPE CommentTypeFound(wstring &text) {
@@ -1458,32 +1531,64 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {
 	}
 }
 
-DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
+//DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
+//
+//	PGLP parameters = (PGLP)lpParam; 
+//
+//	unsigned char encoding = GetTextEncoding(parameters->file);
+//
+//	wifstream file(parameters->file, ios::binary);
+//
+//	if (file.is_open()) {
+//
+//		//set encoding for getline
+//		if (encoding == UTF8)
+//			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+//		else if (encoding == UTF16)
+//			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+//		//if encoding is ASCII we do nothing
+//
+//		wstringstream buffer;
+//		buffer << file.rdbuf();
+//		//wstring for_testing = buffer.str();
+//		(*((PGLP)lpParam)->text) = buffer.str();
+//
+//		file.close();
+//	}
+//	return 0;
+//}
 
-	PGLP parameters = (PGLP)lpParam; 
-
-	unsigned char encoding = GetTextEncoding(parameters->file);
-
-	wifstream file(parameters->file, ios::binary);
-
-	if (file.is_open()) {
-
-		//set encoding for getline
-		if (encoding == UTF8)
-			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
-		else if (encoding == UTF16)
-			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
-		//if encoding is ASCII we do nothing
-
-		wstringstream buffer;
-		buffer << file.rdbuf();
-		//wstring for_testing = buffer.str();
-		(*((PGLP)lpParam)->text) = buffer.str();
-
-		file.close();
-	}
-	return 0;
-}
+//void TEST(wstring& path) {
+//	//HANDLE hFile;
+//	//DWORD  dwBytesRead = 0;
+//	//BYTE   ReadBuffer[50000] = { 0 };
+//
+//	//hFile = CreateFile(path.c_str(),// file to open
+//	//	GENERIC_READ,          // open for reading
+//	//	FILE_SHARE_READ,       // share for reading
+//	//	NULL,                  // default security
+//	//	OPEN_EXISTING,         // existing file only
+//	//	FILE_ATTRIBUTE_NORMAL, // normal file
+//	//	NULL);                 // no attr. template
+//
+//	//Assert(hFile == INVALID_HANDLE_VALUE);
+//
+//	//BOOL read_res = ReadFile(hFile, ReadBuffer, 50000, &dwBytesRead, NULL);
+//	//Assert(read_res);
+//
+//	//CloseHandle(hFile);
+//
+//
+//	ifstream ifs(path);
+//	Assert(ifs);
+//
+//	istreambuf_iterator<char> it(ifs.rdbuf());
+//	istreambuf_iterator<char> eos;
+//
+//	bool res =  utf8::is_valid(it, eos);
+//
+//	int a = 2 * 3;
+//}
 
 /// <summary>
 /// 
@@ -1495,16 +1600,20 @@ BOOL ReadText(wstring filepath, wstring& text) {
 
 	unsigned char encoding = GetTextEncoding(filepath);
 
+	//TEST(filepath);
+
 	wifstream file(filepath, ios::binary);
 
 	if (file.is_open()) {
 
 		//set encoding for getline
 		if (encoding == UTF8)
-			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+			file.imbue(locale(std::locale::empty(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+			//int a;
+			//maybe the only thing needed when utf8 is detectedd is to remove the BOM if it is there
 		else if (encoding == UTF16)
-			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
-		//if encoding is ASCII we do nothing
+			file.imbue(locale(std::locale::empty(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+		//if encoding is ANSI we do nothing
 
 		wstringstream buffer;
 		buffer << file.rdbuf();
