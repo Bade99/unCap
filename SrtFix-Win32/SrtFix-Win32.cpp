@@ -59,13 +59,6 @@ enum ENCODING {
 	//ASCII is easily encoded in utf8 without problems
 };
 
-struct mainWindow { 
-	int posx = 75;
-	int posy = 75;
-	int sizex = 650;
-	int sizey = 800;
-};
-
 //The different types of characters that are detected as comments
 enum COMMENT_TYPE {
 	brackets = 0, parenthesis, braces, other
@@ -131,18 +124,18 @@ bool Backup_Is_Checked = false; //info file check, do backup or not
 
 LANGUAGE_MANAGER::LANGUAGE startup_locale = LANGUAGE_MANAGER::LANGUAGE::ENGLISH; //defaults to english
 
-#define POSX 0
-#define POSY 1
-#define SIZEX 2
-#define SIZEY 3
+#define RC_LEFT 0
+#define RC_TOP 1
+#define RC_RIGHT 2
+#define RC_BOTTOM 3
 #define DIR 4
 #define BACKUP 5
 #define LOCALE 6
 const wchar_t *info_parameters[] = {
-	L"[posx]=",
-	L"[posy]=",
-	L"[sizex]=",
-	L"[sizey]=",
+	L"[rc_left]=",
+	L"[rc_top]=",
+	L"[rc_right]=",
+	L"[rc_bottom]=",
 	L"[dir]=",
 	L"[backup]=",
 	L"[locale]="
@@ -151,7 +144,7 @@ const wchar_t *info_parameters[] = {
 
 wstring last_accepted_file_dir = L""; //Path of the last valid file directory
 
-mainWindow wnd; //Main window size and position
+RECT rcMainWnd = {75,75,600,850}; //Main window size and position //TODO(fran) this only needs to exist during startup
 
 int y_place = 10;
 
@@ -385,7 +378,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
     // Realizar la inicialización de la aplicación:
 
 	HWND hWnd = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-		wnd.posx, wnd.posy, wnd.sizex, wnd.sizey, nullptr, nullptr, hInstance, nullptr);
+		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
 
 	if (!hWnd) return FALSE;
 
@@ -1451,8 +1444,6 @@ void CreateInfoFile(HWND mainWindow){
 
 	RECT rect;
 	GetWindowRect(mainWindow, &rect);
-	wnd.sizex = rect.right - rect.left;
-	wnd.sizey = rect.bottom - rect.top;
 
 	BOOL dir_ret = CreateDirectoryW((LPWSTR)GetInfoDirectory().c_str(), NULL);
 
@@ -1464,10 +1455,10 @@ void CreateInfoFile(HWND mainWindow){
 	wofstream create_info_file(info_save_file);
 	if (create_info_file.is_open()) {
 		create_info_file.imbue(locale(create_info_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, generate_header>));
-		create_info_file << info_parameters[POSX] << rect.left << L"\n";			//posx
-		create_info_file << info_parameters[POSY] << rect.top << L"\n";			//posy
-		create_info_file << info_parameters[SIZEX] << wnd.sizex << L"\n";			//sizex
-		create_info_file << info_parameters[SIZEY] << wnd.sizey << L"\n";			//sizey
+		create_info_file << info_parameters[RC_LEFT] << rect.left << L"\n";			//posx
+		create_info_file << info_parameters[RC_TOP] << rect.top << L"\n";			//posy
+		create_info_file << info_parameters[RC_RIGHT] << rect.right << L"\n";			//sizex
+		create_info_file << info_parameters[RC_BOTTOM] << rect.bottom << L"\n";			//sizey
 		create_info_file << info_parameters[DIR] << last_accepted_file_dir << L"\n";	//directory of the last valid file directory
 		create_info_file << info_parameters[BACKUP] << (bool)(GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED) << L"\n"; //SDH
 		create_info_file << info_parameters[LOCALE] << LANGUAGE_MANAGER::Instance().GetCurrentLanguage() << L"\n"; //global locale
@@ -1485,28 +1476,28 @@ void removeInitialWhiteSpace(wstring &text){
 void AddInfoParameters(wstring parameters[]) {//@the debugger only shows the first parameter,why??
 	//puts the new data into the global variables
 
-	if (parameters[POSX] != L"") {
-		int posx = stoi(parameters[POSX]);
-		if (0 <= posx && posx <= GetSystemMetrics(SM_CXVIRTUALSCREEN))
-			wnd.posx = posx;
+	if (parameters[RC_LEFT] != L"") {
+		int rc_left = stoi(parameters[RC_LEFT]);
+		if (0 <= rc_left && rc_left <= GetSystemMetrics(SM_CXVIRTUALSCREEN))
+			rcMainWnd.left = rc_left;
 	}
 
-	if (parameters[POSY] != L"") {
-		int posy = stoi(parameters[POSY]);
-		if (0 <= posy && posy <= GetSystemMetrics(SM_CYVIRTUALSCREEN))
-			wnd.posy = posy;
+	if (parameters[RC_TOP] != L"") {
+		int rc_top = stoi(parameters[RC_TOP]);
+		if (0 <= rc_top && rc_top <= GetSystemMetrics(SM_CYVIRTUALSCREEN))
+			rcMainWnd.top = rc_top;
 	}
 
-	if (parameters[SIZEX] != L"") {
-		int sizex = stoi(parameters[SIZEX]);
-		if (0 <= sizex)
-			wnd.sizex = sizex;
+	if (parameters[RC_RIGHT] != L"") {
+		int rc_right = stoi(parameters[RC_RIGHT]);
+		if (0 <= rc_right)
+			rcMainWnd.right = rc_right;
 	}
 
-	if (parameters[SIZEY] != L"") {
-		int sizey = stoi(parameters[SIZEY]);
-		if (0 <= sizey)
-			wnd.sizey = sizey;
+	if (parameters[RC_BOTTOM] != L"") {
+		int rc_bottom = stoi(parameters[RC_BOTTOM]);
+		if (0 <= rc_bottom)
+			rcMainWnd.bottom = rc_bottom;
 	}
 
 	if (parameters[DIR] != L"") {
@@ -1580,11 +1571,9 @@ void CheckInfoFile() {	//changes default values if file exists
 void ResizeWindows(HWND mainWindow) {
 	RECT rect;
 	GetWindowRect(mainWindow, &rect);
-	wnd.sizex = rect.right - rect.left;
-	wnd.sizey = rect.bottom - rect.top;
-	MoveWindow(hFile, 10, y_place, wnd.sizex - 36, 20, TRUE);
+	MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
 	//@No se si actualizar las demas
-	MoveWindow(TextContainer, 10, y_place + 134, wnd.sizex - 36, wnd.sizey - 212, TRUE);
+	MoveWindow(TextContainer, 10, y_place + 134, RECTWIDTH(rect) - 36, RECTHEIGHT(rect) - 212, TRUE);
 	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
 }
 
