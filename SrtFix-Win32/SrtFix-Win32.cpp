@@ -1,5 +1,6 @@
 ﻿#include "SrtFix-Win32.h"
 
+//----------------------LINKER----------------------:
 // Linker->Input->Additional Dependencies (right way to link the .lib)
 #pragma comment(lib, "comctl32.lib" ) //common controls lib
 #pragma comment(lib,"propsys.lib") //open save file handler
@@ -7,25 +8,29 @@
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"") 
 //#pragma comment(lib,"User32.lib")
 
+//----------------------NAMESPACES----------------------:
 using namespace std;
 namespace fs = std::experimental::filesystem;
 
-#define Assert(assertion) if(!(assertion))*(int*)NULL=0
 
-//TODOs:
+//----------------------TODOs----------------------:
 //Draw my own Scrollbars
 //Draw my own menu
 //Draw my own non client area
 //Parametric sizes for everything
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 
+
+//----------------------DEFINES----------------------:
 #ifdef _DEBUG
 	#define RELEASE 0 //As I didnt find how to know when the compiler is on Release or Debug I created my own manual one
 #else
 	#define RELEASE 1
 #endif
 
-//@@Revisar resource.h para ver defines que ya esten ocupados!!!
+#define Assert(assertion) if(!(assertion))*(int*)NULL=0
+
+//INFO: Check resource.h for already taken defines
 #define OPEN_FILE 11
 #define COMBO_BOX 12
 #define SAVE_AS_FILE 13
@@ -38,6 +43,15 @@ namespace fs = std::experimental::filesystem;
 #define TCM_RESIZETABS (WM_USER+50) //Sent to a tab control for it to tell its tabs' controls to resize. wParam = lParam = 0
 #define TCM_RESIZE (WM_USER+51) //wParam= pointer to SIZE of the tab control ; lParam = 0
 
+
+#define MAX_PATH_LENGTH MAX_PATH
+#define MAX_TEXT_LENGTH 288000 //Edit controls have their text limit set by default at 32767, we need to change that
+
+#define RECTWIDTH(r) (r.right >= r.left ? r.right - r.left : r.left - r.right )
+
+#define RECTHEIGHT(r) (r.bottom >= r.top ? r.bottom - r.top : r.top - r.bottom )
+
+//----------------------USER DEFINED VARIABLES----------------------:
 enum ENCODING {
 	ANSI=1,
 	UTF8,
@@ -45,31 +59,56 @@ enum ENCODING {
 	//ASCII is easily encoded in utf8 without problems
 };
 
-#define NO_SEPARATION 0
-#define ENTER 1
-#define CARRIAGE_RETURN 2
-#define CR_ENTER 3
+struct mainWindow { 
+	int posx = 75;
+	int posy = 75;
+	int sizex = 650;
+	int sizey = 800;
+};
 
-#define MAX_PATH_LENGTH MAX_PATH
-#define MAX_TEXT_LENGTH 288000 //Edit controls have their text limit set by default at 32767, we need to change that
+//The different types of characters that are detected as comments
+enum COMMENT_TYPE {
+	brackets = 0, parenthesis, braces, other
+};
 
-#define MAX_LOADSTRING 100
+struct TEXT_INFO {
+	//TODO(fran): will we store the data for each control or store the controls themselves and hide them?
+	HWND hText = NULL;
+	WCHAR filePath[MAX_PATH] = { 0 };//TODO(fran): nowadays this isn't really the max path lenght
+	COMMENT_TYPE commentType = COMMENT_TYPE::brackets;
+	WCHAR initialChar = L'\0';
+	WCHAR finalChar = L'\0';
+};
 
-#define RECTWIDTH(r) (r.right >= r.left ? r.right - r.left : r.left - r.right )
+struct CUSTOM_TCITEM {
+	TC_ITEMHEADER tab_info;
+	TEXT_INFO extra_info;
+};
 
-#define RECTHEIGHT(r) (r.bottom >= r.top ? r.bottom - r.top : r.top - r.bottom )
+struct _APPCOLORS {
+	HBRUSH ControlBk;
+	HBRUSH ControlBkPush;
+	HBRUSH ControlBkMouseOver;
+	HBRUSH ControlTxt;
+};
 
-// Variables globales:
-HINSTANCE hInst;                                // Instancia actual
-WCHAR szTitle[MAX_LOADSTRING];                  // Texto de la barra de título
-WCHAR szWindowClass[MAX_LOADSTRING];            // nombre de clase de la ventana principal
-wstring SubtitleWindowClassName;
+struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
+	short leftOffset, topOffset, rightOffset, bottomOffset;
+};
 
+struct CLOSEBUTTON {
+	int rightPadding;//offset from the right side of each tab's rectangle
+	SIZE icon;//Size of the icon (will be placed centered in respect to each tab's rectangle)
+};
+
+struct vec2d {
+	float x, y;
+};
+
+//----------------------GLOBALS----------------------:
 HMENU hMenu;//main menu bar(only used to append the rest)
 HMENU hFileMenu;
 HMENU hFileMenuLang;
-
-//HWND hWnd; //main window
 
 HWND hFile;//window for file directory
 HWND hOptions;
@@ -90,7 +129,6 @@ HMENU hPopupMenu;
 
 bool Backup_Is_Checked = false; //info file check, do backup or not
 
-//int global_locale = ENGLISH;//program current locale,@should be enum & defined in text.h
 LANGUAGE_MANAGER::LANGUAGE startup_locale = LANGUAGE_MANAGER::LANGUAGE::ENGLISH; //defaults to english
 
 #define POSX 0
@@ -111,21 +149,9 @@ const wchar_t *info_parameters[] = {
 };
 #define NRO_INFO_PARAMETERS size(info_parameters)
 
-//wstring accepted_file=L"";
-wstring last_accepted_file_dir = L""; //path of last valid file dir
-//wstring accepted_file_name_with_ext = L"";
-//wstring accepted_file_ext = L"";
+wstring last_accepted_file_dir = L""; //Path of the last valid file directory
 
-//bool isAcceptedFile = false; //IMPORTANT TODO(fran): remove this guy
-
-struct mainWindow { //main window size and position
-	int posx = 75;
-	int posy = 75;
-	int sizex = 650;
-	int sizey = 800;
-}wnd;
-
-RECT rect;
+mainWindow wnd; //Main window size and position
 
 int y_place = 10;
 
@@ -138,83 +164,22 @@ const COMDLG_FILTERSPEC c_rgSaveTypes[] = //TODO(fran): am I using this? if so t
 { L"All Documents (*.*)",         L"*.*" }
 };
 
-//The different types of characters that are detected as comments
-enum COMMENT_TYPE {
-	brackets = 0, parenthesis, braces, other
-};
+_APPCOLORS AppColors;
 
-struct TEXT_INFO {
-	//TODO(fran): will we store the data for each control or store the controls themselves and hide them?
-	HWND hText=NULL;
-	WCHAR filePath[MAX_PATH] = {0};//TODO(fran): nowadays this isn't really the max path lenght
-	COMMENT_TYPE commentType = COMMENT_TYPE::brackets;
-	WCHAR initialChar= L'\0';
-	WCHAR finalChar = L'\0';
-};
+TABCLIENT TabOffset;
 
-struct CUSTOM_TCITEM {
-	TC_ITEMHEADER tab_info;
-	TEXT_INFO extra_info;
-};
+CLOSEBUTTON TabCloseButtonInfo; //Information for the placement of the close button of each tab in a tab control
 
-typedef struct GetLineParam {
-	wstring *text;
-	WCHAR file[MAX_PATH] = { 0 };
-} GLP, *PGLP;
-
-struct _APPCOLORS {
-	HBRUSH ControlBk;
-	HBRUSH ControlBkPush;
-	HBRUSH ControlBkMouseOver;
-	HBRUSH ControlTxt;
-
-}AppColors;
-
-struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
-	short leftOffset, topOffset, rightOffset, bottomOffset;
-}TabOffset;
-
-COLORREF ColorFromBrush(HBRUSH br) {
+//----------------------HELPER FUNCTIONS----------------------:
+inline COLORREF ColorFromBrush(HBRUSH br) {
 	LOGBRUSH lb;
 	GetObject(br, sizeof(lb), &lb);
 	return lb.lbColor;
 }
 
-// Declaraciones de funciones:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK	ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
-LRESULT CALLBACK	ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
-LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-//INT_PTR CALLBACK  About(HWND, UINT, WPARAM, LPARAM);
-bool				FileOrDirExists(const wstring&);
-void				AddMenus(HWND);
-void				ChooseFile(wstring);
-void				CommentRemoval(HWND, WCHAR, WCHAR);
-//int					GetLineSeparation(wstring);
-//void				LineSeparation();
-//void				LineSeparation(wstring&);
-void				EnableOtherChar(bool);
-void				DoBackup();
-void				DoSave(HWND,wstring);
-HRESULT				DoSaveAs(HWND);
-//HWND				CreateToolTip(int, HWND, LPWSTR);
-void				CatchDrop(WPARAM);
-//wstring				GetExecFolder();
-void				CreateInfoFile(HWND);
-void				CheckInfoFile();
-void				CreateFonts();
-void				AcceptedFile(wstring);
-//bool				IsAcceptedFile();
-void				CustomCommentRemoval(HWND);
-ENCODING			GetTextEncoding(wstring);
-//wstring				ReadText(wstring);
-//int					LineCount(wifstream&);
-void				SetOptionsComboBox(HWND&, bool);
-//void				SetLocaleW(int);
-void				ResizeWindows(HWND);
-//void				RegisterSubtitleWindowClass(HINSTANCE hInstance, wstring ClassName, LPCWSTR Cursor, int Color);
+inline bool FileOrDirExists(const wstring& file) {
+	return fs::exists(file);//true if exists
+}
 
 //Retrieves full path to the info for program startup
 wstring GetInfoPath() {
@@ -247,22 +212,6 @@ wstring GetInfoDirectory() {
 	return info_file_dir;
 }
 
-//Returns the current tab's text info or a TEXT_INFO struct with everything set to 0
-TEXT_INFO GetCurrentTabExtraInfo() {
-	int index = SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
-	if (index != -1) {
-		CUSTOM_TCITEM current_item;
-		current_item.tab_info.mask = TCIF_PARAM;
-		BOOL ret = SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&current_item);
-		if (ret) {
-			return current_item.extra_info;
-		}
-		//TODO(fran): error handling
-	}
-	TEXT_INFO invalid = { 0 };
-	return invalid;
-}
-
 //Returns the nth tab's text info or a TEXT_INFO struct with everything set to 0
 TEXT_INFO GetTabExtraInfo(int index) {
 	if (index != -1) {
@@ -272,9 +221,17 @@ TEXT_INFO GetTabExtraInfo(int index) {
 		if (ret) {
 			return item.extra_info;
 		}
+		//TODO(fran): error handling
 	}
 	TEXT_INFO invalid = { 0 };
 	return invalid;
+}
+
+//Returns the current tab's text info or a TEXT_INFO struct with everything set to 0
+TEXT_INFO GetCurrentTabExtraInfo() {
+	int index = SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
+
+	return GetTabExtraInfo(index);
 }
 
 wstring GetTabTitle(int index){
@@ -324,8 +281,44 @@ int ChangeTabSelected(int index) {
 	return SendMessage(TextContainer, TCM_SETCURSEL, index, 0);
 }
 
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,_In_ LPWSTR lpCmdLine,
-                     _In_ int nCmdShow)
+//Returns TRUE if successful, or FALSE otherwise.
+int DeleteTab(HWND TabControl, int position) {
+	return SendMessage(TabControl, TCM_DELETEITEM, position, 0);
+}
+
+BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
+	//TODO(fran): does this work with negative values?
+	if (p.x < rc.left || p.x > rc.right) return FALSE;
+	if (p.y < rc.top || p.y > rc.bottom) return FALSE;
+	return TRUE;
+}
+
+//----------------------FUNCTION PROTOTYPES----------------------:
+LRESULT CALLBACK	ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+LRESULT CALLBACK	ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+void				AddMenus(HWND);
+void				ChooseFile(wstring);
+void				CommentRemoval(HWND, WCHAR, WCHAR);
+void				EnableOtherChar(bool);
+void				DoBackup();
+void				DoSave(HWND,wstring);
+HRESULT				DoSaveAs(HWND);
+void				CatchDrop(WPARAM);
+void				CreateInfoFile(HWND);
+void				CheckInfoFile();
+void				CreateFonts();
+void				AcceptedFile(wstring);
+void				CustomCommentRemoval(HWND);
+ENCODING			GetTextEncoding(wstring);
+void				SetOptionsComboBox(HWND&, bool);
+void				ResizeWindows(HWND);
+
+
+
+
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,_In_ LPWSTR lpCmdLine,_In_ int nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
@@ -346,8 +339,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 		freopen("CONOUT$", "w", stderr);
 	}
 
-	lstrcpyW(szTitle, L"unCap");
-	lstrcpyW(szWindowClass, L"unCapClass");
+	WCHAR szWindowClass[40] = L"unCapClass";	// nombre de clase de la ventana principal
+	WCHAR szTitle[40] = L"unCap";				// Texto de la barra de título
+
     //LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	//LoadStringW(hInstance, IDC_SRTFIXWIN32, szWindowClass, MAX_LOADSTRING);
 
@@ -369,14 +363,34 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 
 	CreateFonts();
 
-    MyRegisterClass(hInstance);
+	WNDCLASSEXW wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SRTFIXWIN32));
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = AppColors.ControlBk;//(HBRUSH)(COLOR_BTNFACE +1);
+	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_SRTFIXWIN32);
+	wcex.lpszClassName = szWindowClass;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	ATOM class_atom = RegisterClassExW(&wcex);
+	if (!class_atom) return FALSE;
 	//RegisterSubtitleWindowClass(hInstance,SubtitleWindowClassName, IDC_ARROW, COLOR_BTNFACE + 1);
 
     // Realizar la inicialización de la aplicación:
-    if (!InitInstance (hInstance, nCmdShow))
-    {
-        return FALSE;
-    }
+
+	HWND hWnd = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+		wnd.posx, wnd.posy, wnd.sizex, wnd.sizey, nullptr, nullptr, hInstance, nullptr);
+
+	if (!hWnd) return FALSE;
+
+	ShowWindow(hWnd, nCmdShow);
+	UpdateWindow(hWnd);
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_SRTFIXWIN32));
 
@@ -408,41 +422,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
     return (int) msg.wParam;
 }
 
-ATOM MyRegisterClass(HINSTANCE hInstance)
-{
-    WNDCLASSEXW wcex;
-
-    wcex.cbSize = sizeof(WNDCLASSEX);
-    wcex.style          = CS_HREDRAW | CS_VREDRAW;
-    wcex.lpfnWndProc    = WndProc;
-    wcex.cbClsExtra     = 0;
-    wcex.cbWndExtra     = 0;
-    wcex.hInstance      = hInstance;
-    wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SRTFIXWIN32));
-    wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = AppColors.ControlBk;//(HBRUSH)(COLOR_BTNFACE +1);
-    wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_SRTFIXWIN32);
-    wcex.lpszClassName  = szWindowClass;
-    wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
-
-    return RegisterClassExW(&wcex);
-}
-
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
-{
-   hInst = hInstance; // Almacenar identificador de instancia en una variable global
-
-   HWND hWnd = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/,szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-	   wnd.posx, wnd.posy, wnd.sizex, wnd.sizey, nullptr, nullptr, hInstance, nullptr);
-
-   if (!hWnd) return FALSE;
-
-
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
-   return TRUE;
-}
-
 void CreateFonts()
 {
 	LOGFONTW lf;
@@ -451,7 +430,7 @@ void CreateFonts()
 	memset(&lf, 0, sizeof(lf));
 	lf.lfQuality = CLEARTYPE_QUALITY;
 	lf.lfHeight = -15;
-	//@ver: lf.pszFaceName y EnumFontFamiliesW
+	//TODO(fran): see lf.pszFaceName and EnumFontFamiliesW
 	hFont = CreateFontIndirectW(&lf);
 
 	if (hGeneralFont != NULL)
@@ -469,7 +448,7 @@ void CreateFonts()
 
 
 //si hay /n antes del corchete que lo borre tmb (y /r tmb)
-void CommentRemoval(HWND hText, WCHAR start,WCHAR end) {//@@tenemos la opcion de buscar mas de un solo caracter
+void CommentRemoval(HWND hText, WCHAR start,WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
 	int text_length = GetWindowTextLengthW(hText) + 1;
 	wstring text(text_length, L'\0');
 	GetWindowTextW(hText, &text[0], text_length);
@@ -486,8 +465,8 @@ void CommentRemoval(HWND hText, WCHAR start,WCHAR end) {//@@tenemos la opcion de
 			//SendMessage(hRemoveProgress, PBM_SETPOS, text_length, 0);
 			break; 
 		}
-		text.erase(text.begin() + start_pos, text.begin() + end_pos+1); //@@need to start handling exceptions
-		found = true;//@@can we somehow do this only once?
+		text.erase(text.begin() + start_pos, text.begin() + end_pos+1); //TODO(fran): handle exceptions
+		found = true;//TODO(fran): can we somehow do this only once?
 		//SendMessage(hRemoveProgress, PBM_SETPOS, start_pos, 0);
 	}
 	if (found) SetWindowTextW(hText, text.c_str());
@@ -496,7 +475,7 @@ void CommentRemoval(HWND hText, WCHAR start,WCHAR end) {//@@tenemos la opcion de
 }
 
 void CustomCommentRemoval(HWND hText) {
-	WCHAR temp[2]; //@Revisar que entra en temp, xq debe meter basura o algo
+	WCHAR temp[2] = {0};
 	WCHAR start;
 	WCHAR end;
 	GetWindowTextW(hInitialChar, temp, 2); //tambien la funcion devuelve 0 si no agarra nada, podemos agregar ese check
@@ -530,7 +509,7 @@ void ProperLineSeparation(wstring &text) {
 	}
 }
 
-void DoBackup() { //@give option to change backup folder
+void DoBackup() { //TODO(fran): option to change backup folder
 
 	int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
@@ -543,7 +522,7 @@ void DoBackup() { //@give option to change backup folder
 		Assert(found != wstring::npos);
 		new_file.insert(found, L"SDH_");//TODO(fran): add SDH to resource file?
 
-		if (!CopyFileW(orig_file.c_str(), new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The file name is probably too large", L"Fix the program!", MB_ICONERROR);; //@@the name is limited to MAX_PATH characters (use CopyFileW?)
+		if (!CopyFileW(orig_file.c_str(), new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);;
 	}
 }
 
@@ -556,12 +535,10 @@ void DoSave(HWND textControl, wstring save_file) { //got to pass the encoding to
 	//				The new character string is not necessarily from a multibyte character set.
 
 	//AnimateWindow
-	//@@How to save with choosen encoding, (problem in gone with the wind, probably cause has only one char with different encoding)
-	//@@more weird things: after saving gone with the wind, if opened up again, everything has one extra separation
-	//@@agregar ProgressBar hReadFile
+	//TODO(fran): add ProgressBar hReadFile
 	wofstream new_file(save_file, ios::binary);
 	if (new_file.is_open()) {
-		new_file.imbue(locale(new_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, generate_header>));
+		new_file.imbue(locale(new_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, generate_header>));//TODO(fran): multiple options for save encoding
 		int text_length = GetWindowTextLengthW(textControl) + 1;
 		wstring text(text_length, L'\0');
 		GetWindowTextW(textControl, &text[0], text_length);
@@ -578,7 +555,6 @@ void DoSave(HWND textControl, wstring save_file) { //got to pass the encoding to
 	}
 	else MessageBoxW(NULL, RCS(LANG_SAVE_ERROR), RCS(LANG_ERROR), MB_ICONEXCLAMATION);
 } 
-//@@Ver el formato con que guardo las cosas (check that BOM is created)
 
 HRESULT DoSaveAs(HWND textControl) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
 {
@@ -771,8 +747,6 @@ HRESULT DoSaveAs(HWND textControl) //https://msdn.microsoft.com/en-us/library/wi
 	return hr;
 }
 
-
-
 void AddMenus(HWND hWnd) {
 
 	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hWnd);
@@ -809,7 +783,7 @@ void AddMenus(HWND hWnd) {
 	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CROSS));
 	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(EARTH));
 
-	//@@ver como hacer bitmaps transparentes, y el resize
+	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
 
 	SetMenuItemBitmaps(hFileMenu, BACKUP_FILE, MF_BYCOMMAND,bCross,bTick);//1ºunchecked,2ºchecked
 	CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
@@ -841,25 +815,6 @@ LRESULT CALLBACK EditCatchDrop(HWND hWnd, UINT uMsg, WPARAM wParam,
 	}
 	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
-//@@Capaz puedo usar esto, mandarle un mensaje y que modifique 
-// una progress bar al mismo tiempo que el otro thread
-
-/*
-void SetOptionsComboBox(HWND & hCombo, bool isNew) {//@is there a simpler way to modify the combo box??
-	int previous_index=0;
-	if (!isNew) {
-		previous_index = SendMessageW(hCombo, CB_GETCURSEL, 0, 0);
-		for (int number_of_options = 4; number_of_options > 0; number_of_options--)
-			//@Remember to change number_of_options if I add more!!
-			SendMessageW(hCombo, CB_DELETESTRING, (WPARAM)0, 0);
-	}
-	SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)brackets_T[global_locale]);
-	SendMessageW(hCombo, CB_ADDSTRING, 1, (LPARAM)parenthesis_T[global_locale]);
-	SendMessageW(hCombo, CB_ADDSTRING, 2, (LPARAM)braces_T[global_locale]);
-	SendMessageW(hCombo, CB_ADDSTRING, 3, (LPARAM)other_T[global_locale]);
-	SendMessageW(hCombo, CB_SETCURSEL, previous_index, 0);
-}
-*/
 
 LRESULT CALLBACK EditProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
 //
@@ -919,11 +874,6 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	newItem.extra_info.hText = TextControl;
 
 	return SendMessage(TabControl, TCM_INSERTITEM, position, (LPARAM)&newItem);
-}
-
-//Returns TRUE if successful, or FALSE otherwise.
-int DeleteTab(HWND TabControl, int position) {
-	return SendMessage(TabControl, TCM_DELETEITEM,position,0);
 }
 
 //Returns the current position of that tab or -1 if failed
@@ -990,20 +940,6 @@ int EnableTab(const TEXT_INFO& text_data) {
 	SetWindowText(hFinalChar, temp);
 
 	return 1;//TODO(fran): proper return
-}
-
-#include <Windowsx.h>
-
-struct CLOSEBUTTON {
-	int rightPadding;//offset from the right side of each tab's rectangle
-	SIZE icon;//Size of the icon (will be placed centered in respect to each tab's rectangle)
-} TabCloseButtonInfo;//Information for the placement of the close button of each tab in a tab control
-
-BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
-	//TODO(fran): does this work with negative values?
-	if (p.x < rc.left || p.x > rc.right) return FALSE;
-	if (p.y < rc.top|| p.y > rc.bottom) return FALSE;
-	return TRUE;
 }
 
 //Determines if a close button was pressed in any of the tab control's tabs and returns its zero based index
@@ -1234,14 +1170,14 @@ void EnableOtherChar(bool op) {
 	EnableWindow(hFinalChar, op);	
 }
 
-inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) {
+inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) { //TODO(fran): lambda function
 	return file[max(offsetToFirstFile - 1,0)] == L'\0';//TODO(fran): is this max useful? if [0] is not valid I think it will fail anyway
 }
 
 void ChooseFile(wstring ext) {
 	//TODO(fran): support for folder selection?
 	//TODO(fran): check for mem-leaks, the moment I select the open-file menu 10MB of ram are assigned for some reason
-	WCHAR name[MAX_PATH_LENGTH]; //@I dont think this is big enough
+	WCHAR name[MAX_PATH_LENGTH]; //TODO(fran): I dont think this is big enough
 	name[0] = L'\0';
 	OPENFILENAMEW new_file;
 	ZeroMemory(&new_file, sizeof(OPENFILENAMEW));
@@ -1302,30 +1238,6 @@ std::vector<wstring> GetFiles(LPCWSTR s)//, int dir_lenght)
 		//if (!p.path().extension().compare(".srt")) files.push_back(p.path().wstring().substr(dir_lenght, string::npos));
 		if (!p.path().extension().compare(".srt")) files.push_back(p.path().wstring());
 	}
-	return files;
-}
-
-std::vector<wstring> GetFiles2(LPCWSTR dir) {//dir should not contain \\ in the end
-	wstring dirfilter = dir;
-	dirfilter += L"\\*";
-
-	std::vector<wstring> files;
-
-	WIN32_FIND_DATA data;
-	HANDLE hFind = FindFirstFile(dirfilter.c_str(), &data);
-	//IMPORTANT INFO: this is not recursive, doesnt go inside folders
-	do
-	{
-		if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-		{
-			//directory
-		}
-		else
-		{
-			files.push_back(data.cFileName);//TODO(fran): compare extension
-		}
-	} while (FindNextFile(hFind, &data) != 0);
-
 	return files;
 }
 
@@ -1420,30 +1332,6 @@ ENCODING GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 		//Give up and return ANSI
 		return ENCODING::ANSI;
 	}
-
-	//	else {//do manual checking
-	//		wifstream file(filename, ios::in | ios::binary);
-	//		wstringstream buffer;
-	//		buffer << file.rdbuf(); 
-	//		file.close();
-	//		buffer.seekg(0, ios::end);
-	//		int length = buffer.tellg();//long enough length
-	//		buffer.clear();
-	//		buffer.seekg(0, ios::beg);
-	//		//https://unicodebook.readthedocs.io/guess_encoding.html
-	//		//NOTE: creo q esto testea UTF16 asi que probablemente haya errores, y toma ascii como utf
-	//		int test;
-	//		test = IS_TEXT_UNICODE_ILLEGAL_CHARS;
-	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return ASCII;
-	//		test = IS_TEXT_UNICODE_STATISTICS;
-	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-	//		test = IS_TEXT_UNICODE_REVERSE_STATISTICS;
-	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-	//		test = IS_TEXT_UNICODE_ASCII16;
-	//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-	//		return ASCII; 
-	//	}
-	//}
 }
 
 COMMENT_TYPE CommentTypeFound(wstring &text) {
@@ -1465,33 +1353,6 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {
 		return COMMENT_TYPE::other;
 	}
 }
-
-//DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
-//
-//	PGLP parameters = (PGLP)lpParam; 
-//
-//	unsigned char encoding = GetTextEncoding(parameters->file);
-//
-//	wifstream file(parameters->file, ios::binary);
-//
-//	if (file.is_open()) {
-//
-//		//set encoding for getline
-//		if (encoding == UTF8)
-//			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
-//		else if (encoding == UTF16)
-//			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
-//		//if encoding is ASCII we do nothing
-//
-//		wstringstream buffer;
-//		buffer << file.rdbuf();
-//		//wstring for_testing = buffer.str();
-//		(*((PGLP)lpParam)->text) = buffer.str();
-//
-//		file.close();
-//	}
-//	return 0;
-//}
 
 /// <summary>
 /// 
@@ -1529,22 +1390,14 @@ BOOL ReadText(wstring filepath, wstring& text) {
 //TODO(fran): we could try to offload the entire procedure of AcceptedFile to a new thread so in case we receive multiple files we process them in parallel
 void AcceptedFile(wstring filename) {
 
-	//isAcceptedFile = true; //TODO(fran): this has to go
-
-	//save file dir+name+ext
-	//accepted_file = filename;
-
 	//save file dir
 	last_accepted_file_dir = filename.substr(0, filename.find_last_of(L"\\")+1);
 
 	//save file name+ext
 	wstring accepted_file_name_with_ext = filename.substr(filename.find_last_of(L"\\")+1);
 
-	//save file ext
-	//accepted_file_ext = filename.substr(filename.find_last_of(L".")+1);
-
-	//show file contents (new thread)
 #if 0
+	//show file contents (new thread)
 	wstring text;
 	PGLP parameters = (PGLP)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(GLP));
 	parameters->text = &text;
@@ -1584,11 +1437,8 @@ void AcceptedFile(wstring filename) {
 
 		SetWindowTextW(new_text_data.hText, text.c_str());
 
-
 		//enable buttons and text editor
 		EnableWindow(hRemove, TRUE); //TODO(fran): this could also be a saved parameter
-		//EnableWindow(hSave, TRUE);
-		//EnableWindow(text_data.hText, TRUE);
 
 		ChangeTabSelected(res);
 	}
@@ -1599,6 +1449,7 @@ void AcceptedFile(wstring filename) {
 void CreateInfoFile(HWND mainWindow){
 	wstring info_save_file = GetInfoPath();
 
+	RECT rect;
 	GetWindowRect(mainWindow, &rect);
 	wnd.sizex = rect.right - rect.left;
 	wnd.sizey = rect.bottom - rect.top;
@@ -1726,61 +1577,8 @@ void CheckInfoFile() {	//changes default values if file exists
 	}
 }
 
-//wstring GetExecFolder() {
-//	WCHAR ownPth[MAX_PATH_LENGTH];
-//	HMODULE hModule = GetModuleHandle(NULL);
-//	if (hModule != NULL) GetModuleFileName(hModule, ownPth, (sizeof(ownPth)));//INFO: that sizeof is probably wrong
-//	else { 
-//		MessageBoxW(hWnd,L"" /*exe_path_failed_T[global_locale]*/, NULL, MB_ICONERROR); 
-//		return L"C:\\Temp\\";
-//	}
-//	wstring dir = ownPth;
-//	dir.erase(dir.rfind(L"\\") + 1, string::npos);
-//	return dir;
-//}
-
-bool FileOrDirExists(const wstring& file) {
-	return fs::exists(file);//true if exists
-}
-
-/*
-void SetLocaleW(int locale) {
-	global_locale = locale;
-	//Menu text
-	MENUITEMINFOW menu_setter;
-	menu_setter.cbSize = sizeof(MENUITEMINFOW);
-	menu_setter.fMask = MIIM_STRING;
-	menu_setter.dwTypeData = _wcsdup(file_T[global_locale]);
-	SetMenuItemInfoW(hMenu, (UINT_PTR)hFileMenu, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(open_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, OPEN_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(save_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, SAVE_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(save_as_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, SAVE_AS_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(backup_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, BACKUP_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(language_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, (UINT_PTR)hFileMenuLang, FALSE, &menu_setter);
-	
-	DrawMenuBar(hWnd);
-
-	//Control text
-	SetWindowTextW(hRemoveCommentWith, remove_comment_with_T[global_locale]);
-	SetOptionsComboBox(hOptions, FALSE);
-	SetWindowTextW(hInitialText, initial_char_T[global_locale]);
-	SetWindowTextW(hFinalText,final_char_T[global_locale]);
-	SetWindowTextW(hRemove,remove_T[global_locale]);
-	
-	UpdateWindow(hWnd);
-
-	//@@Alguna forma de alinear los controles por la derecha?? (asi todo queda alineado)
-	
-	//notification messages get updated on their own
-}
-*/
-
 void ResizeWindows(HWND mainWindow) {
+	RECT rect;
 	GetWindowRect(mainWindow, &rect);
 	wnd.sizex = rect.right - rect.left;
 	wnd.sizey = rect.bottom - rect.top;
@@ -1789,10 +1587,6 @@ void ResizeWindows(HWND mainWindow) {
 	MoveWindow(TextContainer, 10, y_place + 134, wnd.sizex - 36, wnd.sizey - 212, TRUE);
 	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
 }
-
-struct vec2d {
-	float x, y;
-};
 
 LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
 	static BOOL MouseOver = false;
@@ -2070,8 +1864,7 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE lang, LANGUAGE_MANAGER::LANGUAGE 
 	CheckMenuItem(hFileMenu, oldLang, MF_BYCOMMAND | MF_UNCHECKED);
 }
 
-//@@DPI awareness
-//@@Dark mode??
+//TODO(fran): DPI awareness
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch (message)
@@ -2361,6 +2154,158 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
+
+//wstring GetExecFolder() {
+//	WCHAR ownPth[MAX_PATH_LENGTH];
+//	HMODULE hModule = GetModuleHandle(NULL);
+//	if (hModule != NULL) GetModuleFileName(hModule, ownPth, (sizeof(ownPth)));//INFO: that sizeof is probably wrong
+//	else { 
+//		MessageBoxW(hWnd,L"" /*exe_path_failed_T[global_locale]*/, NULL, MB_ICONERROR); 
+//		return L"C:\\Temp\\";
+//	}
+//	wstring dir = ownPth;
+//	dir.erase(dir.rfind(L"\\") + 1, string::npos);
+//	return dir;
+//}
+
+/*
+void SetLocaleW(int locale) {
+	global_locale = locale;
+	//Menu text
+	MENUITEMINFOW menu_setter;
+	menu_setter.cbSize = sizeof(MENUITEMINFOW);
+	menu_setter.fMask = MIIM_STRING;
+	menu_setter.dwTypeData = _wcsdup(file_T[global_locale]);
+	SetMenuItemInfoW(hMenu, (UINT_PTR)hFileMenu, FALSE, &menu_setter);
+	menu_setter.dwTypeData = _wcsdup(open_T[global_locale]);
+	SetMenuItemInfoW(hFileMenu, OPEN_FILE, FALSE, &menu_setter);
+	menu_setter.dwTypeData = _wcsdup(save_T[global_locale]);
+	SetMenuItemInfoW(hFileMenu, SAVE_FILE, FALSE, &menu_setter);
+	menu_setter.dwTypeData = _wcsdup(save_as_T[global_locale]);
+	SetMenuItemInfoW(hFileMenu, SAVE_AS_FILE, FALSE, &menu_setter);
+	menu_setter.dwTypeData = _wcsdup(backup_T[global_locale]);
+	SetMenuItemInfoW(hFileMenu, BACKUP_FILE, FALSE, &menu_setter);
+	menu_setter.dwTypeData = _wcsdup(language_T[global_locale]);
+	SetMenuItemInfoW(hFileMenu, (UINT_PTR)hFileMenuLang, FALSE, &menu_setter);
+
+	DrawMenuBar(hWnd);
+
+	//Control text
+	SetWindowTextW(hRemoveCommentWith, remove_comment_with_T[global_locale]);
+	SetOptionsComboBox(hOptions, FALSE);
+	SetWindowTextW(hInitialText, initial_char_T[global_locale]);
+	SetWindowTextW(hFinalText,final_char_T[global_locale]);
+	SetWindowTextW(hRemove,remove_T[global_locale]);
+
+	UpdateWindow(hWnd);
+
+	//@@Alguna forma de alinear los controles por la derecha?? (asi todo queda alineado)
+
+	//notification messages get updated on their own
+}
+*/
+
+//typedef struct GetLineParam {
+//	wstring *text;
+//	WCHAR file[MAX_PATH] = { 0 };
+//} GLP, *PGLP;
+//DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
+//
+//	PGLP parameters = (PGLP)lpParam; 
+//
+//	unsigned char encoding = GetTextEncoding(parameters->file);
+//
+//	wifstream file(parameters->file, ios::binary);
+//
+//	if (file.is_open()) {
+//
+//		//set encoding for getline
+//		if (encoding == UTF8)
+//			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+//		else if (encoding == UTF16)
+//			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+//		//if encoding is ASCII we do nothing
+//
+//		wstringstream buffer;
+//		buffer << file.rdbuf();
+//		//wstring for_testing = buffer.str();
+//		(*((PGLP)lpParam)->text) = buffer.str();
+//
+//		file.close();
+//	}
+//	return 0;
+//}
+
+// //For GetTextEncoding
+//	else {//do manual checking
+//		wifstream file(filename, ios::in | ios::binary);
+//		wstringstream buffer;
+//		buffer << file.rdbuf(); 
+//		file.close();
+//		buffer.seekg(0, ios::end);
+//		int length = buffer.tellg();//long enough length
+//		buffer.clear();
+//		buffer.seekg(0, ios::beg);
+//		//https://unicodebook.readthedocs.io/guess_encoding.html
+//		//NOTE: creo q esto testea UTF16 asi que probablemente haya errores, y toma ascii como utf
+//		int test;
+//		test = IS_TEXT_UNICODE_ILLEGAL_CHARS;
+//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return ASCII;
+//		test = IS_TEXT_UNICODE_STATISTICS;
+//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
+//		test = IS_TEXT_UNICODE_REVERSE_STATISTICS;
+//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
+//		test = IS_TEXT_UNICODE_ASCII16;
+//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
+//		return ASCII; 
+//	}
+//}
+
+//std::vector<wstring> GetFiles2(LPCWSTR dir) {//dir should not contain \\ in the end
+//	wstring dirfilter = dir;
+//	dirfilter += L"\\*";
+//
+//	std::vector<wstring> files;
+//
+//	WIN32_FIND_DATA data;
+//	HANDLE hFind = FindFirstFile(dirfilter.c_str(), &data);
+//	//IMPORTANT INFO: this is not recursive, doesnt go inside folders
+//	do
+//	{
+//		if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+//		{
+//			//directory
+//		}
+//		else
+//		{
+//			files.push_back(data.cFileName);//TODO(fran): compare extension
+//		}
+//	} while (FindNextFile(hFind, &data) != 0);
+//
+//	return files;
+//}
+
+/*
+void SetOptionsComboBox(HWND & hCombo, bool isNew) {//@is there a simpler way to modify the combo box??
+	int previous_index=0;
+	if (!isNew) {
+		previous_index = SendMessageW(hCombo, CB_GETCURSEL, 0, 0);
+		for (int number_of_options = 4; number_of_options > 0; number_of_options--)
+			//@Remember to change number_of_options if I add more!!
+			SendMessageW(hCombo, CB_DELETESTRING, (WPARAM)0, 0);
+	}
+	SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)brackets_T[global_locale]);
+	SendMessageW(hCombo, CB_ADDSTRING, 1, (LPARAM)parenthesis_T[global_locale]);
+	SendMessageW(hCombo, CB_ADDSTRING, 2, (LPARAM)braces_T[global_locale]);
+	SendMessageW(hCombo, CB_ADDSTRING, 3, (LPARAM)other_T[global_locale]);
+	SendMessageW(hCombo, CB_SETCURSEL, previous_index, 0);
+}
+*/
+
+//#define NO_SEPARATION 0
+//#define ENTER 1
+//#define CARRIAGE_RETURN 2
+//#define CR_ENTER 3
 
 //CommentRemoval old
 //wifstream file(accepted_file);
