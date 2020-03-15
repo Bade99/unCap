@@ -526,6 +526,28 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 				continue; 
 			}
 		}
+
+		//TODO(fran): there's a bigger check that we need to perform, some of the commands inside {\command} can have parenthesis()
+		// So what we should do is always check if we are inside of a command in which case we ignore and continue
+		// How to perform the check: we have to go back from our position and search for the closest "{\" in our same line, but also check that there is
+		// no "}" that is closer
+		size_t command_begin_pos = text.rfind(L"{\\", start_pos); //We found a command, are we inside it?
+		if (command_begin_pos != wstring::npos) {
+			if (command_begin_pos >= line_pos) {//Check that the "{\" is on the same line as us
+				//INFO: we are going to assume that nesting {} or {\} inside a {\} is invalid and is never used, otherwise add this extra check
+				//size_t possible_comment_begin_pos; //Closest "{" going backwards from our current position
+				//possible_comment_begin_pos = text.find_last_of(L'{', start_pos);
+				size_t possible_comment_end_pos; //Closest "}" going backwards from our current position
+				possible_comment_end_pos = text.find_first_of(L'}', command_begin_pos);
+				if (possible_comment_end_pos == wstring::npos) break; //There's a command that has no end, invalid
+				//TODO(fran): add check if the comment end is on the same line
+				if (possible_comment_end_pos > start_pos) { //TODO(fran): what to do if they are equal??
+					start_pos++;
+					continue; //We are inside of a command, ignore and continue
+				}
+			}
+		}
+
 		end_pos = text.find(end, start_pos + 1); //Search for the end of the comment
 		if (end_pos == wstring::npos) break; //There's no "comment end" so lets just exit the loop, the file is probably incorrectly written
 
