@@ -41,9 +41,12 @@ namespace fs = std::experimental::filesystem;
 #define BACKUP_FILE 16
 #define SUBS_WND 17
 #define TABCONTROL 18
+#define TIMEDMESSAGES 19
 
 #define TCM_RESIZETABS (WM_USER+50) //Sent to a tab control for it to tell its tabs' controls to resize. wParam = lParam = 0
 #define TCM_RESIZE (WM_USER+51) //wParam= pointer to SIZE of the tab control ; lParam = 0
+
+#define UNCAP_SETTEXTDURATION (WM_USER+52) //Sets duration of text in a control before it's hidden. wParam=(UINT)duration in milliseconds ; lParam = NOT USED
 
 
 #define MAX_PATH_LENGTH MAX_PATH
@@ -91,6 +94,7 @@ struct _APPCOLORS {
 	HBRUSH ControlBkPush;
 	HBRUSH ControlBkMouseOver;
 	HBRUSH ControlTxt;
+	HBRUSH ControlMsg;
 };
 
 struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
@@ -123,6 +127,7 @@ HWND hRemoveCommentWith;
 //HWND hRemoveProgress;
 HWND hReadFile;
 HWND TextContainer;//The tab control where the text editors are "contained"
+HWND hMessage;//Show timed messages
 
 HFONT hGeneralFont;//Main font manager
 
@@ -295,6 +300,7 @@ BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
 }
 
 //----------------------FUNCTION PROTOTYPES----------------------:
+LRESULT CALLBACK	ShowMessageProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	ComboProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	ButtonProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
@@ -355,6 +361,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	AppColors.ControlBkPush = CreateSolidBrush(RGB(0, 110, 200));
 	AppColors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
 	AppColors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
+	AppColors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
 
 	//Setting offsets for what will define the "client" area of a tab control
 	TabOffset.leftOffset = 3;
@@ -447,18 +454,6 @@ void CreateFonts()
 	}
 }
 
-// Removing comments for Substation Alpha format (.ssa) and Advanced Substation Alpha format (.ass)
-//https://wiki.multimedia.cx/index.php/SubStation_Alpha
-//https://matroska.org/technical/specs/subtitles/ssa.html
-//INFO: ssa has v1, v2, v3 and v4, v4+ is ass but all of them are very similar in what concerns us
-//I only care about lines that start with Dialogue:
-//This lines are always one liners, so we could use getline or variants
-//This lines can contain extra commands in the format {\command} therefore in case we are removing braces "{" we must check whether the next char is \ and ignore in that case
-//The same rule should apply when detecting the type of comments in CommentTypeFound
-//If we find one of this extra commands inside of a comment we remove it, eg [Hello {\br} goodbye] -> Remove everything
-//TODO(fran): check that a line with no text is still valid, eg if the comment was the only text on that Dialogue line after we remove it there will be nothing
-
-
 /// <summary>
 /// Performs comment removal for .srt type formats
 /// </summary>
@@ -492,6 +487,20 @@ size_t CommentRemovalSRT(wstring& text, WCHAR start, WCHAR end) {
 /// <param name="end"></param>
 /// <returns>The number of comments removed, 0 indicates no comments were found</returns>
 size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
+
+	// Removing comments for Substation Alpha format (.ssa) and Advanced Substation Alpha format (.ass)
+	//https://wiki.multimedia.cx/index.php/SubStation_Alpha
+	//https://matroska.org/technical/specs/subtitles/ssa.html
+	//INFO: ssa has v1, v2, v3 and v4, v4+ is ass but all of them are very similar in what concerns us
+	//I only care about lines that start with Dialogue:
+	//This lines are always one liners, so we could use getline or variants
+	//This lines can contain extra commands in the format {\command} therefore in case we are removing braces "{" we must check whether the next char is \ and ignore in that case
+	//The same rule should apply when detecting the type of comments in CommentTypeFound
+	//If we find one of this extra commands inside of a comment we remove it, eg [Hello {\br} goodbye] -> Remove everything
+	
+	
+	//TODO(fran): check that a line with no text is still valid, eg if the comment was the only text on that Dialogue line after we remove it there will be nothing
+
 	size_t comment_count = 0;
 	size_t start_pos = 0, end_pos = 0;
 	size_t line_pos=0;
@@ -519,7 +528,7 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 		}
 
 		//Now lets check in case "start" is "{" whether the next char is "\"
-		if (start == L'{') {
+		if (start == L'{') { //TODO(fran): can this be embedded in the code below?
 			if ((start_pos + 1) >= text.length()) break; //Check a next character exists after our current position
 			if (text.at(start_pos + 1) == L'\\') { //Indeed it was a \ so we where inside a special command, just ignore it and continue searching
 				start_pos++; //Since we made no changes to the string at start_pos we have to move start_pos one char forward so we dont get stuck 
@@ -534,10 +543,10 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 		size_t command_begin_pos = text.rfind(L"{\\", start_pos); //We found a command, are we inside it?
 		if (command_begin_pos != wstring::npos) {
 			if (command_begin_pos >= line_pos) {//Check that the "{\" is on the same line as us
-				//INFO: we are going to assume that nesting {} or {\} inside a {\} is invalid and is never used, otherwise add this extra check
+				//INFO: we are going to assume that nesting {} or {\} inside a {\} is invalid and is never used, otherwise add this extra check (probably needs a loop)
 				//size_t possible_comment_begin_pos; //Closest "{" going backwards from our current position
 				//possible_comment_begin_pos = text.find_last_of(L'{', start_pos);
-				size_t possible_comment_end_pos; //Closest "}" going backwards from our current position
+				size_t possible_comment_end_pos; //Closest "}" going forwards from command begin position
 				possible_comment_end_pos = text.find_first_of(L'}', command_begin_pos);
 				if (possible_comment_end_pos == wstring::npos) break; //There's a command that has no end, invalid
 				//TODO(fran): add check if the comment end is on the same line
@@ -571,8 +580,14 @@ void CommentRemoval(HWND hText, FILE_FORMAT format, WCHAR start,WCHAR end) {//TO
 	//TODO(fran): should add default:?
 	}
 
-	if (comment_count) SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
-	else MessageBoxW(NULL, RCS(LANG_COMMENTREMOVAL_NOTHINGTOREMOVE),L"", MB_ICONEXCLAMATION);
+	if (comment_count) {
+		SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
+		wstring comment_count_str = fmt::format(RS(LANG_CONTROL_TIMEDMESSAGES), comment_count);
+		SetWindowText(hMessage, comment_count_str.c_str());
+	}
+	else {
+		SendMessage(hMessage, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_NOTHINGTOREMOVE));
+	}
 	//ShowWindow(hRemoveProgress, SW_HIDE);
 }
 
@@ -586,7 +601,7 @@ void CustomCommentRemoval(HWND hText, FILE_FORMAT format) {
 	end = temp[0];
 
 	if (start != L'\0' && end != L'\0') CommentRemoval(hText,format, start, end);
-	else MessageBoxW(NULL, RCS(LANG_COMMENTREMOVAL_ADDCHARS), L"", MB_ICONEXCLAMATION);
+	else SendMessage(hMessage, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_ADDCHARS));
 }
 
 ///Every line separation(\r or \n or \r\n) will be transformed into \r\n
@@ -646,7 +661,8 @@ void DoSave(HWND textControl, wstring save_file) { //got to pass the encoding to
 		GetWindowTextW(textControl, &text[0], text_length);
 		new_file << text;
 		new_file.close();
-		//MessageBoxW(NULL, RCS(LANG_SAVE_DONE), L"", MB_ICONINFORMATION);//TODO(fran): this is super annoying, find other way, maybe something turns green for example
+
+		SetWindowText(hMessage, RCS(LANG_SAVE_DONE));
 		
 		SetWindowTextW(hFile, save_file.c_str()); //Update text editor
 		
@@ -1237,6 +1253,11 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	AWT(hRemove, LANG_CONTROL_REMOVE);
 	SetWindowSubclass(hRemove, ButtonProc, 0, 0);
 
+	hMessage = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
+		, 256+70+10, y_place + 74, 245, 30,hWnd,(HMENU)TIMEDMESSAGES,NULL,NULL); //INFO: width will be as large as needed to show the needed string
+	SetWindowSubclass(hMessage, ShowMessageProc, 0, 0);
+	SendMessage(hMessage, UNCAP_SETTEXTDURATION, 5000, 0);
+
 	//hRemoveProgress = CreateWindowExW(0,PROGRESS_CLASS,(LPWSTR)NULL, WS_CHILD
 	//	, 256, y_place + 74, 70, 30,hWnd, (HMENU)NULL,NULL,NULL);
 
@@ -1253,16 +1274,17 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	TabCloseButtonInfo.icon.cy = TabCloseButtonInfo.icon.cx;
 	TabCloseButtonInfo.rightPadding = (tabHeight-TabCloseButtonInfo.icon.cx)/2.f;
 
-	SendMessageW(hFile, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hRemoveCommentWith, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hOptions, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hInitialText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hInitialChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hFinalText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hFinalChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessageW(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hFile, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hRemoveCommentWith, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hOptions, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hInitialText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hInitialChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hFinalText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hFinalChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(TextContainer, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hMessage, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 }
 
 void EnableOtherChar(bool op) {
@@ -1438,20 +1460,15 @@ ENCODING GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
 
 COMMENT_TYPE CommentTypeFound(wstring &text) {
 	if (text.find_first_of(L'{') != wstring::npos) {
-	//	MessageBoxW(hWnd, RCS(LANG_COMMENT_FOUND) + L' ' + L'{', L"", MB_OK);
 		return COMMENT_TYPE::braces;
 	}
 	else if (text.find_first_of(L'[') != wstring::npos) {
-	//	MessageBoxW(hWnd, RCS(LANG_COMMENT_FOUND) + L' ' + L'[', L"", MB_OK);
 		return COMMENT_TYPE::brackets;
 	}
 	else if (text.find_first_of(L'(') != wstring::npos) {
-	//	wstring msg = RS(LANG_COMMENT_FOUND) + L" " + L"(";
-	//	MessageBoxW(hWnd, msg.c_str(), L"", MB_OK);
 		return COMMENT_TYPE::parenthesis;
 	}
 	else {
-	//	MessageBoxW(hWnd, RCS(LANG_COMMENT_NOTFOUND), L"", MB_ICONERROR);
 		return COMMENT_TYPE::other;
 	}
 }
@@ -1720,9 +1737,70 @@ void ResizeWindows(HWND mainWindow) {
 	RECT rect;
 	GetWindowRect(mainWindow, &rect);
 	MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
+	MoveWindow(hMessage, 256 + 70 + 10, y_place + 74, RECTWIDTH(rect) - (256+70+4) - 36, 30, TRUE);
 	//@No se si actualizar las demas
 	MoveWindow(TextContainer, 10, y_place + 134, RECTWIDTH(rect) - 36, RECTHEIGHT(rect) - 212, TRUE);
 	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
+}
+
+/// <summary>
+/// Shows and hides text on a control that receives WM_SETTEXT messages
+/// <para>You can set the duration of text on the control by sending</para>
+/// <para>UNCAP_SETTEXTDURATION message with wParam=(UINT)duration in milliseconds</para>
+/// <para>When the desired time has elapsed the control is hidden</para>
+/// <para>If WM_SETTEXT is sent with an empty string then the control is hidden</para>
+/// <para>If UNCAP_SETTEXTDURATION is sent with wParam=0 then the text will not be hidden</para>
+/// </summary>
+/// <param name="uIdSubclass">Not used</param>
+/// <param name="dwRefData">Not used</param>
+LRESULT CALLBACK ShowMessageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+	//INFO: for this procedure and its hwnds we are going to try the SetProp method for storing info in the hwnd
+	TCHAR text_duration[] = TEXT("TextDuration_unCap");
+	switch (Msg)
+	{
+	case UNCAP_SETTEXTDURATION:
+	{
+		SetProp(hWnd, text_duration, (HANDLE)(UINT)wParam);
+		return TRUE;
+	}
+	case WM_TIMER: {
+		KillTimer(hWnd, 1);//Stop timer, otherwise it keeps sending messages
+		ShowWindow(hWnd, SW_HIDE);
+		break;
+	}
+	case WM_SETTEXT: 
+	{
+		WCHAR* text = (WCHAR*)lParam;
+
+		if (text[0] != L'\0') { //We have new text to process
+			
+			//Calculate minimum size of the control for the new text. TODO(fran): should we do this or just say that the control is as long as it can be?
+			
+			//...
+
+			//Start Timer for text removal: this messages will be shown for a little period of time before the control is hidden again
+			UINT msgDuration = (UINT)GetProp(hWnd, text_duration);	//Retrieve the user defined duration of text on screen
+																	//If this value was not set then the timer is not used and the text remains on screen
+			if(msgDuration)
+				SetTimer(hWnd, 1, msgDuration, NULL); //By always setting the second param to 1 we are going to override any existing timer
+
+			ShowWindow(hWnd, SW_SHOW); //Show the control with its new text
+		}
+		else { //We want to hide the control and clear whatever text is in it
+			ShowWindow(hWnd, SW_HIDE);
+		}
+
+		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	}
+	case WM_DESTROY:
+	{
+		//Cleanup
+		RemoveProp(hWnd, text_duration);
+		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	}
+	default: return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	}
+	return 0;
 }
 
 LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
@@ -2025,7 +2103,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	case WM_CTLCOLORSTATIC:
 	{
-		if (TRUE) //TODO(fran): check we are changing the right controls
+		//TODO(fran): check we are changing the right controls
+		switch (GetDlgCtrlID((HWND)lParam)) {
+		case TIMEDMESSAGES:
+		{
+			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
+			SetTextColor((HDC)wParam, ColorFromBrush(AppColors.ControlMsg));
+			return (LRESULT)AppColors.ControlBk;
+		}
+		default:
 		{
 			//TODO(fran): there's something wrong with Initial & Final character controls when they are disabled, documentation says windows always uses same color
 			//text when window is disabled but it looks to me that it is using both this and its own color
@@ -2033,6 +2119,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			SetTextColor((HDC)wParam, ColorFromBrush(AppColors.ControlTxt));
 			return (LRESULT)AppColors.ControlBk;
 		}
+		}
+		
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
 	case WM_DRAWITEM:
@@ -2297,7 +2385,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 //	HMODULE hModule = GetModuleHandle(NULL);
 //	if (hModule != NULL) GetModuleFileName(hModule, ownPth, (sizeof(ownPth)));//INFO: that sizeof is probably wrong
 //	else { 
-//		MessageBoxW(hWnd,L"" /*exe_path_failed_T[global_locale]*/, NULL, MB_ICONERROR); 
 //		return L"C:\\Temp\\";
 //	}
 //	wstring dir = ownPth;

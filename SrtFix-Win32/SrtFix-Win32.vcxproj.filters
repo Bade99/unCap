@@ -71,6 +71,9 @@
     <ClCompile Include="text_encoding_detect.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
+    <ClCompile Include="format.cc">
+      <Filter>Archivos de origen</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SrtFix-Win32.rc">
