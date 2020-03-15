@@ -17,8 +17,10 @@ namespace fs = std::experimental::filesystem;
 //Draw my own Scrollbars
 //Draw my own menu
 //Draw my own non client area
-//Parametric sizes for everything
+//Parametric sizes for everything, and DPI awareness for controls that dont move
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
+//Option to retain original file encoding on save, otherwise utf8/user defined default
+//Fonts with japanese support, basically full unicode charset support
 
 
 //----------------------DEFINES----------------------:
@@ -59,6 +61,11 @@ enum ENCODING {
 	//ASCII is easily encoded in utf8 without problems
 };
 
+enum FILE_FORMAT {
+	SRT=1, //This can also be used for any format that doesnt use in its sintax any of the characters detected as "begin comment" eg [ { (
+	SSA //Used to signal any version of Substation Alpha: v1,v2,v3,v4,v4+ (Advanced Substation Alpha)
+};
+
 //The different types of characters that are detected as comments
 enum COMMENT_TYPE {
 	brackets = 0, parenthesis, braces, other
@@ -71,6 +78,7 @@ struct TEXT_INFO {
 	COMMENT_TYPE commentType = COMMENT_TYPE::brackets;
 	WCHAR initialChar = L'\0';
 	WCHAR finalChar = L'\0';
+	FILE_FORMAT fileFormat = FILE_FORMAT::SRT;
 };
 
 struct CUSTOM_TCITEM {
@@ -287,13 +295,14 @@ BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
 }
 
 //----------------------FUNCTION PROTOTYPES----------------------:
-LRESULT CALLBACK	ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
-LRESULT CALLBACK	ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData);
+LRESULT CALLBACK	ComboProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
+LRESULT CALLBACK	ButtonProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 void				AddMenus(HWND);
 void				ChooseFile(wstring);
-void				CommentRemoval(HWND, WCHAR, WCHAR);
+void				CommentRemoval(HWND, FILE_FORMAT, WCHAR, WCHAR);
+void				CustomCommentRemoval(HWND, FILE_FORMAT);
 void				EnableOtherChar(bool);
 void				DoBackup();
 void				DoSave(HWND,wstring);
@@ -303,7 +312,6 @@ void				CreateInfoFile(HWND);
 void				CheckInfoFile();
 void				CreateFonts();
 void				AcceptedFile(wstring);
-void				CustomCommentRemoval(HWND);
 ENCODING			GetTextEncoding(wstring);
 void				SetOptionsComboBox(HWND&, bool);
 void				ResizeWindows(HWND);
@@ -439,35 +447,114 @@ void CreateFonts()
 	}
 }
 
+// Removing comments for Substation Alpha format (.ssa) and Advanced Substation Alpha format (.ass)
+//https://wiki.multimedia.cx/index.php/SubStation_Alpha
+//https://matroska.org/technical/specs/subtitles/ssa.html
+//INFO: ssa has v1, v2, v3 and v4, v4+ is ass but all of them are very similar in what concerns us
+//I only care about lines that start with Dialogue:
+//This lines are always one liners, so we could use getline or variants
+//This lines can contain extra commands in the format {\command} therefore in case we are removing braces "{" we must check whether the next char is \ and ignore in that case
+//The same rule should apply when detecting the type of comments in CommentTypeFound
+//If we find one of this extra commands inside of a comment we remove it, eg [Hello {\br} goodbye] -> Remove everything
+//TODO(fran): check that a line with no text is still valid, eg if the comment was the only text on that Dialogue line after we remove it there will be nothing
 
-//si hay /n antes del corchete que lo borre tmb (y /r tmb)
-void CommentRemoval(HWND hText, WCHAR start,WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
-	int text_length = GetWindowTextLengthW(hText) + 1;
-	wstring text(text_length, L'\0');
-	GetWindowTextW(hText, &text[0], text_length);
-	size_t start_pos=0, end_pos=0;
-	bool found=false;//check if it removed at least 1 item
 
-	//SendMessage(hRemoveProgress, PBM_SETRANGE, 0, text_length);
-	//ShowWindow(hRemoveProgress, SW_SHOW);
+/// <summary>
+/// Performs comment removal for .srt type formats
+/// </summary>
+/// <param name="text"></param>
+/// <param name="start"></param>
+/// <param name="end"></param>
+/// <returns>The number of comments removed, 0 indicates no comments were found</returns>
+size_t CommentRemovalSRT(wstring& text, WCHAR start, WCHAR end) {
+	size_t comment_count = 0;
+	size_t start_pos = 0, end_pos = 0;
 
 	while (true) {
 		start_pos = text.find(start, start_pos);
 		end_pos = text.find(end, start_pos + 1);//+1, dont add it here 'cause breaks the if when end_pos=-1(string::npos)
-		if (start_pos == string::npos || end_pos == string::npos) { 
+		if (start_pos == wstring::npos || end_pos == wstring::npos) {
 			//SendMessage(hRemoveProgress, PBM_SETPOS, text_length, 0);
-			break; 
+			break;
 		}
-		text.erase(text.begin() + start_pos, text.begin() + end_pos+1); //TODO(fran): handle exceptions
-		found = true;//TODO(fran): can we somehow do this only once?
+		text.erase(text.begin() + start_pos, text.begin() + end_pos + 1); //TODO(fran): handle exceptions
+		comment_count++;
 		//SendMessage(hRemoveProgress, PBM_SETPOS, start_pos, 0);
 	}
-	if (found) SetWindowTextW(hText, text.c_str());
+	return comment_count;
+}
+
+/// <summary>
+/// Performs comment removal for all .ssa versions including .ass (v1,v2,v3,v4,v4+)
+/// </summary>
+/// <param name="text"></param>
+/// <param name="start"></param>
+/// <param name="end"></param>
+/// <returns>The number of comments removed, 0 indicates no comments were found</returns>
+size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
+	size_t comment_count = 0;
+	size_t start_pos = 0, end_pos = 0;
+	size_t line_pos=0;
+	WCHAR text_marker[] = L"Dialogue:";
+	size_t text_marker_size = ARRAYSIZE(text_marker);
+
+	//Substation Alpha has a special code for identifying text that will be shown to the user: 
+	//The line has to start with "Dialogue:"
+	//Also this lines can contain additional commands in the form {\command} 
+	//therefore we've got to be careful when "start" is "{" and also check the next char for "\"
+	//in which case it's not actually a comment and we should just ignore it and continue
+
+	while (true) {
+		//Find the "start" character
+		start_pos = text.find(start, start_pos);
+		if (start_pos == wstring::npos) break;
+
+		//Check that the character is in a line that start with "Dialogue:"
+		line_pos = text.find_last_of(L'\n', start_pos);
+		if (line_pos == wstring::npos) line_pos = 0; //We are on the first line
+		else line_pos++; //We need to start checking from the next char after the end of line, eg "\nDialogue:" we want the "D"
+		if (text.compare(line_pos, text_marker_size - 1, text_marker)) {//if true the line where we found a possible comment does not start with the desired string
+			start_pos++; //Since we made no changes to the string at start_pos we have to move start_pos one char forward so we dont get stuck 
+			continue; 
+		}
+
+		//Now lets check in case "start" is "{" whether the next char is "\"
+		if (start == L'{') {
+			if ((start_pos + 1) >= text.length()) break; //Check a next character exists after our current position
+			if (text.at(start_pos + 1) == L'\\') { //Indeed it was a \ so we where inside a special command, just ignore it and continue searching
+				start_pos++; //Since we made no changes to the string at start_pos we have to move start_pos one char forward so we dont get stuck 
+				continue; 
+			}
+		}
+		end_pos = text.find(end, start_pos + 1); //Search for the end of the comment
+		if (end_pos == wstring::npos) break; //There's no "comment end" so lets just exit the loop, the file is probably incorrectly written
+
+		text.erase(text.begin() + start_pos, text.begin() + end_pos + 1); //Erase the entire comment, including the "comment end" char, that's what the +1 is for
+		comment_count++; //Update comment count
+	}
+	return comment_count;
+}
+
+//si hay /n antes del corchete que lo borre tmb (y /r tmb)
+void CommentRemoval(HWND hText, FILE_FORMAT format, WCHAR start,WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
+	int text_length = GetWindowTextLengthW(hText) + 1;
+	wstring text(text_length, L'\0');
+	GetWindowTextW(hText, &text[0], text_length);
+	size_t comment_count=0;
+	switch (format) {
+	case FILE_FORMAT::SRT:
+		comment_count = CommentRemovalSRT(text, start, end); break;
+	case FILE_FORMAT::SSA:
+		comment_count = CommentRemovalSSA(text, start, end); break;
+	//TODO(fran): should add default:?
+	}
+
+	if (comment_count) SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
 	else MessageBoxW(NULL, RCS(LANG_COMMENTREMOVAL_NOTHINGTOREMOVE),L"", MB_ICONEXCLAMATION);
 	//ShowWindow(hRemoveProgress, SW_HIDE);
 }
 
-void CustomCommentRemoval(HWND hText) {
+void CustomCommentRemoval(HWND hText, FILE_FORMAT format) {
 	WCHAR temp[2] = {0};
 	WCHAR start;
 	WCHAR end;
@@ -476,7 +563,7 @@ void CustomCommentRemoval(HWND hText) {
 	GetWindowTextW(hFinalChar, temp, 2);
 	end = temp[0];
 
-	if (start != L'\0' && end != L'\0') CommentRemoval(hText, start, end);
+	if (start != L'\0' && end != L'\0') CommentRemoval(hText,format, start, end);
 	else MessageBoxW(NULL, RCS(LANG_COMMENTREMOVAL_ADDCHARS), L"", MB_ICONEXCLAMATION);
 }
 
@@ -1380,6 +1467,45 @@ BOOL ReadText(wstring filepath, wstring& text) {
 	else return FALSE;
 }
 
+/// <summary>
+/// Detects the file's format through different techniques
+/// <para>If the filename has an extesion then that will be trusted as correct</para>
+/// </summary>
+/// <param name="filename">Full path of the file</param>
+/// <returns>The presumed file format</returns>
+FILE_FORMAT GetFileFormat(wstring& const filename) {
+	size_t extesion_pos = 0;
+	extesion_pos = filename.find_last_of(L'.', wstring::npos); //Look for file extesion
+	if (extesion_pos != wstring::npos && (extesion_pos + 1) < filename.length()) {
+		//We found and extension and checked that there's at least one char after the ".", lets see if we support it
+		//TODO(fran): create some sort of a map FILE_FORMAT-wstring eg FILE_FORMAT::SRT - L"srt" and a way to enumerate every FILE_FORMAT
+
+		//TODO(fran): make every character in the filename that we're going to compare lowercase
+		WCHAR srt[] = L"srt";
+		if (!filename.compare(extesion_pos + 1, ARRAYSIZE(srt) - 1, srt) && (filename.length() - (extesion_pos + 1)) == (ARRAYSIZE(srt) - 1)) 
+			return FILE_FORMAT::SRT;
+		//TODO(fran): check the -1 is correct
+		WCHAR ssa[] = L"ssa";
+		if (!filename.compare(extesion_pos + 1, ARRAYSIZE(ssa) - 1, ssa) && (filename.length() - (extesion_pos + 1)) == (ARRAYSIZE(ssa) - 1)) 
+			return FILE_FORMAT::SSA;
+
+		WCHAR ass[] = L"ass";
+		if (!filename.compare(extesion_pos + 1, ARRAYSIZE(ass) - 1, ass) && (filename.length() - (extesion_pos + 1)) == (ARRAYSIZE(ass) - 1))
+			return FILE_FORMAT::SSA;
+	}
+	else {
+		//File has no extension, do manual checking. Note that we are either checking the extesion or using manual checks but not both,
+		//the idea behind it is that if the file has an extension and we couldn't find it between our supported list then we dont support it,
+		//since, for now, we trust that what the extension says is true
+
+		//TODO(fran): manual checking, aka reading the file
+
+	}
+	
+	//If everything else fails fallback to srt //TODO(fran): we could also reject the file, adding an INVALID into FILE_FORMAT
+	return FILE_FORMAT::SRT;
+}
+
 //TODO(fran): we could try to offload the entire procedure of AcceptedFile to a new thread so in case we receive multiple files we process them in parallel
 void AcceptedFile(wstring filename) {
 
@@ -1415,9 +1541,9 @@ void AcceptedFile(wstring filename) {
 
 	int pos = GetNextTabPos();//TODO(fran): careful with multithreading here
 
-	COMMENT_TYPE comment_type = CommentTypeFound(text);
+	text_data.commentType = CommentTypeFound(text);
 
-	text_data.commentType = comment_type;
+	text_data.fileFormat = GetFileFormat(filename);
 
 	int res = AddTab(TextContainer, pos, (LPWSTR)accepted_file_name_with_ext.c_str(), text_data);
 
@@ -2013,24 +2139,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			break;
 
 		case REMOVE:
-			//if (IsAcceptedFile()) {
-				switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
-				case COMMENT_TYPE::brackets:
-					CommentRemoval(GetCurrentTabExtraInfo().hText,L'[', L']');
-					break;
-				case COMMENT_TYPE::parenthesis:
-					CommentRemoval(GetCurrentTabExtraInfo().hText,L'(', L')');
-					break;
-				case COMMENT_TYPE::braces:
-					CommentRemoval(GetCurrentTabExtraInfo().hText,L'{', L'}');
-					break;
-				case COMMENT_TYPE::other:
-					CustomCommentRemoval(GetCurrentTabExtraInfo().hText);
-					break;
-				}
-			//}
+		{
+			FILE_FORMAT format = GetCurrentTabExtraInfo().fileFormat;
+			switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
+			case COMMENT_TYPE::brackets:
+				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'[', L']');
+				break;
+			case COMMENT_TYPE::parenthesis:
+				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'(', L')');
+				break;
+			case COMMENT_TYPE::braces:
+				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'{', L'}');
+				break;
+			case COMMENT_TYPE::other:
+				CustomCommentRemoval(GetCurrentTabExtraInfo().hText, format);
+				break;
+			}
 			break;
-
+		}
 		case SAVE_FILE:
 		case ID_SAVE:
 		{
