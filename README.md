@@ -7,4 +7,5 @@ A simple Windows app for removing SDH comments from subtitle files
 * Substation Alpha (.ssa)
 * Advanced Substation Alpha (.ass)
 
+### UI
 ![UI](https://i.imgur.com/9Bm1RXR.png)
