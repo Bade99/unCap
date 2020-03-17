@@ -21,7 +21,7 @@ namespace fs = std::experimental::filesystem;
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 //Option to retain original file encoding on save, otherwise utf8/user defined default
 //Fonts with japanese support, basically full unicode charset support
-
+//Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
 
 //----------------------DEFINES----------------------:
 #ifdef _DEBUG
@@ -322,9 +322,6 @@ ENCODING			GetTextEncoding(wstring);
 void				SetOptionsComboBox(HWND&, bool);
 void				ResizeWindows(HWND);
 
-
-
-
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,_In_ LPWSTR lpCmdLine,_In_ int nCmdShow)
 {
     UNREFERENCED_PARAMETER(hPrevInstance);
@@ -430,6 +427,37 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
     return (int) msg.wParam;
 }
 
+/// <summary>
+/// Decides which font FaceName is appropiate for the current system
+/// </summary>
+wstring GetFontFaceName() {
+	//Font guidelines: https://docs.microsoft.com/en-us/windows/win32/uxguide/vis-fonts
+	//Stock fonts: https://docs.microsoft.com/en-us/windows/win32/gdi/using-a-stock-font-to-draw-text
+
+	//TODO(fran): can we take the best codepage from each font and create our own? (look at font linking & font fallback)
+
+	//We looked at 2195 fonts, this is what's left
+	//Options:
+	//Segoe UI (good txt, jp ok) (10 codepages) (supported on most versions of windows)
+	//-Arial Unicode MS (good text; good jp) (33 codepages) (doesnt come with windows)
+	//-Microsoft YaHei or UI (look the same,good txt,good jp) (6 codepages) (supported on most versions of windows)
+	//-Microsoft JhengHei or UI (look the same,good txt,ok jp) (3 codepages) (supported on most versions of windows)
+
+	HDC hdc = GetDC(GetDesktopWindow()); //You can use any hdc, but not NULL
+	vector<wstring> fontnames;
+	EnumFontFamiliesEx(hdc, NULL
+		, [](const LOGFONT *lpelfe, const TEXTMETRIC *lpntme, DWORD FontType, LPARAM lParam)->int {((vector<wstring>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
+	, (LPARAM)&fontnames, NULL);
+	
+	const WCHAR* requested_fontname[] = { TEXT("Segoe UI"), TEXT("Arial Unicode MS"), TEXT("Microsoft YaHei"), TEXT("Microsoft YaHei UI")
+										, TEXT("Microsoft JhengHei"), TEXT("Microsoft JhengHei UI")};
+
+	for(int i=0;i< ARRAYSIZE(requested_fontname);i++)
+		if(std::any_of(fontnames.begin(), fontnames.end(), [f=requested_fontname[i]](wstring s) {return !s.compare(f); })) return requested_fontname[i];
+	
+	return L"";
+}
+
 void CreateFonts()
 {
 	LOGFONTW lf;
@@ -438,7 +466,9 @@ void CreateFonts()
 	memset(&lf, 0, sizeof(lf));
 	lf.lfQuality = CLEARTYPE_QUALITY;
 	lf.lfHeight = -15;
-	//TODO(fran): see lf.pszFaceName and EnumFontFamiliesW
+	
+	//INFO: by default if I dont set faceName it uses "Modern", looks good but it lacks some charsets
+	wcsncpy(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
 	hFont = CreateFontIndirectW(&lf);
 
 	if (hGeneralFont != NULL)
@@ -1208,14 +1238,14 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 
 void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	hFile = CreateWindowW(L"Static", L"", WS_VISIBLE | WS_CHILD | WS_BORDER//| SS_WHITERECT
-			| ES_AUTOHSCROLL
+			| ES_AUTOHSCROLL | SS_CENTERIMAGE
 			, 10, y_place, 664, 20, hWnd, NULL, NULL, NULL);
 	//ChangeWindowMessageFilterEx(hFile, WM_DROPFILES, MSGFLT_ADD,NULL); y mas que habia
 	
 	hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
 		, 10, y_place, 664, 20, hWnd, (HMENU)NULL, NULL, NULL);
 
-	hRemoveCommentWith = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD
+	hRemoveCommentWith = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
 	, 25, y_place+34, 155, 20, hWnd, NULL, NULL, NULL);
 	AWT(hRemoveCommentWith, LANG_CONTROL_REMOVECOMMENTWITH);
 
@@ -1232,7 +1262,7 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	//WCHAR explain_combobox[] = L"Also separates the lines";
 	//CreateToolTip(COMBO_BOX, hWnd, explain_combobox);
 
-	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD |WS_DISABLED
+	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | WS_DISABLED | SS_CENTERIMAGE
 		, 78, y_place + 65, 105, 20, hWnd, NULL, NULL, NULL);
 	AWT(hInitialText, LANG_CONTROL_INITIALCHAR);
 
@@ -1240,7 +1270,7 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 		, 195, y_place + 64, 20, 21, hWnd, NULL, NULL, NULL);
 	SendMessageW(hInitialChar, EM_LIMITTEXT, 1, 0);
 
-	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | WS_DISABLED
+	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | WS_DISABLED | SS_CENTERIMAGE
 		, 78, y_place + 95, 105, 20, hWnd, NULL, NULL, NULL);
 	AWT(hFinalText, LANG_CONTROL_FINALCHAR);
 
@@ -1387,7 +1417,6 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 					AcceptedFile(file); //process the new file
 				}
 
-				//MessageBoxW(NULL, RCS(LANG_DRAGDROP_ERROR_FOLDER), L"", MB_ICONERROR); 
 			} else AcceptedFile(lpszFile); //process the new file
 
 		}
@@ -1397,7 +1426,7 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 	DragFinish(hDrop); //free mem
 }
 
-ENCODING GetTextEncoding(wstring filename) { //analize for ascii,utf8,utf16
+ENCODING GetTextEncoding(wstring filename) {
 	
 	HANDLE hFile;
 	DWORD  dwBytesRead = 0;
