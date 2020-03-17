@@ -42,6 +42,7 @@ namespace fs = std::experimental::filesystem;
 #define SUBS_WND 17
 #define TABCONTROL 18
 #define TIMEDMESSAGES 19
+#define INITIALFINALCHAR 20
 
 #define TCM_RESIZETABS (WM_USER+50) //Sent to a tab control for it to tell its tabs' controls to resize. wParam = lParam = 0
 #define TCM_RESIZE (WM_USER+51) //wParam= pointer to SIZE of the tab control ; lParam = 0
@@ -95,6 +96,8 @@ struct _APPCOLORS {
 	HBRUSH ControlBkMouseOver;
 	HBRUSH ControlTxt;
 	HBRUSH ControlMsg;
+	COLORREF InitialFinalCharDisabledColor;
+	COLORREF InitialFinalCharCurrentColor;
 };
 
 struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
@@ -359,6 +362,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	AppColors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
 	AppColors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
 	AppColors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
+	//Thanks to Windows' broken Static Control text color when disabled
+	AppColors.InitialFinalCharDisabledColor = RGB(128,128,128);
+	AppColors.InitialFinalCharCurrentColor = AppColors.InitialFinalCharDisabledColor;
+
 
 	//Setting offsets for what will define the "client" area of a tab control
 	TabOffset.leftOffset = 3;
@@ -1262,16 +1269,16 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	//WCHAR explain_combobox[] = L"Also separates the lines";
 	//CreateToolTip(COMBO_BOX, hWnd, explain_combobox);
 
-	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | WS_DISABLED | SS_CENTERIMAGE
-		, 78, y_place + 65, 105, 20, hWnd, NULL, NULL, NULL);
+	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED 
+		, 78, y_place + 65, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(hInitialText, LANG_CONTROL_INITIALCHAR);
 
 	hInitialChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER |ES_CENTER | WS_TABSTOP | WS_DISABLED
 		, 195, y_place + 64, 20, 21, hWnd, NULL, NULL, NULL);
 	SendMessageW(hInitialChar, EM_LIMITTEXT, 1, 0);
 
-	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | WS_DISABLED | SS_CENTERIMAGE
-		, 78, y_place + 95, 105, 20, hWnd, NULL, NULL, NULL);
+	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED
+		, 78, y_place + 95, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(hFinalText, LANG_CONTROL_FINALCHAR);
 
 	hFinalChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER| WS_TABSTOP| WS_DISABLED
@@ -1318,9 +1325,13 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 }
 
 void EnableOtherChar(bool op) {
-	EnableWindow(hInitialText, op);
+	//EnableWindow(hInitialText, op);
+	//EnableWindow(hFinalText, op);
+	if (op) AppColors.InitialFinalCharCurrentColor = ColorFromBrush(AppColors.ControlTxt);
+	else AppColors.InitialFinalCharCurrentColor = AppColors.InitialFinalCharDisabledColor;
+	InvalidateRect(hInitialText, NULL, TRUE);
+	InvalidateRect(hFinalText, NULL, TRUE);
 	EnableWindow(hInitialChar, op);
-	EnableWindow(hFinalText, op);
 	EnableWindow(hFinalChar, op);	
 }
 
@@ -2138,6 +2149,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		{
 			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
 			SetTextColor((HDC)wParam, ColorFromBrush(AppColors.ControlMsg));
+			return (LRESULT)AppColors.ControlBk;
+		}
+		case INITIALFINALCHAR: 
+		{
+			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
+			SetTextColor((HDC)wParam, AppColors.InitialFinalCharCurrentColor);
 			return (LRESULT)AppColors.ControlBk;
 		}
 		default:
