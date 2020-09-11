@@ -114,11 +114,14 @@ struct vec2d {
 };
 
 //----------------------GLOBALS----------------------:
+WCHAR appName[] = L"unCap"; //Program name, to be displayed on the title of windows
+
 HMENU hMenu;//main menu bar(only used to append the rest)
 HMENU hFileMenu;
 HMENU hFileMenuLang;
 
-HWND hFile;//window for file directory
+HWND hMain;//main window where everything else is displayed
+HWND hFile;//window for file directory //TODO(fran): remove this guy, and the stupid things that depend on it; for now I'll just hide it
 HWND hOptions;
 HWND hInitialText;
 HWND hInitialChar;
@@ -128,7 +131,7 @@ HWND hRemove;
 //HWND hSubs;//window for file contents
 HWND hRemoveCommentWith;
 //HWND hRemoveProgress;
-HWND hReadFile;
+//HWND hReadFile;
 HWND TextContainer;//The tab control where the text editors are "contained"
 HWND hMessage;//Show timed messages
 
@@ -302,6 +305,17 @@ BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
 	return TRUE;
 }
 
+//if new_filename==NULL || *new_filename == NULL then filename related info is cleared
+void UpdateMainWindowTitle_Filename(const WCHAR* new_filename) {
+	if (new_filename == NULL || *new_filename == NULL) {
+		SetWindowTextW(hMain, appName);
+	}
+	else {
+		wstring title_window = wstring(new_filename) + L" - " + appName;
+		SetWindowTextW(hMain, title_window.c_str());
+	}
+}
+
 //----------------------FUNCTION PROTOTYPES----------------------:
 LRESULT CALLBACK	ShowMessageProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	ComboProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
@@ -347,7 +361,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	}
 
 	WCHAR szWindowClass[40] = L"unCapClass";	// nombre de clase de la ventana principal
-	WCHAR szTitle[40] = L"unCap";				// Texto de la barra de título
 
     //LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
 	//LoadStringW(hInstance, IDC_SRTFIXWIN32, szWindowClass, MAX_LOADSTRING);
@@ -394,15 +407,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	if (!class_atom) return FALSE;
 	//RegisterSubtitleWindowClass(hInstance,SubtitleWindowClassName, IDC_ARROW, COLOR_BTNFACE + 1);
 
-    // Realizar la inicialización de la aplicación:
-
-	HWND hWnd = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, appName, WS_OVERLAPPEDWINDOW,
 		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
 
-	if (!hWnd) return FALSE;
+	if (!hMain) return FALSE;
 
-	ShowWindow(hWnd, nCmdShow);
-	UpdateWindow(hWnd);
+	ShowWindow(hMain, nCmdShow);
+	UpdateWindow(hMain);
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_SRTFIXWIN32));
 
@@ -701,7 +712,8 @@ void DoSave(HWND textControl, wstring save_file) { //got to pass the encoding to
 
 		SetWindowText(hMessage, RCS(LANG_SAVE_DONE));
 		
-		SetWindowTextW(hFile, save_file.c_str()); //Update text editor
+		SetWindowTextW(hFile, save_file.c_str()); //Update filename viewer
+		UpdateMainWindowTitle_Filename(save_file.c_str());
 		
 		SetCurrentTabTitle(save_file.substr(save_file.find_last_of(L"\\") + 1)); //Update tab name
 
@@ -1082,7 +1094,8 @@ int EnableTab(const TEXT_INFO& text_data) {
 	ShowWindow(text_data.hText, SW_SHOW);
 
 	SetWindowTextW(hFile, text_data.filePath);//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
-	
+	UpdateMainWindowTitle_Filename(text_data.filePath);
+
 	SendMessage(hOptions, CB_SETCURSEL, text_data.commentType, 0);
 
 	WCHAR temp[2] = { 0 };
@@ -1244,21 +1257,22 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 
 
 void AddControls(HWND hWnd, HINSTANCE hInstance) {
-	hFile = CreateWindowW(L"Static", L"", WS_VISIBLE | WS_CHILD | WS_BORDER//| SS_WHITERECT
+	hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
 			| ES_AUTOHSCROLL | SS_CENTERIMAGE
 			, 10, y_place, 664, 20, hWnd, NULL, NULL, NULL);
 	//ChangeWindowMessageFilterEx(hFile, WM_DROPFILES, MSGFLT_ADD,NULL); y mas que habia
 	
-	hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
-		, 10, y_place, 664, 20, hWnd, (HMENU)NULL, NULL, NULL);
+	//TODO(fran): add more interesting progress bar
+	//hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
+	//	, 10, y_place, 664, 20, hWnd, (HMENU)NULL, NULL, NULL);
 
 	hRemoveCommentWith = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
-	, 25, y_place+34, 155, 20, hWnd, NULL, NULL, NULL);
+	, 25, y_place+3, 155, 20, hWnd, NULL, NULL, NULL);
 	AWT(hRemoveCommentWith, LANG_CONTROL_REMOVECOMMENTWITH);
 
 
 	hOptions = CreateWindowW(L"ComboBox", NULL, WS_VISIBLE | WS_CHILD| CBS_DROPDOWNLIST|WS_TABSTOP
-		, 195, y_place + 31/*30*/, 130, 90/*20*/, hWnd, (HMENU)COMBO_BOX, hInstance, NULL);
+		, 195, y_place, 130, 90/*20*/, hWnd, (HMENU)COMBO_BOX, hInstance, NULL);
 	//SetOptionsComboBox(hOptions, TRUE);
 	ACT(hOptions, COMMENT_TYPE::brackets, LANG_CONTROL_CHAROPTIONS_BRACKETS);
 	ACT(hOptions, COMMENT_TYPE::parenthesis, LANG_CONTROL_CHAROPTIONS_PARENTHESIS);
@@ -1270,28 +1284,28 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	//CreateToolTip(COMBO_BOX, hWnd, explain_combobox);
 
 	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED 
-		, 78, y_place + 65, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+		, 78, y_place + 35, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(hInitialText, LANG_CONTROL_INITIALCHAR);
 
 	hInitialChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER |ES_CENTER | WS_TABSTOP | WS_DISABLED
-		, 195, y_place + 64, 20, 21, hWnd, NULL, NULL, NULL);
+		, 195, y_place + 34, 20, 21, hWnd, NULL, NULL, NULL);
 	SendMessageW(hInitialChar, EM_LIMITTEXT, 1, 0);
 
 	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED
-		, 78, y_place + 95, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+		, 78, y_place + 65, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(hFinalText, LANG_CONTROL_FINALCHAR);
 
 	hFinalChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER| WS_TABSTOP| WS_DISABLED
-		, 195, y_place + 94, 20, 21, hWnd, NULL, NULL, NULL);
+		, 195, y_place + 64, 20, 21, hWnd, NULL, NULL, NULL);
 	SendMessageW(hFinalChar, EM_LIMITTEXT, 1, 0);
 
 	hRemove = CreateWindowW(L"Button", NULL, WS_VISIBLE | WS_CHILD| WS_TABSTOP
-		, 256, y_place + 74, 70, 30, hWnd, (HMENU)REMOVE, NULL, NULL);
+		, 256, y_place + 44, 70, 30, hWnd, (HMENU)REMOVE, NULL, NULL);
 	AWT(hRemove, LANG_CONTROL_REMOVE);
 	SetWindowSubclass(hRemove, ButtonProc, 0, 0);
 
 	hMessage = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
-		, 256+70+10, y_place + 74, 245, 30,hWnd,(HMENU)TIMEDMESSAGES,NULL,NULL); //INFO: width will be as large as needed to show the needed string
+		, 256+70+10, y_place + 44, 245, 30,hWnd,(HMENU)TIMEDMESSAGES,NULL,NULL); //INFO: width will be as large as needed to show the needed string
 	SetWindowSubclass(hMessage, ShowMessageProc, 0, 0);
 	SendMessage(hMessage, UNCAP_SETTEXTDURATION, 5000, 0);
 
@@ -1301,7 +1315,7 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	//TODO(fran): init common controls for tab control
 	//INFO:https://docs.microsoft.com/en-us/windows/win32/controls/tab-controls
 	TextContainer = CreateWindowExW(WS_EX_ACCEPTFILES, WC_TABCONTROL, NULL, WS_CHILD | WS_VISIBLE | TCS_FORCELABELLEFT | TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH
-							, 10, y_place + 134, 664 - 50, 588, hWnd, (HMENU)TABCONTROL, NULL, NULL);
+							, 10, y_place + 104, 664 - 50, 618, hWnd, (HMENU)TABCONTROL, NULL, NULL);
 	TabCtrl_SetItemExtra(TextContainer, sizeof(TEXT_INFO));
 	int tabWidth = 100,tabHeight=20;
 	SendMessage(TextContainer, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
@@ -1776,10 +1790,10 @@ void CheckInfoFile() {	//changes default values if file exists
 void ResizeWindows(HWND mainWindow) {
 	RECT rect;
 	GetWindowRect(mainWindow, &rect);
-	MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
-	MoveWindow(hMessage, 256 + 70 + 10, y_place + 74, RECTWIDTH(rect) - (256+70+4) - 36, 30, TRUE);
+	//MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
+	MoveWindow(hMessage, 256 + 70 + 10, y_place + 44, RECTWIDTH(rect) - (256+70+4) - 36, 30, TRUE);
 	//@No se si actualizar las demas
-	MoveWindow(TextContainer, 10, y_place + 134, RECTWIDTH(rect) - 36, RECTHEIGHT(rect) - 212, TRUE);
+	MoveWindow(TextContainer, 10, y_place + 104, RECTWIDTH(rect) - 36, RECTHEIGHT(rect) - 182, TRUE);
 	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
 }
 
