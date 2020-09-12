@@ -98,6 +98,8 @@ struct _APPCOLORS {
 	HBRUSH ControlMsg;
 	COLORREF InitialFinalCharDisabledColor;
 	COLORREF InitialFinalCharCurrentColor;
+	HBRUSH Scrollbar;
+	HBRUSH ScrollbarBk;
 };
 
 struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
@@ -378,7 +380,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	//Thanks to Windows' broken Static Control text color when disabled
 	AppColors.InitialFinalCharDisabledColor = RGB(128,128,128);
 	AppColors.InitialFinalCharCurrentColor = AppColors.InitialFinalCharDisabledColor;
-
+	AppColors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
+	AppColors.ScrollbarBk = CreateSolidBrush(RGB(40, 41, 35));
 
 	//Setting offsets for what will define the "client" area of a tab control
 	TabOffset.leftOffset = 3;
@@ -983,24 +986,205 @@ LRESULT CALLBACK EditCatchDrop(HWND hWnd, UINT uMsg, WPARAM wParam,
 	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
-LRESULT CALLBACK EditProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+#define SB_RESIZE (WM_USER + 300) /*Auto resize and reposition*/
+#define SB_SETPOS (WM_USER + 301) /*Sets ScrollBarPos and also makes the necessary repositioning and resizing. wParam=ScrollBarPos*/
+enum class ScrollBarPos{ left, right, top, bottom}; //NOTE: left and right should only be used for vertical scrollbars, top and bottom for horizontal
+struct ScrollProcState {
+	ScrollBarPos pos; //TODO(fran): window styles already has SBS_BOTTOMALIGN and the like for managing this, maybe use that
+};
+//NOTE: ScrollProc controls require the creation of a ScrollProcState struct with calloc, and for it to be passed as the 4th param in SetWindowSubclass, the object will now be managed by the procedure and does not need the user to handle its memory
+//NOTE: checks for SBS_HORZ or SBS_VERT to see which type of scrollbar it is
+LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+	/*INFO:
+		-they decide position and size on their own based on their parent and whether they are horizontal or vertical
+	*/
+	static int scrollbar_thickness = max(GetSystemMetrics(SM_CXVSCROLL) / 2, 5);
+	
+	Assert(dwRefData);
+	ScrollProcState* state = (ScrollProcState*)dwRefData;
+	switch (msg) {
+		//case WM_CREATE: {
+		//	SCROLLINFO scrollnfo;
+		//	scrollnfo.cbSize = sizeof(scrollnfo);
+		//	scrollnfo.fMask = SIF_RANGE;
+		//	scrollnfo.nMin = 0;
+		//	scrollnfo.nMax = 100;
+		//	SetScrollInfo(hwnd, SB_CTL, &scrollnfo, TRUE);
+		//	return 0;
+		//} break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hwnd, &ps);
+		RECT client_rc;
+		GetClientRect(hwnd, &client_rc);
+		FillRect(hdc, &client_rc, AppColors.ScrollbarBk);
+
+		// Get vertical scroll bar position.
+		SCROLLINFO scrollnfo;
+		scrollnfo.cbSize = sizeof(scrollnfo);
+		scrollnfo.fMask = SIF_POS | SIF_RANGE | SIF_PAGE;//TODO(fran): SIF_TRACKPOS
+		GetScrollInfo(hwnd, SB_CTL, &scrollnfo);
+		int sb_pos = scrollnfo.nPos;
+		int sb_sz = safe_ratio0(distance(scrollnfo.nMax, scrollnfo.nMin), scrollnfo.nPage);//TODO(fran): dont know why scrollnfo.nPage is 0
+
+		LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+		RECT sb_rc;
+		if (style & SBS_HORZ) {
+			sb_rc.top = client_rc.top;
+			sb_rc.bottom = client_rc.bottom;
+			sb_rc.left = sb_pos;
+			sb_rc.right = sb_sz;
+		}
+		else if (style & SBS_VERT) {
+			sb_rc.left = client_rc.left;
+			sb_rc.right = client_rc.right;
+			sb_rc.top = sb_pos;
+			sb_rc.bottom = sb_sz;
+		}
+		FillRect(hdc, &sb_rc, AppColors.Scrollbar);
+		/*InflateRect(&client_rc, -2, -50);
+		FillRect(hdc, &client_rc, AppColors.Scrollbar);*/
+		EndPaint(hwnd, &ps);
+		return 0;
+	} break;
+	case SB_SETPOS:
+	{
+		state->pos = (ScrollBarPos)wparam;
+		ScrollProc(hwnd, SB_RESIZE, 0, 0, uIdSubclass,dwRefData); //TODO(fran): should I just use SendMessage?
+	} break;
+	case SB_RESIZE:
+	{
+		RECT r; GetWindowRect(GetParent(hwnd),&r); //TODO(fran): im using GetWindowRect, but later it may be better to use GetClientRect
+		switch (state->pos) {
+		//vertical
+		case ScrollBarPos::left:
+		{
+			MoveWindow(hwnd, 0, 0, scrollbar_thickness, RECTHEIGHT(r),TRUE);
+		}break;
+		case ScrollBarPos::right:
+		{
+			MoveWindow(hwnd, RECTWIDTH(r) - scrollbar_thickness, 0, scrollbar_thickness, RECTHEIGHT(r),TRUE);
+		}break;
+		//horizontal
+		case ScrollBarPos::top:
+		{
+			MoveWindow(hwnd, 0, 0, RECTWIDTH(r),scrollbar_thickness, TRUE);
+
+		}break;
+		case ScrollBarPos::bottom:
+		{
+			MoveWindow(hwnd, 0, RECTHEIGHT(r)-scrollbar_thickness, RECTWIDTH(r),scrollbar_thickness, TRUE);
+
+		}break;
+		}
+	} break;
+	//TODO(fran): send messages to the parent, and manage collision testing, remember that it expects to have buttons for up and down that we want removed, so no collision testing for those
+	case WM_DESTROY:
+	{
+		free(state);
+	}break;
+	default:return DefSubclassProc(hwnd, msg, wparam, lparam);
+	}
+	return 0;
+}
+
+#define EM_GET_MAX_VISIBLE_LINES (WM_USER+200) /*Retrieves a count for the max number of lines that can be displayed at once in the current window. return=int*/
+#define EM_SETVSCROLL (WM_USER+201) /*Sets the vertical scrollbar that is to be used. wParam=HWND of the scrollbar control*/
+//#define EM_SETHSCROLL (WM_USER+202) /*Sets the horizontal scrollbar that is to be used. wParam=HWND of the scrollbar control*/
+//#define EM_GET_MAX_VISIBLE_CHARS_PER_LINE (WM_USER+203) /*Retrieves a count for the max number of characters that can be displayed in one line at once in the current window. return=int*/
+struct EditProcState {
+	HWND vscrollbar;// , hscrollbar;
+};
+//NOTE: EditProc controls require the creation of a EditProcState struct with calloc, and for it to be passed as the 4th param in SetWindowSubclass, the object will now be managed by the procedure and does not need the user to handle its memory
+//NOTE: no left-right scrolling, it is line wrap handled
+int EDIT_get_max_visible_lines(HWND hwnd) {
+	RECT rc;
+	GetClientRect(hwnd, &rc);
+	int page_height = RECTHEIGHT(rc);
+
+	TEXTMETRIC tm;
+	HDC dc = GetDC(hwnd);
+	GetTextMetrics(dc, &tm);
+	ReleaseDC(hwnd, dc);
+	int line_height = tm.tmHeight + tm.tmExternalLeading;
+
+	int visible_lines = safe_ratio0(page_height, line_height);
+
+	return visible_lines;
+}
+LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
 //
 //	if (Msg == WM_CTLCOLORSCROLLBAR) {
 //		return (LRESULT)AppColors.ControlBk;
 //	}
 //	return DefSubclassProc(hWnd, Msg, wParam, lParam);
-	switch (Msg) {
+	Assert(dwRefData);
+	EditProcState* state = (EditProcState*)dwRefData;
+
+	//Update Scrollbars
+	if (state->vscrollbar) {
+		int line_count = EDIT_get_max_visible_lines(hwnd);
+		SCROLLINFO vscrollnfo;
+		vscrollnfo.cbSize = sizeof(vscrollnfo);
+		vscrollnfo.fMask = SIF_PAGE | SIF_RANGE | SIF_POS;
+		vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
+		vscrollnfo.nMin = 0; //NOTE: always 0
+		vscrollnfo.nMax = (int)DefSubclassProc(hwnd, EM_GETLINECOUNT, 0, 0);
+		vscrollnfo.nPos = (int)DefSubclassProc(hwnd, EM_GETFIRSTVISIBLELINE, 0, 0);
+		SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
+	}
+
+	switch (msg) {
+	case EM_GET_MAX_VISIBLE_LINES: { 
+		return EDIT_get_max_visible_lines(hwnd);
+	} break;
+	//case EM_GET_MAX_VISIBLE_CHARS_PER_LINE: {
+	//	RECT rc;
+	//	GetClientRect(hwnd, &rc);
+	//	int line_width = RECTWIDTH(rc);
+
+	//	TEXTMETRIC tm;
+	//	HDC dc = GetDC(hwnd);
+	//	GetTextMetrics(dc, &tm);
+	//	ReleaseDC(hwnd, dc);
+	//	int char_width = tm.tmAveCharWidth; //TODO(fran): better approximation
+
+	//	int char_count = line_width / char_width;
+
+	//	return char_count;
+	//} break;
+	case EM_SETVSCROLL: {
+		state->vscrollbar = (HWND)wparam;
+	} break;
+	//case EM_SETHSCROLL: {
+	//	state->hscrollbar = (HWND)wparam;
+	//} break;
 	case TCM_RESIZE:
 	{
-		SIZE* control_size = (SIZE*)wParam;
+		SIZE* control_size = (SIZE*)wparam;
 
-		MoveWindow(hWnd, TabOffset.leftOffset, TabOffset.topOffset
+		MoveWindow(hwnd, TabOffset.leftOffset, TabOffset.topOffset
 			, control_size->cx - TabOffset.rightOffset - TabOffset.leftOffset, control_size->cy - TabOffset.bottomOffset - TabOffset.topOffset, TRUE);
 		//x & y remain fixed and only width & height change
 
+		//TODO(fran): resize scrollbars
+		SendMessage(state->vscrollbar, SB_RESIZE, 0, 0);
+
+		int line_count = SendMessage(hwnd, EM_GET_MAX_VISIBLE_LINES, 0, 0);
+		SCROLLINFO vscrollnfo;
+		vscrollnfo.cbSize = sizeof(vscrollnfo);
+		vscrollnfo.fMask = SIF_PAGE;
+		vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
+		SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
+
 		return TRUE;
-	}
-	default:return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	} //TODO(fran): now comes the hard part, to tell the scrollbar where we are, and the ranges
+	case WM_DESTROY:
+	{
+		free(state);
+	}break;
+	default:return DefSubclassProc(hwnd, msg, wparam, lparam);
 	}
 	return 0;
 }
@@ -1017,7 +1201,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	text_rec.right = tab_rec.right - TabOffset.rightOffset;
 	text_rec.bottom = tab_rec.bottom - TabOffset.bottomOffset;
 	
-	HWND TextControl = CreateWindowExW(NULL, L"Edit", NULL, WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | WS_VSCROLL | WS_HSCROLL //|WS_VISIBLE
+	HWND TextControl = CreateWindowExW(NULL, L"Edit", NULL, WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL //| WS_VSCROLL | WS_HSCROLL //|WS_VISIBLE
 		, text_rec.left, text_rec.top, text_rec.right - text_rec.left, text_rec.bottom - text_rec.top
 		,TabControl //IMPORTANT INFO TODO(fran): this is not right, the parent should be the individual tab not the whole control, not sure though if that control will show our edit control
 		, NULL, NULL, NULL); 
@@ -1026,7 +1210,22 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 
 	SendMessageW(TextControl, EM_SETLIMITTEXT, (WPARAM)MAX_TEXT_LENGTH, NULL); //Change default text limit of 32767 to a bigger value
 
-	SetWindowSubclass(TextControl,EditProc,0,0);
+	SetWindowSubclass(TextControl,EditProc,0, (DWORD_PTR)calloc(1,sizeof(EditProcState)));
+
+	HWND VScrollControl = CreateWindowExW(NULL, TEXT("ScrollBar"), NULL, WS_CHILD | WS_VISIBLE | SBS_VERT,
+		0, 0, 0, 0, TextControl, NULL, NULL, NULL);
+	SetWindowSubclass(VScrollControl, ScrollProc, 0, (DWORD_PTR)calloc(1,sizeof(ScrollProcState)));
+	int line_count = SendMessage(TextControl, EM_GET_MAX_VISIBLE_LINES, 0, 0);
+	SCROLLINFO vscrollnfo;
+	vscrollnfo.cbSize = sizeof(vscrollnfo);
+	vscrollnfo.fMask = SIF_PAGE | SIF_RANGE;
+	vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
+	vscrollnfo.nMin = 0; //NOTE: changed when new lines are written on the text editor
+	vscrollnfo.nMax = 0; //NOTE: changed when new lines are written on the text editor
+	SetScrollInfo(VScrollControl, SB_CTL, &vscrollnfo, TRUE);
+	SendMessage(VScrollControl, SB_SETPOS, (WPARAM)ScrollBarPos::right, 0);
+
+	SendMessageW(TextControl, EM_SETVSCROLL, (WPARAM)VScrollControl, 0);
 
 	//TEXT_INFO* text_info = (TEXT_INFO*)HeapAlloc(GetProcessHeap(), HEAP_NO_SERIALIZE| HEAP_ZERO_MEMORY,sizeof(TEXT_INFO));
 	//Assert(text_info);
@@ -1321,9 +1520,9 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	SendMessage(TextContainer, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
 	SetWindowSubclass(TextContainer, TabProc,0,0);
 
-	TabCloseButtonInfo.icon.cx = tabHeight*.6f;
+	TabCloseButtonInfo.icon.cx = (LONG)(tabHeight*.6f);
 	TabCloseButtonInfo.icon.cy = TabCloseButtonInfo.icon.cx;
-	TabCloseButtonInfo.rightPadding = (tabHeight-TabCloseButtonInfo.icon.cx)/2.f;
+	TabCloseButtonInfo.rightPadding = (tabHeight-TabCloseButtonInfo.icon.cx)/2;
 
 	SendMessage(hFile, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(hRemoveCommentWith, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
@@ -1428,7 +1627,7 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 
 	file_count = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, NULL);
 
-	for (int i = 0; i < file_count; i++) {
+	for (UINT i = 0; i < file_count; i++) {
 		UINT requiredChars = DragQueryFileW(hDrop, i, NULL, NULL);//INFO: does NOT include terminating NULL char
 		Assert( requiredChars < (sizeof(lpszFile) / sizeof(lpszFile[0])) );
 
@@ -1566,7 +1765,7 @@ BOOL ReadText(wstring filepath, wstring& text) {
 /// </summary>
 /// <param name="filename">Full path of the file</param>
 /// <returns>The presumed file format</returns>
-FILE_FORMAT GetFileFormat(wstring& const filename) {
+FILE_FORMAT GetFileFormat(wstring& filename) {
 	size_t extesion_pos = 0;
 	extesion_pos = filename.find_last_of(L'.', wstring::npos); //Look for file extesion
 	if (extesion_pos != wstring::npos && (extesion_pos + 1) < filename.length()) {
@@ -1744,8 +1943,8 @@ void GetInfoParameters(wstring info) {
 	size_t final_pos = 0;
 
 	//@remember that stoi throws exceptions!
-
-	for (int param = 0; param < NRO_INFO_PARAMETERS; param++) {
+	
+	for (unsigned int param = 0; param < NRO_INFO_PARAMETERS; param++) {
 
 		initial_pos = info.find(info_parameters[param], 0);
 		final_pos = info.find(L'\n', initial_pos);
@@ -1898,7 +2097,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 		RECT rc; GetClientRect(hWnd, &rc);
 		//int controlID = GetDlgCtrlID(hWnd);
 
-		WORD ButtonState = SendMessageW(hWnd, BM_GETSTATE, 0, 0);
+		WORD ButtonState = (WORD)SendMessageW(hWnd, BM_GETSTATE, 0, 0);
 
 		if (ButtonState & BST_PUSHED) {
 			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBkPush));
@@ -1913,7 +2112,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 			FillRect(hdc, &rc, AppColors.ControlBk);
 		}
 
-		int borderSize = max(1, RECTHEIGHT(rc)*.06f);
+		int borderSize = max(1, (int)(RECTHEIGHT(rc)*.06f));
 
 		HPEN pen = CreatePen(PS_SOLID, borderSize, ColorFromBrush(AppColors.ControlTxt)); //para el borde
 
@@ -2041,7 +2240,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		RECT client_rec;
 		GetClientRect(hWnd, &client_rec);
 
-		HPEN pen = CreatePen(PS_SOLID, max(1, (RECTHEIGHT(client_rec))*.01f), ColorFromBrush(AppColors.ControlTxt)); //para el borde
+		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(AppColors.ControlTxt)); //para el borde
 
 		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
 		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
@@ -2077,7 +2276,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		RECT r;
 		SIZE icon_size;
 		GetClientRect(hWnd, &r);
-		icon_size.cy = (r.bottom - r.top)*.6f;
+		icon_size.cy = (LONG)((float)(r.bottom - r.top)*.6f);
 		icon_size.cx = icon_size.cy;
 
 		HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWL_HINSTANCE);
@@ -2209,7 +2408,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				
 				int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
 
-				int xPos = item->rcItem.left + RECTWIDTH(item->rcItem)*.1f;
+				int xPos = item->rcItem.left + (int)((float)RECTWIDTH(item->rcItem)*.1f);
 
 
 				//SIZE text_size;
