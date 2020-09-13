@@ -30,8 +30,6 @@ namespace fs = std::experimental::filesystem;
 	#define RELEASE 1
 #endif
 
-#define Assert(assertion) if(!(assertion))*(int*)NULL=0
-
 //INFO: Check resource.h for already taken defines
 #define OPEN_FILE 11
 #define COMBO_BOX 12
@@ -49,13 +47,8 @@ namespace fs = std::experimental::filesystem;
 
 #define UNCAP_SETTEXTDURATION (WM_USER+52) //Sets duration of text in a control before it's hidden. wParam=(UINT)duration in milliseconds ; lParam = NOT USED
 
-
 #define MAX_PATH_LENGTH MAX_PATH
 #define MAX_TEXT_LENGTH 288000 //Edit controls have their text limit set by default at 32767, we need to change that
-
-#define RECTWIDTH(r) (r.right >= r.left ? r.right - r.left : r.left - r.right )
-
-#define RECTHEIGHT(r) (r.bottom >= r.top ? r.bottom - r.top : r.top - r.bottom )
 
 //----------------------USER DEFINED VARIABLES----------------------:
 enum ENCODING {
@@ -88,18 +81,6 @@ struct TEXT_INFO {
 struct CUSTOM_TCITEM {
 	TC_ITEMHEADER tab_info;
 	TEXT_INFO extra_info;
-};
-
-struct _APPCOLORS {
-	HBRUSH ControlBk;
-	HBRUSH ControlBkPush;
-	HBRUSH ControlBkMouseOver;
-	HBRUSH ControlTxt;
-	HBRUSH ControlMsg;
-	COLORREF InitialFinalCharDisabledColor;
-	COLORREF InitialFinalCharCurrentColor;
-	HBRUSH Scrollbar;
-	HBRUSH ScrollbarBk;
 };
 
 struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
@@ -145,6 +126,8 @@ bool Backup_Is_Checked = false; //info file check, do backup or not
 
 LANGUAGE_MANAGER::LANGUAGE startup_locale = LANGUAGE_MANAGER::LANGUAGE::ENGLISH; //defaults to english
 
+UNCAP_COLORS unCap_colors;
+
 #define RC_LEFT 0
 #define RC_TOP 1
 #define RC_RIGHT 2
@@ -178,7 +161,6 @@ const COMDLG_FILTERSPEC c_rgSaveTypes[] = //TODO(fran): am I using this? if so t
 { L"All Documents (*.*)",         L"*.*" }
 };
 
-_APPCOLORS AppColors;
 
 TABCLIENT TabOffset;
 
@@ -346,14 +328,14 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
     UNREFERENCED_PARAMETER(hPrevInstance);
     UNREFERENCED_PARAMETER(lpCmdLine);
 
-	/*Initialization of common controls
+	//Initialization of common controls
 	INITCOMMONCONTROLSEX icc;
 
-	icc.dwSize = sizeof(INITCOMMONCONTROLSEX);
-	icc.dwICC = ICC_BAR_CLASSES | ICC_TAB_CLASSES | ICC_WIN95_CLASSES;
+	icc.dwSize = sizeof(icc);
+	icc.dwICC = ICC_STANDARD_CLASSES;
 
-	InitCommonControlsEx(&icc);
-	*/
+	BOOL comm_res = InitCommonControlsEx(&icc);
+	Assert(comm_res);
 
 	if (!RELEASE) {
 		AllocConsole();
@@ -372,16 +354,16 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	LANGUAGE_MANAGER::Instance().SetHInstance(hInstance);
 	LANGUAGE_MANAGER::Instance().ChangeLanguage(startup_locale);
 
-	AppColors.ControlBk = CreateSolidBrush(RGB(40,41,35));
-	AppColors.ControlBkPush = CreateSolidBrush(RGB(0, 110, 200));
-	AppColors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
-	AppColors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
-	AppColors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
+	unCap_colors.ControlBk = CreateSolidBrush(RGB(40,41,35));
+	unCap_colors.ControlBkPush = CreateSolidBrush(RGB(0, 110, 200));
+	unCap_colors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
+	unCap_colors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
+	unCap_colors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
 	//Thanks to Windows' broken Static Control text color when disabled
-	AppColors.InitialFinalCharDisabledColor = RGB(128,128,128);
-	AppColors.InitialFinalCharCurrentColor = AppColors.InitialFinalCharDisabledColor;
-	AppColors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
-	AppColors.ScrollbarBk = CreateSolidBrush(RGB(40, 41, 35));
+	unCap_colors.InitialFinalCharDisabledColor = RGB(128,128,128);
+	unCap_colors.InitialFinalCharCurrentColor = unCap_colors.InitialFinalCharDisabledColor;
+	unCap_colors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
+	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(40, 41, 35));
 
 	//Setting offsets for what will define the "client" area of a tab control
 	TabOffset.leftOffset = 3;
@@ -401,7 +383,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	wcex.hInstance = hInstance;
 	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SRTFIXWIN32));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = AppColors.ControlBk;//(HBRUSH)(COLOR_BTNFACE +1);
+	wcex.hbrBackground = unCap_colors.ControlBk;//(HBRUSH)(COLOR_BTNFACE +1);
 	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_SRTFIXWIN32);
 	wcex.lpszClassName = szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
@@ -409,6 +391,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	ATOM class_atom = RegisterClassExW(&wcex);
 	if (!class_atom) return FALSE;
 	//RegisterSubtitleWindowClass(hInstance,SubtitleWindowClassName, IDC_ARROW, COLOR_BTNFACE + 1);
+
+	init_wndclass_unCap_scrollbar(hInstance);
 
 	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, appName, WS_OVERLAPPEDWINDOW,
 		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
@@ -442,8 +426,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
     }
 
 	//Cleanup
-	if (AppColors.ControlBk)DeleteObject(AppColors.ControlBk);//TODO(fran): destructor?
-	if (AppColors.ControlTxt)DeleteObject(AppColors.ControlTxt);
+	if (unCap_colors.ControlBk)DeleteObject(unCap_colors.ControlBk);//TODO(fran): destructor?
+	if (unCap_colors.ControlTxt)DeleteObject(unCap_colors.ControlTxt);
 
     return (int) msg.wParam;
 }
@@ -986,114 +970,13 @@ LRESULT CALLBACK EditCatchDrop(HWND hWnd, UINT uMsg, WPARAM wParam,
 	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
 }
 
-#define SB_RESIZE (WM_USER + 300) /*Auto resize and reposition*/
-#define SB_SETPOS (WM_USER + 301) /*Sets ScrollBarPos and also makes the necessary repositioning and resizing. wParam=ScrollBarPos*/
-enum class ScrollBarPos{ left, right, top, bottom}; //NOTE: left and right should only be used for vertical scrollbars, top and bottom for horizontal
-struct ScrollProcState {
-	ScrollBarPos pos; //TODO(fran): window styles already has SBS_BOTTOMALIGN and the like for managing this, maybe use that
-};
-//NOTE: ScrollProc controls require the creation of a ScrollProcState struct with calloc, and for it to be passed as the 4th param in SetWindowSubclass, the object will now be managed by the procedure and does not need the user to handle its memory
-//NOTE: checks for SBS_HORZ or SBS_VERT to see which type of scrollbar it is
-LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
-	/*INFO:
-		-they decide position and size on their own based on their parent and whether they are horizontal or vertical
-	*/
-	static int scrollbar_thickness = max(GetSystemMetrics(SM_CXVSCROLL) / 2, 5);
-	
-	Assert(dwRefData);
-	ScrollProcState* state = (ScrollProcState*)dwRefData;
-	switch (msg) {
-		//case WM_CREATE: {
-		//	SCROLLINFO scrollnfo;
-		//	scrollnfo.cbSize = sizeof(scrollnfo);
-		//	scrollnfo.fMask = SIF_RANGE;
-		//	scrollnfo.nMin = 0;
-		//	scrollnfo.nMax = 100;
-		//	SetScrollInfo(hwnd, SB_CTL, &scrollnfo, TRUE);
-		//	return 0;
-		//} break;
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hwnd, &ps);
-		RECT client_rc;
-		GetClientRect(hwnd, &client_rc);
-		FillRect(hdc, &client_rc, AppColors.ScrollbarBk);
-
-		// Get vertical scroll bar position.
-		SCROLLINFO scrollnfo;
-		scrollnfo.cbSize = sizeof(scrollnfo);
-		scrollnfo.fMask = SIF_POS | SIF_RANGE | SIF_PAGE;//TODO(fran): SIF_TRACKPOS
-		GetScrollInfo(hwnd, SB_CTL, &scrollnfo);
-		int sb_pos = scrollnfo.nPos;
-		int sb_sz = safe_ratio0(distance(scrollnfo.nMax, scrollnfo.nMin), scrollnfo.nPage);//TODO(fran): dont know why scrollnfo.nPage is 0
-
-		LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
-		RECT sb_rc;
-		if (style & SBS_HORZ) {
-			sb_rc.top = client_rc.top;
-			sb_rc.bottom = client_rc.bottom;
-			sb_rc.left = sb_pos;
-			sb_rc.right = sb_sz;
-		}
-		else if (style & SBS_VERT) {
-			sb_rc.left = client_rc.left;
-			sb_rc.right = client_rc.right;
-			sb_rc.top = sb_pos;
-			sb_rc.bottom = sb_sz;
-		}
-		FillRect(hdc, &sb_rc, AppColors.Scrollbar);
-		/*InflateRect(&client_rc, -2, -50);
-		FillRect(hdc, &client_rc, AppColors.Scrollbar);*/
-		EndPaint(hwnd, &ps);
-		return 0;
-	} break;
-	case SB_SETPOS:
-	{
-		state->pos = (ScrollBarPos)wparam;
-		ScrollProc(hwnd, SB_RESIZE, 0, 0, uIdSubclass,dwRefData); //TODO(fran): should I just use SendMessage?
-	} break;
-	case SB_RESIZE:
-	{
-		RECT r; GetWindowRect(GetParent(hwnd),&r); //TODO(fran): im using GetWindowRect, but later it may be better to use GetClientRect
-		switch (state->pos) {
-		//vertical
-		case ScrollBarPos::left:
-		{
-			MoveWindow(hwnd, 0, 0, scrollbar_thickness, RECTHEIGHT(r),TRUE);
-		}break;
-		case ScrollBarPos::right:
-		{
-			MoveWindow(hwnd, RECTWIDTH(r) - scrollbar_thickness, 0, scrollbar_thickness, RECTHEIGHT(r),TRUE);
-		}break;
-		//horizontal
-		case ScrollBarPos::top:
-		{
-			MoveWindow(hwnd, 0, 0, RECTWIDTH(r),scrollbar_thickness, TRUE);
-
-		}break;
-		case ScrollBarPos::bottom:
-		{
-			MoveWindow(hwnd, 0, RECTHEIGHT(r)-scrollbar_thickness, RECTWIDTH(r),scrollbar_thickness, TRUE);
-
-		}break;
-		}
-	} break;
-	//TODO(fran): send messages to the parent, and manage collision testing, remember that it expects to have buttons for up and down that we want removed, so no collision testing for those
-	case WM_DESTROY:
-	{
-		free(state);
-	}break;
-	default:return DefSubclassProc(hwnd, msg, wparam, lparam);
-	}
-	return 0;
-}
-
 #define EM_GET_MAX_VISIBLE_LINES (WM_USER+200) /*Retrieves a count for the max number of lines that can be displayed at once in the current window. return=int*/
 #define EM_SETVSCROLL (WM_USER+201) /*Sets the vertical scrollbar that is to be used. wParam=HWND of the scrollbar control*/
 //#define EM_SETHSCROLL (WM_USER+202) /*Sets the horizontal scrollbar that is to be used. wParam=HWND of the scrollbar control*/
 //#define EM_GET_MAX_VISIBLE_CHARS_PER_LINE (WM_USER+203) /*Retrieves a count for the max number of characters that can be displayed in one line at once in the current window. return=int*/
 struct EditProcState {
+	bool initialized;
+	HWND wnd;
 	HWND vscrollbar;// , hscrollbar;
 };
 //NOTE: EditProc controls require the creation of a EditProcState struct with calloc, and for it to be passed as the 4th param in SetWindowSubclass, the object will now be managed by the procedure and does not need the user to handle its memory
@@ -1113,47 +996,54 @@ int EDIT_get_max_visible_lines(HWND hwnd) {
 
 	return visible_lines;
 }
+void EDIT_update_scrollbar(EditProcState* state) {
+	if (state->vscrollbar) {
+		int line_count = EDIT_get_max_visible_lines(state->wnd);
+		int range_max = (int)DefSubclassProc(state->wnd, EM_GETLINECOUNT, 0, 0);
+		int pos = (int)DefSubclassProc(state->wnd, EM_GETFIRSTVISIBLELINE, 0, 0);
+		U_SB_set_stats(state->vscrollbar, range_max, line_count, pos);
+		//SCROLLINFO vscrollnfo;
+		//vscrollnfo.cbSize = sizeof(vscrollnfo);
+		//vscrollnfo.fMask = SIF_PAGE | SIF_RANGE | SIF_POS;
+		//vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
+		//vscrollnfo.nMin = 0; //NOTE: always 0
+		//vscrollnfo.nMax = (int)DefSubclassProc(hwnd, EM_GETLINECOUNT, 0, 0); //NOTE: changed when new lines are written on the text editor or on resize
+		//vscrollnfo.nPos = (int)DefSubclassProc(hwnd, EM_GETFIRSTVISIBLELINE, 0, 0);
+		//SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
+	}
+}
 LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
 //
 //	if (Msg == WM_CTLCOLORSCROLLBAR) {
-//		return (LRESULT)AppColors.ControlBk;
+//		return (LRESULT)unCap_colors.ControlBk;
 //	}
 //	return DefSubclassProc(hWnd, Msg, wParam, lParam);
 	Assert(dwRefData);
 	EditProcState* state = (EditProcState*)dwRefData;
-
-	//Update Scrollbars
-	if (state->vscrollbar) {
-		int line_count = EDIT_get_max_visible_lines(hwnd);
-		SCROLLINFO vscrollnfo;
-		vscrollnfo.cbSize = sizeof(vscrollnfo);
-		vscrollnfo.fMask = SIF_PAGE | SIF_RANGE | SIF_POS;
-		vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
-		vscrollnfo.nMin = 0; //NOTE: always 0
-		vscrollnfo.nMax = (int)DefSubclassProc(hwnd, EM_GETLINECOUNT, 0, 0);
-		vscrollnfo.nPos = (int)DefSubclassProc(hwnd, EM_GETFIRSTVISIBLELINE, 0, 0);
-		SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
+	if (!state->initialized) {
+		state->initialized = true;
+		state->wnd = hwnd;
 	}
 
 	switch (msg) {
 	case EM_GET_MAX_VISIBLE_LINES: { 
 		return EDIT_get_max_visible_lines(hwnd);
 	} break;
-	//case EM_GET_MAX_VISIBLE_CHARS_PER_LINE: {
-	//	RECT rc;
-	//	GetClientRect(hwnd, &rc);
-	//	int line_width = RECTWIDTH(rc);
+	/*case EM_GET_MAX_VISIBLE_CHARS_PER_LINE: {
+		RECT rc;
+		GetClientRect(hwnd, &rc);
+		int line_width = RECTWIDTH(rc);
 
-	//	TEXTMETRIC tm;
-	//	HDC dc = GetDC(hwnd);
-	//	GetTextMetrics(dc, &tm);
-	//	ReleaseDC(hwnd, dc);
-	//	int char_width = tm.tmAveCharWidth; //TODO(fran): better approximation
+		TEXTMETRIC tm;
+		HDC dc = GetDC(hwnd);
+		GetTextMetrics(dc, &tm);
+		ReleaseDC(hwnd, dc);
+		int char_width = tm.tmAveCharWidth; //TODO(fran): better approximation
 
-	//	int char_count = line_width / char_width;
+		int char_count = line_width / char_width;
 
-	//	return char_count;
-	//} break;
+		return char_count;
+	} break;*/
 	case EM_SETVSCROLL: {
 		state->vscrollbar = (HWND)wparam;
 	} break;
@@ -1169,14 +1059,9 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 		//x & y remain fixed and only width & height change
 
 		//TODO(fran): resize scrollbars
-		SendMessage(state->vscrollbar, SB_RESIZE, 0, 0);
+		SendMessage(state->vscrollbar, U_SB_AUTORESIZE, 0, 0);
 
-		int line_count = SendMessage(hwnd, EM_GET_MAX_VISIBLE_LINES, 0, 0);
-		SCROLLINFO vscrollnfo;
-		vscrollnfo.cbSize = sizeof(vscrollnfo);
-		vscrollnfo.fMask = SIF_PAGE;
-		vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
-		SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
+		EDIT_update_scrollbar(state); //NOTE: actually here you just need to update nPage
 
 		return TRUE;
 	} //TODO(fran): now comes the hard part, to tell the scrollbar where we are, and the ranges
@@ -1184,6 +1069,15 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 	{
 		free(state);
 	}break;
+	//Messages that could trigger the need for updating the scrollbar
+	case WM_VSCROLL:
+	case WM_PAINT:
+	//TODO(fran): add more
+	{
+		LRESULT res = DefSubclassProc(hwnd, msg, wparam, lparam);
+		EDIT_update_scrollbar(state);
+		return res;
+	} break;
 	default:return DefSubclassProc(hwnd, msg, wparam, lparam);
 	}
 	return 0;
@@ -1212,18 +1106,9 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 
 	SetWindowSubclass(TextControl,EditProc,0, (DWORD_PTR)calloc(1,sizeof(EditProcState)));
 
-	HWND VScrollControl = CreateWindowExW(NULL, TEXT("ScrollBar"), NULL, WS_CHILD | WS_VISIBLE | SBS_VERT,
+	HWND VScrollControl = CreateWindowExW(NULL, unCap_wndclass_scrollbar, NULL, WS_CHILD | WS_VISIBLE,
 		0, 0, 0, 0, TextControl, NULL, NULL, NULL);
-	SetWindowSubclass(VScrollControl, ScrollProc, 0, (DWORD_PTR)calloc(1,sizeof(ScrollProcState)));
-	int line_count = SendMessage(TextControl, EM_GET_MAX_VISIBLE_LINES, 0, 0);
-	SCROLLINFO vscrollnfo;
-	vscrollnfo.cbSize = sizeof(vscrollnfo);
-	vscrollnfo.fMask = SIF_PAGE | SIF_RANGE;
-	vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
-	vscrollnfo.nMin = 0; //NOTE: changed when new lines are written on the text editor
-	vscrollnfo.nMax = 0; //NOTE: changed when new lines are written on the text editor
-	SetScrollInfo(VScrollControl, SB_CTL, &vscrollnfo, TRUE);
-	SendMessage(VScrollControl, SB_SETPOS, (WPARAM)ScrollBarPos::right, 0);
+	SendMessage(VScrollControl, U_SB_SET_PLACEMENT, (WPARAM)ScrollBarPlacement::right, 0);
 
 	SendMessageW(TextControl, EM_SETVSCROLL, (WPARAM)VScrollControl, 0);
 
@@ -1379,7 +1264,7 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 		RECT rc;
 		GetClientRect(hWnd, &rc);
 
-		FillRect(hdc, &rc, AppColors.ControlBk);
+		FillRect(hdc, &rc, unCap_colors.ControlBk);
 		return 1;
 	}
 	case WM_CTLCOLOREDIT:
@@ -1387,9 +1272,9 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 		//if ((HWND)lParam == GetDlgItem(hWnd, EDIT_ID)) //TODO(fran): check we are changing the control we want
 		if(TRUE)
 		{
-			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
-			SetTextColor((HDC)wParam, ColorFromBrush(AppColors.ControlTxt));
-			return (LRESULT)AppColors.ControlBk;
+			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlTxt));
+			return (LRESULT)unCap_colors.ControlBk;
 		}
 		else return DefSubclassProc(hWnd, Msg, wParam, lParam);
 	}
@@ -1469,7 +1354,6 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	, 25, y_place+3, 155, 20, hWnd, NULL, NULL, NULL);
 	AWT(hRemoveCommentWith, LANG_CONTROL_REMOVECOMMENTWITH);
 
-
 	hOptions = CreateWindowW(L"ComboBox", NULL, WS_VISIBLE | WS_CHILD| CBS_DROPDOWNLIST|WS_TABSTOP
 		, 195, y_place, 130, 90/*20*/, hWnd, (HMENU)COMBO_BOX, hInstance, NULL);
 	//SetOptionsComboBox(hOptions, TRUE);
@@ -1540,8 +1424,8 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 void EnableOtherChar(bool op) {
 	//EnableWindow(hInitialText, op);
 	//EnableWindow(hFinalText, op);
-	if (op) AppColors.InitialFinalCharCurrentColor = ColorFromBrush(AppColors.ControlTxt);
-	else AppColors.InitialFinalCharCurrentColor = AppColors.InitialFinalCharDisabledColor;
+	if (op) unCap_colors.InitialFinalCharCurrentColor = ColorFromBrush(unCap_colors.ControlTxt);
+	else unCap_colors.InitialFinalCharCurrentColor = unCap_colors.InitialFinalCharDisabledColor;
 	InvalidateRect(hInitialText, NULL, TRUE);
 	InvalidateRect(hFinalText, NULL, TRUE);
 	EnableWindow(hInitialChar, op);
@@ -2100,21 +1984,21 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 		WORD ButtonState = (WORD)SendMessageW(hWnd, BM_GETSTATE, 0, 0);
 
 		if (ButtonState & BST_PUSHED) {
-			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBkPush));
-			FillRect(hdc, &rc, AppColors.ControlBkPush);
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
+			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
 		}
 		else if (MouseOver && CurrentMouseOverButton == hWnd) {
-			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBkMouseOver));
-			FillRect(hdc, &rc, AppColors.ControlBkMouseOver);
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
+			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
 		}
 		else {
-			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBk));
-			FillRect(hdc, &rc, AppColors.ControlBk);
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBk));
+			FillRect(hdc, &rc, unCap_colors.ControlBk);
 		}
 
 		int borderSize = max(1, (int)(RECTHEIGHT(rc)*.06f));
 
-		HPEN pen = CreatePen(PS_SOLID, borderSize, ColorFromBrush(AppColors.ControlTxt)); //para el borde
+		HPEN pen = CreatePen(PS_SOLID, borderSize, ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
 
 		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
 		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
@@ -2135,7 +2019,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 			if (font) {//if font == NULL then it is using system font(default I assume)
 				(HFONT)SelectObject(hdc, (HGDIOBJ)(HFONT)font);
 			}
-			SetTextColor(hdc, ColorFromBrush(AppColors.ControlTxt));
+			SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
 			WCHAR Text[40];
 			int len = SendMessage(hWnd, WM_GETTEXT,
 				ARRAYSIZE(Text), (LPARAM)Text);
@@ -2173,7 +2057,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 	//	RECT rc;
 	//	GetClientRect(hWnd, &rc);
 
-	//	FillRect(hdc, &rc, AppColors.ControlBk);
+	//	FillRect(hdc, &rc, unCap_colors.ControlBk);
 	//	return 1;
 	//}
 	case CB_SETCURSEL:
@@ -2225,29 +2109,29 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 
 		BOOL ButtonState = SendMessageW(hWnd, CB_GETDROPPEDSTATE, 0, 0);
 		if (ButtonState) {
-			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBkPush));
-			FillRect(hdc, &rc, AppColors.ControlBkPush);
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
+			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
 		}
 		else if (MouseOverCombo && CurrentMouseOverCombo == hWnd) {
-			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBkMouseOver));
-			FillRect(hdc, &rc, AppColors.ControlBkMouseOver);
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
+			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
 		}
 		else {
-			SetBkColor(hdc, ColorFromBrush(AppColors.ControlBk));
-			FillRect(hdc, &rc, AppColors.ControlBk);
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBk));
+			FillRect(hdc, &rc, unCap_colors.ControlBk);
 		}
 
 		RECT client_rec;
 		GetClientRect(hWnd, &client_rec);
 
-		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(AppColors.ControlTxt)); //para el borde
+		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
 
 		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
 		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
 
 		SelectObject(hdc, (HFONT)SendMessage(hWnd, WM_GETFONT, 0, 0));
 		//SetBkColor(hdc, bkcolor);
-		SetTextColor(hdc, ColorFromBrush(AppColors.ControlTxt));
+		SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
 
 		//Border
 		Rectangle(hdc, 0, 0, rc.right, rc.bottom);
@@ -2349,10 +2233,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CTLCOLORLISTBOX:
 	{
 		HDC comboboxDC = (HDC)wParam;
-		SetBkColor(comboboxDC, ColorFromBrush(AppColors.ControlBk));
-		SetTextColor(comboboxDC, ColorFromBrush(AppColors.ControlTxt));
+		SetBkColor(comboboxDC, ColorFromBrush(unCap_colors.ControlBk));
+		SetTextColor(comboboxDC, ColorFromBrush(unCap_colors.ControlTxt));
 
-		return (INT_PTR)AppColors.ControlBk;
+		return (INT_PTR)unCap_colors.ControlBk;
 	}
 	case WM_CTLCOLORSTATIC:
 	{
@@ -2360,23 +2244,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (GetDlgCtrlID((HWND)lParam)) {
 		case TIMEDMESSAGES:
 		{
-			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
-			SetTextColor((HDC)wParam, ColorFromBrush(AppColors.ControlMsg));
-			return (LRESULT)AppColors.ControlBk;
+			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlMsg));
+			return (LRESULT)unCap_colors.ControlBk;
 		}
 		case INITIALFINALCHAR: 
 		{
-			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
-			SetTextColor((HDC)wParam, AppColors.InitialFinalCharCurrentColor);
-			return (LRESULT)AppColors.ControlBk;
+			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor((HDC)wParam, unCap_colors.InitialFinalCharCurrentColor);
+			return (LRESULT)unCap_colors.ControlBk;
 		}
 		default:
 		{
 			//TODO(fran): there's something wrong with Initial & Final character controls when they are disabled, documentation says windows always uses same color
 			//text when window is disabled but it looks to me that it is using both this and its own color
-			SetBkColor((HDC)wParam, ColorFromBrush(AppColors.ControlBk));
-			SetTextColor((HDC)wParam, ColorFromBrush(AppColors.ControlTxt));
-			return (LRESULT)AppColors.ControlBk;
+			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlTxt));
+			return (LRESULT)unCap_colors.ControlBk;
 		}
 		}
 		
@@ -2394,7 +2278,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			case ODA_FOCUS://Control lost or gained focus, check itemState
 			case ODA_SELECT://Selection status changed, check itemState
 				//Fill background //TODO(fran): the original background is still visible for some reason
-				FillRect(item->hDC, &item->rcItem, AppColors.ControlBk);
+				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
 				//IMPORTANT INFO: this is no region set so I can actually draw to the entire control, useful for going over what the control draws
 				
 				UINT index = item->itemID;
@@ -2430,8 +2314,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				COLORREF old_bk_color = GetBkColor(item->hDC);
 				COLORREF old_txt_color = GetTextColor(item->hDC);
 
-				SetBkColor(item->hDC, ColorFromBrush(AppColors.ControlBk));
-				SetTextColor(item->hDC, ColorFromBrush(AppColors.ControlTxt));
+				SetBkColor(item->hDC, ColorFromBrush(unCap_colors.ControlBk));
+				SetTextColor(item->hDC, ColorFromBrush(unCap_colors.ControlTxt));
 				TextOut(item->hDC, xPos, yPos, text.c_str(), len);
 
 				//Reset hdc as it was before our painting
@@ -2449,7 +2333,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				//r.right = r.left + TabCloseButtonInfo.icon.cx;
 				//r.top = button_topleft.y; 
 				//r.bottom = r.top + TabCloseButtonInfo.icon.cy;
-				//FillRect(item->hDC, &r, AppColors.ControlTxt);
+				//FillRect(item->hDC, &r, unCap_colors.ControlTxt);
 				
 				HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWL_HINSTANCE);
 				//LONG icon_id = GetWindowLongPtr(hWnd, GWL_USERDATA);
