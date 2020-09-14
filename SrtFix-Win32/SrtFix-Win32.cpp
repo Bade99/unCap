@@ -358,6 +358,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	unCap_colors.InitialFinalCharDisabledColor = RGB(128,128,128);
 	unCap_colors.InitialFinalCharCurrentColor = unCap_colors.InitialFinalCharDisabledColor;
 	unCap_colors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
+	unCap_colors.ScrollbarMouseOver = CreateSolidBrush(RGB(188, 188, 182));
 	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(50, 51, 45));
 
 	//Setting offsets for what will define the "client" area of a tab control
@@ -1077,7 +1078,6 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 		free(state);
 	}break;
 	//Messages that could trigger the need for updating the scrollbar
-	case WM_VSCROLL:
 	case WM_PAINT:
 	//TODO(fran): add more
 	{

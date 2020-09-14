@@ -10,6 +10,7 @@ struct UNCAP_COLORS {
 	COLORREF InitialFinalCharDisabledColor;
 	COLORREF InitialFinalCharCurrentColor;
 	HBRUSH Scrollbar;
+	HBRUSH ScrollbarMouseOver;
 	HBRUSH ScrollbarBk;
 };
 

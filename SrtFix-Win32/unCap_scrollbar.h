@@ -6,7 +6,7 @@
 
 /*TODOs
 TODO: scrollbar teleports when we press and move the mouse, cause we told it to do that, instead it should have the initial distance between scrollbar origin and mouse into account
-TODO: there's some weird rendering bug where the bar appears in a much older position for a brief moment, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it
+TODO: there's some weird rendering bug where the bar appears in a much older position for a brief moment, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it, could it be delayed messages?
 TODO: scrollbar goes a little too far on the bottom and starts getting cut
 
 */
@@ -224,12 +224,36 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		InvalidateRect(state->wnd, NULL, FALSE);
 		return 0;
 	} break;
+	case WM_MOUSELEAVE:
+	{
+		//we asked TrackMouseEvent for this so we can update when the mouse leaves our client area, which we dont get notified about otherwise and is needed, for example when the user hovers on top the bar and then hovers outside the client area
+		bool prev_onMouseOverSb = state->onMouseOverSb;
+		POINT mouse;
+		GetCursorPos(&mouse);
+		ScreenToClient(state->wnd, &mouse);
+		RECT sb_rc = SCROLL_calc_scrollbar(state);
+		if (test_point_rc(mouse, sb_rc)) {//Mouse is inside the bar
+			state->onMouseOverSb = true;
+		}
+		else {//Mouse is outside the bar
+			state->onMouseOverSb = false;
+		}
+		bool state_change = prev_onMouseOverSb != state->onMouseOverSb;
+		if (state_change) {
+			InvalidateRect(state->wnd, NULL, FALSE);
+		}
+		return 0;
+	} break;
 	case WM_MOUSEMOVE: //TODO(fran): scroll when mouse clicks the background
 	{
 		//printf("MOUSEMOVE\n");
 		//After WM_NCHITTEST and WM_SETCURSOR we finally get that the mouse has moved
 		//Sent to the window where the cursor is, unless someone else is explicitly capturing it, in which case this gets sent to them
 		POINT mouse = { GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };//client coords, relative to upper-left corner
+
+		//Store previous state
+		bool prev_onMouseOverSb = state->onMouseOverSb;
+		bool prev_OnMouseTrackingSb = state->OnMouseTrackingSb;
 
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
 		if (test_point_rc(mouse, sb_rc)) {//Mouse is inside the bar
@@ -256,6 +280,16 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			//TODO(fran): I suppose we're gonna have a problem with this sometimes, since from the edit control's side I update the scrollbar too when it repaints/scrolls and all the cases I set
 
 			InvalidateRect(state->wnd, NULL, FALSE);
+		}
+
+		bool state_change = prev_onMouseOverSb!= state->onMouseOverSb || prev_OnMouseTrackingSb != state->OnMouseTrackingSb;
+		if (state_change) {
+			InvalidateRect(state->wnd, NULL, FALSE);
+			TRACKMOUSEEVENT track;
+			track.cbSize = sizeof(track);
+			track.hwndTrack = state->wnd;
+			track.dwFlags = TME_LEAVE;
+			TrackMouseEvent(&track);
 		}
 
 		return 0;
@@ -393,8 +427,12 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			sb_pos = safe_ratio0((float)sb_pos, (float)distance(state->range_max, state->range_min));
 			printf("SB_RENDER_POS=%f%%\n", sb_pos*100.f);
 		}
+		//Decide bar color
+		HBRUSH sb_br;
+		if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
+		else sb_br = unCap_colors.Scrollbar;
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
-		FillRect(hdc, &sb_rc, unCap_colors.Scrollbar);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
+		FillRect(hdc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
 		EndPaint(state->wnd, &ps);
 		return 0;
 	} break;
@@ -419,7 +457,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 #endif
 	}
-	return 0;
+	return 0; 
 }
 
 
