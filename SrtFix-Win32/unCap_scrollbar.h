@@ -6,11 +6,12 @@
 
 /*TODOs
 TODO: scrollbar teleports when we press and move the mouse, cause we told it to do that, instead it should have the initial distance between scrollbar origin and mouse into account
-TODO: there's some weird rendering bug where the bar appears in a different position for a brief moment, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it, it also appears in areas it has never been, so it doesnt look like it's something old that appears later
+//TODO: reduce flickering when tracking, maybe use double buffering, example: http://www.catch22.net/tuts/win32/flicker-free-drawing from this I understand flicker will always happen if you overdraw, we could fix it now, since all we draw is squares we can calculate the exact area that needs bk clearing, but if we want to do rounded rectangles it's gonna be impossible to get right
 TODO: scrollbar goes a little too far on the bottom and starts getting cut
-TODO: establish clip region so we dont have to worry about errors drawing outside our client area
+TODO: establish clip region so we dont have to worry about errors drawing outside our client area (seems like BeginPaint takes cares of that automatically)
 */
 
+//NOTE: it's important that the parent uses WS_CLIPCHILDREN to avoid horrible flickering
 
 constexpr TCHAR unCap_wndclass_scrollbar[] = TEXT("unCap_wndclass_scrollbar");
 
@@ -29,8 +30,9 @@ struct ScrollProcState { //NOTE: must be initialized to zero
 	bool OnMouseTrackingSb; //Left click was pressed in our bar and now is still being held, the user will probably be moving the mouse around, so we want to track it to move the scrollbar
 	//NOTE: we'll probably also need a onMouseOverBk or just general mouseOver
 
+	bool fullBkRepaint;
 	int oldSb_idx;
-	RECT oldSb[5]; //WM_PAINT will annotate where it painted the scrollbar so WM_ERASEBACKGROUND can clean only those parts
+	RECT oldSb[3]; //WM_PAINT will annotate where it painted the scrollbar so WM_ERASEBACKGROUND can clean only those parts //TODO(fran): Im not sure we really need to store more than one, if we always ask for bk erasing on InvalidateRect
 };
 
 #define U_SB_AUTORESIZE (WM_USER + 300) /*Auto resize and reposition*/
@@ -70,6 +72,7 @@ void SCROLL_resize(ScrollProcState* state, int scrollbar_thickness) {
 
 	}break;
 	}
+	state->fullBkRepaint = true;
 }
 
 bool is_vertical(ScrollBarPlacement place) {
@@ -106,6 +109,11 @@ bool test_point_rc(POINT p, RECT r) {
 	return hit;
 }
 
+bool sameRc(RECT r1, RECT r2) {
+	bool res = r1.bottom == r2.bottom && r1.left == r2.left && r1.right == r2.right && r1.top == r2.top;
+	return res;
+}
+
 static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	/*INFO:
 		-they decide position and size on their own based on their parent and whether they are horizontal or vertical
@@ -121,6 +129,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CREATESTRUCT* creation_nfo =(CREATESTRUCT*)lparam;
 		state->parent = creation_nfo->hwndParent;
 		state->wnd = hwnd;
+		state->fullBkRepaint = true;
 		return 0;
 	}
 	
@@ -342,8 +351,20 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		//TODO(fran): some guy said this is old stuff to try to reduce calls to WM_PAINT and not needed anymore, so maybe I should just do the background in WM_PAINT
 		HDC dc = (HDC)wparam;
 		//TODO(fran): look at https://docs.microsoft.com/en-us/windows/win32/gdi/drawing-a-custom-window-background and SetMapModek, allows for transforms
-		RECT r; GetClientRect(hwnd, &r);
-		FillRect(dc, &r, unCap_colors.ScrollbarBk);
+
+		//TODO(fran): see what we do on resize
+		if (state->fullBkRepaint) {
+			state->fullBkRepaint = false;
+			RECT r;
+			GetClientRect(hwnd, &r);
+			FillRect(dc, &r, unCap_colors.ScrollbarBk);
+		}
+		else {
+			for(int i=0; i < state->oldSb_idx; i++)
+				FillRect(dc, &state->oldSb[i], unCap_colors.ScrollbarBk);
+		}
+		state->oldSb_idx = 0;
+
 		return 1; //If you return 0 then on WM_PAINT fErase will be true, aka paint it there
 	} break;
 	case WM_NCPAINT:
@@ -416,9 +437,6 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(state->wnd, &ps);
-		RECT client_rc;
-		GetClientRect(state->wnd, &client_rc);
-		//FillRect(hdc, &client_rc, unCap_colors.ScrollbarBk);
 
 		{//TEST
 #if 0
@@ -429,18 +447,23 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			printf("SB_RENDER_POS=%f%%\n", sb_pos*100.f);
 #endif
 		}
-		//Decide bar color
-		HBRUSH sb_br;
-		if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
-		else sb_br = unCap_colors.Scrollbar;
+		//Calculate new bar rc
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
-		{
-#if 1
-			printf("TOP=%d\n", sb_rc.top);
-			printf("BOT=%d\n", sb_rc.bottom);
-#endif
+		//Check that we are going to paint a new rc
+		if (!state->oldSb_idx || !sameRc(sb_rc, state->oldSb[state->oldSb_idx])) { //TODO(fran): this should check for the color that was used, since it does happen that the bar stays in the same place but changes color, that would allow for not always asking InvalidateRect to send wm_erasebk
+			//Decide bar color
+			HBRUSH sb_br;
+			if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
+			else sb_br = unCap_colors.Scrollbar;
+
+			//Annotate bar RECT for WM_ERASEBK to remove next time
+			state->oldSb[state->oldSb_idx++] = sb_rc;
+			Assert(state->oldSb_idx < ARRAYSIZE(state->oldSb));
+			//TODO(fran): check that we are painting at a new position, if not do not paint
+
+			//Paint the bar
+			FillRect(hdc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
 		}
-		FillRect(hdc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
 		EndPaint(state->wnd, &ps);
 		return 0;
 	} break;
