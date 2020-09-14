@@ -6,9 +6,9 @@
 
 /*TODOs
 TODO: scrollbar teleports when we press and move the mouse, cause we told it to do that, instead it should have the initial distance between scrollbar origin and mouse into account
-TODO: there's some weird rendering bug where the bar appears in a much older position for a brief moment, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it, could it be delayed messages?
+TODO: there's some weird rendering bug where the bar appears in a different position for a brief moment, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it, it also appears in areas it has never been, so it doesnt look like it's something old that appears later
 TODO: scrollbar goes a little too far on the bottom and starts getting cut
-
+TODO: establish clip region so we dont have to worry about errors drawing outside our client area
 */
 
 
@@ -28,6 +28,9 @@ struct ScrollProcState { //NOTE: must be initialized to zero
 	bool onLMouseClickBk;//The left click is being pressed on the background area
 	bool OnMouseTrackingSb; //Left click was pressed in our bar and now is still being held, the user will probably be moving the mouse around, so we want to track it to move the scrollbar
 	//NOTE: we'll probably also need a onMouseOverBk or just general mouseOver
+
+	int oldSb_idx;
+	RECT oldSb[5]; //WM_PAINT will annotate where it painted the scrollbar so WM_ERASEBACKGROUND can clean only those parts
 };
 
 #define U_SB_AUTORESIZE (WM_USER + 300) /*Auto resize and reposition*/
@@ -140,7 +143,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		}
 		state->onLMouseClickBk = false;
 		state->onMouseOverSb = false;
-		InvalidateRect(state->wnd, NULL, FALSE);
+		InvalidateRect(state->wnd, NULL, TRUE);
 		return 0;
 	} break;
 	case WM_NCDESTROY:
@@ -157,7 +160,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_CAPTURECHANGED:
 	{
 		//We lost mouse capture
-		InvalidateRect(state->wnd, NULL, FALSE);
+		InvalidateRect(state->wnd, NULL, TRUE);
 		return 0;
 	} break;
 	case WM_LBUTTONUP:
@@ -197,7 +200,6 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	} break;
 	case WM_LBUTTONDOWN:
 	{
-		printf("LBUTTONDOWN\n");
 		//Left click is down
 		if (state->onMouseOverSb) {
 			//Click happened inside the bar, so we want to capture the mouse movement in case the user starts moving the mouse trying to scroll
@@ -221,7 +223,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			//Start timer to check if the user wants to continue scrolling
 			SetTimer(state->wnd, timer_id_bk_click_held, 500, NULL);
 		}
-		InvalidateRect(state->wnd, NULL, FALSE);
+		InvalidateRect(state->wnd, NULL, TRUE);
 		return 0;
 	} break;
 	case WM_MOUSELEAVE:
@@ -240,7 +242,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		}
 		bool state_change = prev_onMouseOverSb != state->onMouseOverSb;
 		if (state_change) {
-			InvalidateRect(state->wnd, NULL, FALSE);
+			InvalidateRect(state->wnd, NULL, TRUE);
 		}
 		return 0;
 	} break;
@@ -258,11 +260,9 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
 		if (test_point_rc(mouse, sb_rc)) {//Mouse is inside the bar
 			state->onMouseOverSb = true;
-			printf("MOUSEOVER_BAR\n");
 		}
 		else {//Mouse is outside the bar
 			state->onMouseOverSb = false;
-			printf("MOUSEOVER_NOT_BAR\n");
 		}
 
 		//With wparam you can test for different button presses, (wparam & MK_LBUTTON) --> left button down
@@ -279,12 +279,12 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_THUMBTRACK, state->p), (LPARAM)state->wnd);
 			//TODO(fran): I suppose we're gonna have a problem with this sometimes, since from the edit control's side I update the scrollbar too when it repaints/scrolls and all the cases I set
 
-			InvalidateRect(state->wnd, NULL, FALSE);
+			InvalidateRect(state->wnd, NULL, TRUE);
 		}
 
 		bool state_change = prev_onMouseOverSb!= state->onMouseOverSb || prev_OnMouseTrackingSb != state->OnMouseTrackingSb;
 		if (state_change) {
-			InvalidateRect(state->wnd, NULL, FALSE);
+			InvalidateRect(state->wnd, NULL, TRUE);
 			TRACKMOUSEEVENT track;
 			track.cbSize = sizeof(track);
 			track.hwndTrack = state->wnd;
@@ -398,19 +398,19 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case U_SB_SET_RANGEMAX:
 	{
 		state->range_max = (int)wparam;
-		InvalidateRect(state->wnd, NULL, FALSE);
+		InvalidateRect(state->wnd, NULL, TRUE);
 
 	} break;
 	case U_SB_SET_PAGESZ:
 	{
 		state->page_sz = (int)wparam;
-		InvalidateRect(state->wnd, NULL, FALSE);
+		InvalidateRect(state->wnd, NULL, TRUE);
 
 	} break;
 	case U_SB_SET_POS:
 	{
 		state->p = (int)wparam;
-		InvalidateRect(state->wnd, NULL, FALSE);
+		InvalidateRect(state->wnd, NULL, TRUE);
 	} break;
 	case WM_PAINT:
 	{
@@ -421,17 +421,25 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		//FillRect(hdc, &client_rc, unCap_colors.ScrollbarBk);
 
 		{//TEST
+#if 0
 			float sb_pos = (float)state->p;
 
 			printf("SB_POS=%f\n", sb_pos);
 			sb_pos = safe_ratio0((float)sb_pos, (float)distance(state->range_max, state->range_min));
 			printf("SB_RENDER_POS=%f%%\n", sb_pos*100.f);
+#endif
 		}
 		//Decide bar color
 		HBRUSH sb_br;
 		if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
 		else sb_br = unCap_colors.Scrollbar;
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
+		{
+#if 1
+			printf("TOP=%d\n", sb_rc.top);
+			printf("BOT=%d\n", sb_rc.bottom);
+#endif
+		}
 		FillRect(hdc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
 		EndPaint(state->wnd, &ps);
 		return 0;

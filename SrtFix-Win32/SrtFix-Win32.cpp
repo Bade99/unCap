@@ -1102,7 +1102,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	text_rec.right = tab_rec.right - TabOffset.rightOffset;
 	text_rec.bottom = tab_rec.bottom - TabOffset.bottomOffset;
 	
-	HWND TextControl = CreateWindowExW(NULL, L"Edit", NULL, WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL //| WS_VSCROLL | WS_HSCROLL //|WS_VISIBLE
+	HWND TextControl = CreateWindowExW(NULL, L"Edit", NULL, WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | WS_CLIPCHILDREN //| WS_VSCROLL | WS_HSCROLL //|WS_VISIBLE
 		, text_rec.left, text_rec.top, text_rec.right - text_rec.left, text_rec.bottom - text_rec.top
 		,TabControl //IMPORTANT INFO TODO(fran): this is not right, the parent should be the individual tab not the whole control, not sure though if that control will show our edit control
 		, NULL, NULL, NULL); 
