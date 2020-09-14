@@ -1026,6 +1026,18 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 	}
 
 	switch (msg) {
+	case WM_MOUSEWHEEL:
+	{
+		//TODO(fran): look at more reasonable algorithms, also this one should probably get a little exponential
+		short zDelta = (short)(((float)GET_WHEEL_DELTA_WPARAM(wparam)/ (float)WHEEL_DELTA) * 3.f);
+		if(zDelta>=0)
+			for(int i=0;i< zDelta;i++)
+				SendMessage(state->wnd, WM_VSCROLL, MAKELONG(SB_LINEUP, 0), 0); //TODO(fran): use ScrollWindowEx ?
+		else
+			for (int i = 0; i > zDelta; i--)
+				SendMessage(state->wnd, WM_VSCROLL, MAKELONG(SB_LINEDOWN, 0), 0);
+		return 0;
+	} break;
 	case EM_GET_MAX_VISIBLE_LINES: { 
 		return EDIT_get_max_visible_lines(hwnd);
 	} break;

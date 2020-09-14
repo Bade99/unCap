@@ -115,6 +115,12 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	ScrollProcState* state = (ScrollProcState*)GetWindowLongPtr(hwnd, 0); //INFO: windows recomends to use GWL_USERDATA https://docs.microsoft.com/en-us/windows/win32/learnwin32/managing-application-state-
 	//Assert(state); //NOTE: cannot check thanks to the grandeur of windows' hidden msgs before WM_CREATE
 	switch (msg) {
+	case WM_MOUSEWHEEL:
+	{
+		//Let the parent decide how to handle it
+		return SendMessage(state->parent, msg, wparam, lparam);//TODO(fran): maybe PostMessage is better?
+
+	} break;
 	case WM_CANCELMODE:
 	{
 		printf("\n\n\nWM_CANCELMODE\n\n\n");
@@ -173,7 +179,8 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		InvalidateRect(state->wnd, NULL, FALSE);
 		return 0;
 	} break;
-	case WM_MOUSEMOVE:
+	//TODO(fran): scrollbar goes a little too far on the bottom and starts getting cut, fix that
+	case WM_MOUSEMOVE: //TODO(fran): scroll when mouse clicks the background
 	{
 		//printf("MOUSEMOVE\n");
 		//After WM_NCHITTEST and WM_SETCURSOR we finally get that the mouse has moved
@@ -367,7 +374,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 			printf("SB_POS=%f\n", sb_pos);
 			sb_pos = safe_ratio0((float)sb_pos, (float)distance(state->range_max, state->range_min));
-			printf("SB_RENDER_POS=%f%%\n", sb_pos);
+			printf("SB_RENDER_POS=%f%%\n", sb_pos*100.f);
 		}
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
 		FillRect(hdc, &sb_rc, unCap_colors.Scrollbar);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
