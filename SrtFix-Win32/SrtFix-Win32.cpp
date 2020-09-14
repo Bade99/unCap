@@ -5,7 +5,7 @@
 #pragma comment(lib, "comctl32.lib" ) //common controls lib
 #pragma comment(lib,"propsys.lib") //open save file handler
 #pragma comment(lib,"shlwapi.lib") //open save file handler
-#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='x86' publicKeyToken='6595b64144ccf1df' language='*'\"") 
+#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"") 
 //#pragma comment(lib,"User32.lib")
 
 //----------------------NAMESPACES----------------------:
@@ -24,11 +24,6 @@ namespace fs = std::experimental::filesystem;
 //Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
 
 //----------------------DEFINES----------------------:
-#ifdef _DEBUG
-	#define RELEASE 0 //As I didnt find how to know when the compiler is on Release or Debug I created my own manual one
-#else
-	#define RELEASE 1
-#endif
 
 //INFO: Check resource.h for already taken defines
 #define OPEN_FILE 11
@@ -213,7 +208,7 @@ TEXT_INFO GetTabExtraInfo(int index) {
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		item.tab_info.mask = TCIF_PARAM;
-		BOOL ret = SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&item);
+		BOOL ret = (BOOL)SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&item);
 		if (ret) {
 			return item.extra_info;
 		}
@@ -225,7 +220,7 @@ TEXT_INFO GetTabExtraInfo(int index) {
 
 //Returns the current tab's text info or a TEXT_INFO struct with everything set to 0
 TEXT_INFO GetCurrentTabExtraInfo() {
-	int index = SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
+	int index = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
 
 	return GetTabExtraInfo(index);
 }
@@ -237,7 +232,7 @@ wstring GetTabTitle(int index){
 		item.tab_info.mask = TCIF_TEXT;
 		item.tab_info.pszText = title;
 		item.tab_info.cchTextMax = ARRAYSIZE(title);
-		BOOL ret = SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&item);
+		BOOL ret = (BOOL)SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&item);
 		if (ret) {
 			return title;
 		}
@@ -250,17 +245,17 @@ BOOL SetTabExtraInfo(int index,const TEXT_INFO& text_data) {
 	item.tab_info.mask = TCIF_PARAM;
 	item.extra_info = text_data;
 
-	int ret = SendMessage(TextContainer, TCM_SETITEM, index, (LPARAM)&item);
+	int ret = (int)SendMessage(TextContainer, TCM_SETITEM, index, (LPARAM)&item);
 	return ret;
 }
 
 BOOL SetCurrentTabTitle(wstring title) {
-	int index = SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
+	int index = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		item.tab_info.mask = TCIF_TEXT;
 		item.tab_info.pszText = (LPWSTR)title.c_str();
-		int ret = SendMessage(TextContainer, TCM_SETITEM, index, (LPARAM)&item);
+		int ret = (int)SendMessage(TextContainer, TCM_SETITEM, index, (LPARAM)&item);
 		return ret;
 	}
 	else return index;
@@ -268,18 +263,18 @@ BOOL SetCurrentTabTitle(wstring title) {
 
 
 int GetNextTabPos() {
-	int count = SendMessage(TextContainer, TCM_GETITEMCOUNT, 0, 0);
+	int count = (int)SendMessage(TextContainer, TCM_GETITEMCOUNT, 0, 0);
 	return count + 1; //TODO(fran): check if this is correct, or there is a better way
 }
 
 //Returns the index of the previously selected tab if successful, or -1 otherwise.
 int ChangeTabSelected(int index) {
-	return SendMessage(TextContainer, TCM_SETCURSEL, index, 0);
+	return (int)SendMessage(TextContainer, TCM_SETCURSEL, index, 0);
 }
 
 //Returns TRUE if successful, or FALSE otherwise.
 int DeleteTab(HWND TabControl, int position) {
-	return SendMessage(TabControl, TCM_DELETEITEM, position, 0);
+	return (int)SendMessage(TabControl, TCM_DELETEITEM, position, 0);
 }
 
 BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
@@ -337,12 +332,12 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	BOOL comm_res = InitCommonControlsEx(&icc);
 	Assert(comm_res);
 
-	if (!RELEASE) {
+#ifdef _DEBUG
 		AllocConsole();
 		freopen("CONIN$", "r", stdin);
 		freopen("CONOUT$", "w", stdout);
 		freopen("CONOUT$", "w", stderr);
-	}
+#endif
 
 	WCHAR szWindowClass[40] = L"unCapClass";	// nombre de clase de la ventana principal
 
@@ -451,7 +446,7 @@ wstring GetFontFaceName() {
 	HDC hdc = GetDC(GetDesktopWindow()); //You can use any hdc, but not NULL
 	vector<wstring> fontnames;
 	EnumFontFamiliesEx(hdc, NULL
-		, [](const LOGFONT *lpelfe, const TEXTMETRIC *lpntme, DWORD FontType, LPARAM lParam)->int {((vector<wstring>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
+		, [](const LOGFONT *lpelfe, const TEXTMETRIC* /*lpntme*/, DWORD /*FontType*/, LPARAM lParam)->int {((vector<wstring>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
 	, (LPARAM)&fontnames, NULL);
 	
 	const WCHAR* requested_fontname[] = { TEXT("Segoe UI"), TEXT("Arial Unicode MS"), TEXT("Microsoft YaHei"), TEXT("Microsoft YaHei UI")
@@ -473,7 +468,7 @@ void CreateFonts()
 	lf.lfHeight = -15;
 	
 	//INFO: by default if I dont set faceName it uses "Modern", looks good but it lacks some charsets
-	wcsncpy(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
+	wcsncpy_s(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
 	hFont = CreateFontIndirectW(&lf);
 
 	if (hGeneralFont != NULL)
@@ -942,7 +937,7 @@ void AddMenus(HWND hWnd) {
 	SetMenuItemBitmaps(hFileMenu, BACKUP_FILE, MF_BYCOMMAND,bCross,bTick);//1ºunchecked,2ºchecked
 	CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
 
-	SetMenuItemBitmaps(hFileMenu, (UINT_PTR)hFileMenuLang, MF_BYCOMMAND, bEarth, bEarth);
+	SetMenuItemBitmaps(hFileMenu, (UINT)hFileMenuLang, MF_BYCOMMAND, bEarth, bEarth);
 	//https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmenustate
 	//https://docs.microsoft.com/es-es/windows/desktop/menurc/using-menus#using-custom-check-mark-bitmaps
 	//https://www.daniweb.com/programming/software-development/threads/490612/win32-can-i-change-the-hbitmap-structure-for-be-transparent
@@ -959,7 +954,7 @@ void AddMenus(HWND hWnd) {
 //Method for managing edit control special features (ie dropped files,...)
 //there seems to be other ways like using SetWindowsHookExW or SetWindowLongPtrW 
 LRESULT CALLBACK EditCatchDrop(HWND hWnd, UINT uMsg, WPARAM wParam,
-	LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData)
+	LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/)
 {
 	switch (uMsg)
 	{
@@ -1012,7 +1007,7 @@ void EDIT_update_scrollbar(EditProcState* state) {
 		//SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
 	}
 }
-LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) {
 //
 //	if (Msg == WM_CTLCOLORSCROLLBAR) {
 //		return (LRESULT)unCap_colors.ControlBk;
@@ -1136,19 +1131,19 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 	newItem.extra_info = text_data;
 	newItem.extra_info.hText = TextControl;
 
-	return SendMessage(TabControl, TCM_INSERTITEM, position, (LPARAM)&newItem);
+	return (int)SendMessage(TabControl, TCM_INSERTITEM, position, (LPARAM)&newItem);
 }
 
 //Returns the current position of that tab or -1 if failed
 int SaveAndDisableCurrentTab(HWND tabControl) {
-	int index = SendMessage(tabControl, TCM_GETCURSEL, 0, 0);
+	int index = (int)SendMessage(tabControl, TCM_GETCURSEL, 0, 0);
 	if (index != -1) {
 		CUSTOM_TCITEM prev_item;
 		prev_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
 		//WCHAR buf[20] = { 0 };
 		//prev_item.tab_info.pszText = buf;
 		//prev_item.tab_info.cchTextMax = 20;
-		BOOL res = SendMessage(tabControl, TCM_GETITEM, index, (LPARAM)&prev_item);
+		BOOL res = (BOOL)SendMessage(tabControl, TCM_GETITEM, index, (LPARAM)&prev_item);
 		if (res) {
 			ShowWindow(prev_item.extra_info.hText, SW_HIDE);
 
@@ -1160,7 +1155,7 @@ int SaveAndDisableCurrentTab(HWND tabControl) {
 			if (text[0]!=L'\0') {//Check in case there is invalid data on the controls
 				//TODO(fran): make sure this check doesnt break anything in some specific case
 
-				wcsncpy(prev_item.extra_info.filePath, text.c_str(), sizeof(prev_item.extra_info.filePath) / sizeof(prev_item.extra_info.filePath[0]));
+				wcsncpy_s(prev_item.extra_info.filePath, text.c_str(), sizeof(prev_item.extra_info.filePath) / sizeof(prev_item.extra_info.filePath[0]));
 
 				prev_item.extra_info.commentType = (COMMENT_TYPE)SendMessage(hOptions, CB_GETCURSEL, 0, 0);
 
@@ -1214,9 +1209,9 @@ int TestCloseButton(HWND tabControl, CLOSEBUTTON closeButtonInfo, POINT p ) {
 	//From what I understand the tab change happens before we get here, so for simplicity's sake we will only test against the currently selected tab.
 	//If this didnt work we'd probably have to use the TCM_HITTEST message
 	RECT item_rc;
-	int item_index = SendMessage(tabControl, TCM_GETCURSEL, 0, 0);
+	int item_index = (int)SendMessage(tabControl, TCM_GETCURSEL, 0, 0);
 	if (item_index != -1) {
-		BOOL ret = SendMessage(tabControl, TCM_GETITEMRECT, SendMessage(tabControl, TCM_GETCURSEL, 0, 0), (LPARAM)&item_rc); //returns rc in "viewport" coords, aka in respect to tab control, so it's good
+		BOOL ret = (BOOL)SendMessage(tabControl, TCM_GETITEMRECT, SendMessage(tabControl, TCM_GETCURSEL, 0, 0), (LPARAM)&item_rc); //returns rc in "viewport" coords, aka in respect to tab control, so it's good
 		
 		if (ret) {
 			//2.Adjust rect to close button position
@@ -1242,17 +1237,17 @@ void CleanTabRelatedControls() {//TODO(fran): probably should ask for a blank TE
 	EnableTab(blank);
 }
 
-LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: if I ever feel like managing WM_PAINT: https://social.msdn.microsoft.com/Forums/expression/en-US/d25d08fb-acf1-489e-8e6c-55ac0f3d470d/tab-controls-in-win32-api?forum=windowsuidevelopment
 	switch (Msg) {
 	case TCM_RESIZETABS:
 	{
-		int item_count = SendMessage(hWnd, TCM_GETITEMCOUNT, 0, 0);
+		int item_count = (int)SendMessage(hWnd, TCM_GETITEMCOUNT, 0, 0);
 		if (item_count != 0) {
 			for (int i = 0; i < item_count; i++) {
 				CUSTOM_TCITEM item;
 				item.tab_info.mask = TCIF_PARAM;
-				BOOL ret = SendMessage(hWnd, TCM_GETITEM, i, (LPARAM)&item);
+				BOOL ret = (BOOL)SendMessage(hWnd, TCM_GETITEM, i, (LPARAM)&item);
 				if (ret) {
 					RECT rc;
 					GetClientRect(hWnd, &rc);
@@ -1300,7 +1295,7 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 			//Delete corresponding tab
 			SendMessage(hWnd, TCM_DELETEITEM, index, 0); //After this no other messages are sent and the tab control's index gets set to -1
 			//Now we have to send a TCM_SETCURSEL, but in the special case that no other tabs are left we should clean the controls
-			int item_count = SendMessage(hWnd, TCM_GETITEMCOUNT, 0, 0);
+			int item_count = (int)SendMessage(hWnd, TCM_GETITEMCOUNT, 0, 0);
 			if (item_count == 0) CleanTabRelatedControls();									//if there's no tabs left clean the controls
 			else if (index == item_count) SendMessage(hWnd, TCM_SETCURSEL, index - 1, 0);	//if the deleted tab was the rightmost one change to the one on the left
 			else SendMessage(hWnd, TCM_SETCURSEL, index, 0);								//otherwise change to the tab that now holds the index that this one did(will select the one on its right)
@@ -1311,7 +1306,7 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 	case TCM_DELETEITEM:
 	{
 		//Since right now our controls (text editor) are not children of the particular tab they dont get deleted when that one does, so gotta do it manually
-		int index = wParam;
+		int index = (int)wParam;
 
 		TEXT_INFO info = GetTabExtraInfo(index);
 		//Any hwnd should be destroyed
@@ -1337,7 +1332,7 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 
 		CUSTOM_TCITEM new_item;
 		new_item.tab_info.mask = TCIF_PARAM;
-		BOOL ret = SendMessage(hWnd, TCM_GETITEM, wParam, (LPARAM)&new_item);
+		BOOL ret = (BOOL)SendMessage(hWnd, TCM_GETITEM, wParam, (LPARAM)&new_item);
 		if (ret) {
 			EnableTab(new_item.extra_info);
 		}
@@ -1488,7 +1483,7 @@ void ChooseFile(wstring ext) {
 						onefile += L'\\';
 						onefile += &new_file.lpstrFile[i+1];
 						files.push_back(onefile);
-						i += wcslen(&new_file.lpstrFile[i + 1]);//TODO(fran): check this is actually faster
+						i += (int)wcslen(&new_file.lpstrFile[i + 1]);//TODO(fran): check this is actually faster
 					}
 				}
 			}
@@ -1548,11 +1543,11 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 
 ENCODING GetTextEncoding(wstring filename) {
 	
-	HANDLE hFile;
+	HANDLE file;
 	DWORD  dwBytesRead = 0;
 	BYTE   header[4] = { 0 };
 
-	hFile = CreateFile(filename.c_str(),// file to open
+	file = CreateFile(filename.c_str(),// file to open
 		GENERIC_READ,          // open for reading
 		FILE_SHARE_READ,       // share for reading
 		NULL,                  // default security
@@ -1560,16 +1555,16 @@ ENCODING GetTextEncoding(wstring filename) {
 		FILE_ATTRIBUTE_NORMAL, // normal file
 		NULL);                 // no attr. template
 
-	Assert(hFile != INVALID_HANDLE_VALUE);
+	Assert(file != INVALID_HANDLE_VALUE);
 
-	BOOL read_res = ReadFile(hFile, header, 4, &dwBytesRead, NULL);
+	BOOL read_res = ReadFile(file, header, 4, &dwBytesRead, NULL);
 	Assert(read_res);
 
-	CloseHandle(hFile);
+	CloseHandle(file);
 
 	if (header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)	return ENCODING::UTF8; //File has UTF8 BOM
-	else if (header[0] == (char)0xFF && header[1] == (char)0xFE)		return ENCODING::UTF16; //File has UTF16LE BOM, INFO: this could actually be UTF32LE but I've never seen a subtitle file enconded in utf32 so no real need to do the extra checks
-	else if (header[0] == (char)0xFE && header[1] == (char)0xFF)		return ENCODING::UTF16; //File has UTF16BE BOM
+	else if (header[0] == 0xFF && header[1] == 0xFE)		return ENCODING::UTF16; //File has UTF16LE BOM, INFO: this could actually be UTF32LE but I've never seen a subtitle file enconded in utf32 so no real need to do the extra checks
+	else if (header[0] == 0xFE && header[1] == 0xFF)		return ENCODING::UTF16; //File has UTF16BE BOM
 	else {//Do manual check
 
 		//Check for UTF8
@@ -1588,14 +1583,14 @@ ENCODING GetTextEncoding(wstring filename) {
 
 		//Check for UTF16
 
-		hFile = CreateFile(filename.c_str(),GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL); //Open file for reading
-		Assert(hFile != INVALID_HANDLE_VALUE);
+		file = CreateFile(filename.c_str(),GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL); //Open file for reading
+		Assert(file != INVALID_HANDLE_VALUE);
 
 		BYTE fixedBuffer[50000] = {0}; //We dont need the entire file, just enough data for the functions to be as accurate as possible. Pd. this is probably too much already
-		read_res = ReadFile(hFile, fixedBuffer, 50000, &dwBytesRead, NULL);
+		read_res = ReadFile(file, fixedBuffer, 50000, &dwBytesRead, NULL);
 		Assert(read_res);
 
-		CloseHandle(hFile);
+		CloseHandle(file);
 
 		AutoIt::Common::TextEncodingDetect textDetect;
 		bool isUTF16 = textDetect.isUTF16(fixedBuffer,dwBytesRead);
@@ -1630,18 +1625,18 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {
 /// <returns>TRUE if successful, FALSE otherwise</returns>
 BOOL ReadText(wstring filepath, wstring& text) {
 
-	unsigned char encoding = GetTextEncoding(filepath);
+	ENCODING encoding = GetTextEncoding(filepath);
 
 	wifstream file(filepath, ios::binary);
 
 	if (file.is_open()) {
 
 		//set encoding for getline
-		if (encoding == UTF8)
+		if (encoding == ENCODING::UTF8)
 			file.imbue(locale(std::locale::empty(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
 			//int a;
 			//maybe the only thing needed when utf8 is detectedd is to remove the BOM if it is there
-		else if (encoding == UTF16)
+		else if (encoding == ENCODING::UTF16)
 			file.imbue(locale(std::locale::empty(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
 		//if encoding is ANSI we do nothing
 
@@ -1725,7 +1720,7 @@ void AcceptedFile(wstring filename) {
 	ReadText(filename, text);
 
 	TEXT_INFO text_data;
-	wcsncpy(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
+	wcsncpy_s(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
 
 	int pos = GetNextTabPos();//TODO(fran): careful with multithreading here
 
@@ -1902,14 +1897,14 @@ void ResizeWindows(HWND mainWindow) {
 /// </summary>
 /// <param name="uIdSubclass">Not used</param>
 /// <param name="dwRefData">Not used</param>
-LRESULT CALLBACK ShowMessageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+LRESULT CALLBACK ShowMessageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: for this procedure and its hwnds we are going to try the SetProp method for storing info in the hwnd
 	TCHAR text_duration[] = TEXT("TextDuration_unCap");
 	switch (Msg)
 	{
 	case UNCAP_SETTEXTDURATION:
 	{
-		SetProp(hWnd, text_duration, (HANDLE)(UINT)wParam);
+		SetProp(hWnd, text_duration, (HANDLE)wParam);
 		return TRUE;
 	}
 	case WM_TIMER: {
@@ -1952,7 +1947,7 @@ LRESULT CALLBACK ShowMessageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
 	return 0;
 }
 
-LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	static BOOL MouseOver = false;
 	static HWND CurrentMouseOverButton;
 
@@ -2022,7 +2017,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 		SelectObject(hdc, oldpen);
 		DeleteObject(pen);
 
-		DWORD style = GetWindowLongPtr(hWnd, GWL_STYLE);
+		DWORD style = (DWORD)GetWindowLongPtr(hWnd, GWL_STYLE);
 		if (style & BS_ICON) {//Here will go buttons that only have an icon
 			//For this app we dont need buttons with icons
 		}
@@ -2033,7 +2028,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 			}
 			SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
 			WCHAR Text[40];
-			int len = SendMessage(hWnd, WM_GETTEXT,
+			int len = (int)SendMessage(hWnd, WM_GETTEXT,
 				ARRAYSIZE(Text), (LPARAM)Text);
 
 			TEXTMETRIC tm;
@@ -2057,7 +2052,7 @@ LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, U
 	return 0;
 }
 
-LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR uIdSubclass, DWORD_PTR dwRefData) {
+LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	static BOOL MouseOverCombo = FALSE;
 	static HWND CurrentMouseOverCombo;
 
@@ -2109,7 +2104,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 	//case CBN_DROPDOWN://lets us now that the list is about to be show, therefore the user clicked us
 	case WM_PAINT:
 	{
-		DWORD style = GetWindowLongPtr(hWnd, GWL_STYLE);
+		DWORD style = (DWORD)GetWindowLongPtr(hWnd, GWL_STYLE);
 		if (!(style & CBS_DROPDOWNLIST))
 			break;
 
@@ -2119,7 +2114,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		PAINTSTRUCT ps;
 		HDC hdc = BeginPaint(hWnd, &ps);
 
-		BOOL ButtonState = SendMessageW(hWnd, CB_GETDROPPEDSTATE, 0, 0);
+		BOOL ButtonState = (BOOL)SendMessageW(hWnd, CB_GETDROPPEDSTATE, 0, 0);
 		if (ButtonState) {
 			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
 			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
@@ -2159,10 +2154,10 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		*/
 		int DISTANCE_TO_SIDE = 5;
 
-		int index = SendMessage(hWnd, CB_GETCURSEL, 0, 0);
+		int index = (int)SendMessage(hWnd, CB_GETCURSEL, 0, 0);
 		if (index >= 0)
 		{
-			int buflen = SendMessage(hWnd, CB_GETLBTEXTLEN, index, 0);
+			int buflen = (int)SendMessage(hWnd, CB_GETLBTEXTLEN, index, 0);
 			TCHAR *buf = new TCHAR[(buflen + 1)];
 			SendMessage(hWnd, CB_GETLBTEXT, index, (LPARAM)buf);
 			rc.left += DISTANCE_TO_SIDE;
@@ -2175,7 +2170,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		icon_size.cy = (LONG)((float)(r.bottom - r.top)*.6f);
 		icon_size.cx = icon_size.cy;
 
-		HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWL_HINSTANCE);
+		HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
 		//LONG icon_id = GetWindowLongPtr(hWnd, GWL_USERDATA);
 		//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
 		HICON combo_dropdown_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(COMBO_ICON), IMAGE_ICON, icon_size.cx, icon_size.cy, LR_SHARED);
@@ -2236,7 +2231,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 	{
 		AddMenus(hWnd);
-		AddControls(hWnd, (HINSTANCE)GetWindowLongPtr(hWnd, GWL_HINSTANCE));
+		AddControls(hWnd, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE));
 		if (Backup_Is_Checked)CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
 		else CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED);
 
@@ -2317,7 +2312,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				RECT modified_rc = item->rcItem;
 				modified_rc.left = xPos;
 				modified_rc.right -= (TabCloseButtonInfo.rightPadding + TabCloseButtonInfo.icon.cx);
-				BOOL res = GetTextExtentExPoint(item->hDC, text.c_str(), text.length()
+				BOOL res = GetTextExtentExPoint(item->hDC, text.c_str(), (int)text.length()
 					, RECTWIDTH(modified_rc)/*TODO(fran):This should be DPI aware*/, &max_count, NULL, &fulltext_size);
 				Assert(res);
 				int len = max_count;
@@ -2347,7 +2342,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				//r.bottom = r.top + TabCloseButtonInfo.icon.cy;
 				//FillRect(item->hDC, &r, unCap_colors.ControlTxt);
 				
-				HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWL_HINSTANCE);
+				HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
 				//LONG icon_id = GetWindowLongPtr(hWnd, GWL_USERDATA);
 				//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
 				HICON close_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(CROSS_ICON), IMAGE_ICON, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, LR_SHARED);
@@ -2487,14 +2482,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case TCN_SELCHANGE:
 		{
-			int index = SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
+			int index = (int)SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
 			if (index != -1) {
 				CUSTOM_TCITEM new_item;
 				new_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
 				//WCHAR buf[20] = { 0 };
 				//prev_item.tab_info.pszText = buf;
 				//prev_item.tab_info.cchTextMax = 20;
-				BOOL ret = SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
+				BOOL ret = (BOOL)SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
 				if (ret) {
 					EnableTab(new_item.extra_info);
 				}

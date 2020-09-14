@@ -65,7 +65,7 @@ LANGID LANGUAGE_MANAGER::ChangeLanguage(LANGUAGE newLang)
 {
 	//if (newLang == this->CurrentLanguage) return -1;//TODO: negative values wrap around to huge values, I assume not all lcid values are valid, find out if these arent
 	BOOL res = this->IsValidLanguage(newLang);
-	if (!res) return -2;
+	if (!res) return (LANGID)-2;
 
 	this->CurrentLanguage = newLang;
 	//LCID previousLang = SetThreadLocale(this->GetLCID(newLang));
@@ -117,7 +117,7 @@ inline BOOL LANGUAGE_MANAGER::UpdateDynamicHwnd(HWND hwnd, UINT messageID)
 
 inline BOOL LANGUAGE_MANAGER::UpdateCombo(HWND hwnd, UINT ID, UINT stringID)
 {
-	UINT currentSelection = SendMessage(hwnd, CB_GETCURSEL, 0, 0);//TODO(fran): is there truly no better solution than having to do all this just to change a string?
+	UINT currentSelection = (UINT)SendMessage(hwnd, CB_GETCURSEL, 0, 0);//TODO(fran): is there truly no better solution than having to do all this just to change a string?
 	SendMessage(hwnd, CB_DELETESTRING, ID, 0);
 	LRESULT res = SendMessage(hwnd, CB_INSERTSTRING, ID, (LPARAM)this->RequestString(stringID).c_str());
 	if (currentSelection != CB_ERR) {
@@ -135,7 +135,7 @@ inline BOOL LANGUAGE_MANAGER::UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID
 	std::wstring temp_text = this->RequestString(stringID);
 	//menu_setter.dwTypeData = _wcsdup(this->RequestString(stringID).c_str()); //TODO(fran): can we avoid dupping, if not free memory
 	menu_setter.dwTypeData = (LPWSTR)temp_text.c_str();
-	BOOL res = SetMenuItemInfoW(hmenu, ID, FALSE, &menu_setter);
+	BOOL res = SetMenuItemInfoW(hmenu, (UINT)ID, FALSE, &menu_setter);
 	return res;
 }
 

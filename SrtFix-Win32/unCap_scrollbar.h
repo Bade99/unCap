@@ -4,6 +4,14 @@
 
 //NOTE: this scrollbar is only for edit controls (for now), and only vertical
 
+/*TODOs
+TODO: scrollbar teleports when we press and move the mouse, cause we told it to do that, instead it should have the initial distance between scrollbar origin and mouse into account
+TODO: there's some weird rendering bug where the bar appears in a much older position for a brief moment, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it
+TODO: scrollbar goes a little too far on the bottom and starts getting cut
+
+*/
+
+
 constexpr TCHAR unCap_wndclass_scrollbar[] = TEXT("unCap_wndclass_scrollbar");
 
 enum class ScrollBarPlacement { left, right, top, bottom }; //NOTE: left and right should only be used for vertical scrollbars, top and bottom for horizontal
@@ -36,25 +44,26 @@ void U_SB_set_stats(HWND hwnd, UINT rangemax, UINT pagesz, UINT pos) {
 
 void SCROLL_resize(ScrollProcState* state, int scrollbar_thickness) {
 	RECT r; GetWindowRect(state->parent, &r); //TODO(fran): im using GetWindowRect, but later it may be better to use GetClientRect
+	int spacing = 2;// A few pixels of spacing so the control doesnt feel so suck to the corners
 	switch (state->place) {
 		//vertical
 	case ScrollBarPlacement::left:
 	{
-		MoveWindow(state->wnd, 0, 0, scrollbar_thickness, RECTHEIGHT(r), TRUE);
+		MoveWindow(state->wnd, spacing, spacing, scrollbar_thickness, RECTHEIGHT(r) - spacing, TRUE);
 	}break;
 	case ScrollBarPlacement::right:
 	{
-		MoveWindow(state->wnd, RECTWIDTH(r) - scrollbar_thickness, 0, scrollbar_thickness, RECTHEIGHT(r), TRUE);
+		MoveWindow(state->wnd, RECTWIDTH(r) - scrollbar_thickness - spacing, spacing, scrollbar_thickness, RECTHEIGHT(r) - spacing, TRUE);
 	}break;
 	//horizontal
 	case ScrollBarPlacement::top:
 	{
-		MoveWindow(state->wnd, 0, 0, RECTWIDTH(r), scrollbar_thickness, TRUE);
+		MoveWindow(state->wnd, spacing, spacing, RECTWIDTH(r) - spacing, scrollbar_thickness, TRUE);
 
 	}break;
 	case ScrollBarPlacement::bottom:
 	{
-		MoveWindow(state->wnd, 0, RECTHEIGHT(r) - scrollbar_thickness, RECTWIDTH(r), scrollbar_thickness, TRUE);
+		MoveWindow(state->wnd, spacing, RECTHEIGHT(r) - scrollbar_thickness - spacing, RECTWIDTH(r) - spacing, scrollbar_thickness, TRUE);
 
 	}break;
 	}
@@ -110,8 +119,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		return 0;
 	}
 
-	//TODO(fran): there's some weird rendering bug where the bar is appears in a much previous position, probably some old hdc or something left behind that I should have deleted/painted over, doesnt look like my painting generates it
-
+	
 	ScrollProcState* state = (ScrollProcState*)GetWindowLongPtr(hwnd, 0); //INFO: windows recomends to use GWL_USERDATA https://docs.microsoft.com/en-us/windows/win32/learnwin32/managing-application-state-
 	//Assert(state); //NOTE: cannot check thanks to the grandeur of windows' hidden msgs before WM_CREATE
 	switch (msg) {
@@ -179,7 +187,6 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		InvalidateRect(state->wnd, NULL, FALSE);
 		return 0;
 	} break;
-	//TODO(fran): scrollbar goes a little too far on the bottom and starts getting cut, fix that
 	case WM_MOUSEMOVE: //TODO(fran): scroll when mouse clicks the background
 	{
 		//printf("MOUSEMOVE\n");
@@ -203,7 +210,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			RECT client_rc;
 			GetClientRect(state->wnd, &client_rc);
 
-			int mouse_p = clamp(client_rc.top,mouse.y,client_rc.bottom); //0 to height TODO(fran): this is not really correct since the user can move the mouse below/above the window
+			int mouse_p = clamp(client_rc.top,mouse.y,client_rc.bottom); //0 to height
 			float p_ratio = safe_ratio0((float)mouse_p, (float)RECTHEIGHT(client_rc));//0.0 to 1.0
 			state->p = (int)((float)distance(state->range_max, state->range_min) * p_ratio); //min to max range
 
@@ -213,27 +220,6 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 			InvalidateRect(state->wnd, NULL, FALSE);
 		}
-		/*if (wparam & MK_LBUTTON) {
-			//left button is being pressed
-			//NOTE: in the examples they use this place to make updates, eg set brighter color, but mouse capture is only done in its specific msg
-
-			if (state->onMouseOverSb) {//The mouse is above us and left click is pressed, so the bar is being pressed
-				//TODO(fran): need extra state onTracking, cause once the user has pressed and started moving they can leave the scrollbar but retain the button pressed and we have to read that just as well
-				//printf("MOUSEOVER_BAR_PRESSED\n");
-				RECT client_rc;
-				GetClientRect(state->wnd, &client_rc);
-
-				int mouse_p = mouse.y; //0 to height
-				float p_ratio = safe_ratio0((float)mouse_p, (float)RECTHEIGHT(client_rc));//0.0 to 1.0
-				state->p = (float)distance(state->range_max, state->range_min) * p_ratio; //min to max range
-
-				//Notify parent
-				SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_THUMBTRACK,state->p),(LPARAM)state->wnd);
-
-				InvalidateRect(state->wnd, NULL, FALSE);
-			}
-		}*/
-
 
 		return 0;
 	} break;
@@ -247,13 +233,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		//DefWindowProc passes this to its parent to see if it wants to change the cursor settings, we'll make a decision, setting the mouse cursor, and halting proccessing so it stays like that
 		//Sent after getting the result of WM_NCHITTEST, mouse is inside our window and mouse input is not being captured
-		//if ((HWND)wparam == state->wnd) {
-		//	LRESULT hittest_res = LOWORD(lparam);
-		//	if (hittest_res == HTCLIENT) {
-		//		SetCursor()
-		//		return TRUE;//halt further processing
-		//	}
-		//}
+
 		/* https://docs.microsoft.com/en-us/windows/win32/learnwin32/setting-the-cursor-image
 			if we pass WM_SETCURSOR to DefWindowProc, the function uses the following algorithm to set the cursor image:
 			1. If the window has a parent, forward the WM_SETCURSOR message to the parent to handle.
@@ -385,18 +365,22 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		state->place = (ScrollBarPlacement)wparam;
 		Assert(is_vertical(state->place));
-		SendMessage(state->wnd, U_SB_AUTORESIZE, 0, 0); //TODO(fran): should I just use SendMessage?
+		SendMessage(state->wnd, U_SB_AUTORESIZE, 0, 0);
 	} break;
 	case U_SB_AUTORESIZE:
 	{
 		SCROLL_resize(state, scrollbar_thickness);
 	} break;
-	//TODO(fran): send messages to the parent, and manage collision testing, remember that it expects to have buttons for up and down that we want removed, so no collision testing for those
 	case WM_DESTROY:
 	{
 		free(state);
 	}break;
-	default:Assert(0);
+	default:
+#ifdef _DEBUG
+		Assert(0);
+#else 
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+#endif
 	}
 	return 0;
 }
