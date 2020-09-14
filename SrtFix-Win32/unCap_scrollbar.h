@@ -109,6 +109,8 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	*/
 	static int scrollbar_thickness = max(GetSystemMetrics(SM_CXVSCROLL) / 2, 5);
 
+	constexpr UINT_PTR timer_id_bk_click_held = 1;
+
 	if (msg == WM_CREATE) {
 		ScrollProcState* state = (ScrollProcState*)calloc(1, sizeof(ScrollProcState));
 		Assert(state);
@@ -118,7 +120,6 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		state->wnd = hwnd;
 		return 0;
 	}
-
 	
 	ScrollProcState* state = (ScrollProcState*)GetWindowLongPtr(hwnd, 0); //INFO: windows recomends to use GWL_USERDATA https://docs.microsoft.com/en-us/windows/win32/learnwin32/managing-application-state-
 	//Assert(state); //NOTE: cannot check thanks to the grandeur of windows' hidden msgs before WM_CREATE
@@ -169,8 +170,34 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		
 		return 0;
 	} break;
+	case WM_TIMER:
+	{
+		if (timer_id_bk_click_held == (UINT_PTR)wparam) {
+			KillTimer(state->wnd, timer_id_bk_click_held);
+			if (state->onLMouseClickBk) {
+				//Check the mouse is still in the bk area, it could be that it moved away or that the bar reached the timer's position
+				POINT mouse;
+				GetCursorPos(&mouse);
+				ScreenToClient(state->wnd, &mouse);
+				RECT client_rc; GetClientRect(state->wnd, &client_rc);
+				RECT sb_rc = SCROLL_calc_scrollbar(state);
+				if (test_point_rc(mouse, client_rc) && !test_point_rc(mouse, sb_rc)) {
+					//Mouse is in bk area
+					if (mouse.y < sb_rc.top) //mouse hit above the bar
+						SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_PAGEUP, 0), (LPARAM)state->wnd);
+					else //mouse hit below the bar
+						SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_PAGEDOWN, 0), (LPARAM)state->wnd);
+
+					SetTimer(state->wnd, timer_id_bk_click_held, USER_TIMER_MINIMUM, NULL);
+				}
+			}
+			//TODO(fran): I have the feeling that you need to kill the timer, otherwise it'll be constantly spamming your msg queue once it reached the time
+			return 0;
+		}
+	} break;
 	case WM_LBUTTONDOWN:
 	{
+		printf("LBUTTONDOWN\n");
 		//Left click is down
 		if (state->onMouseOverSb) {
 			//Click happened inside the bar, so we want to capture the mouse movement in case the user starts moving the mouse trying to scroll
@@ -183,6 +210,16 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			//Mouse is inside the background
 			//TODO(fran): make sure it's inside the bk, cause when we are tracking we may still get this msg from outside the client area
 			state->onLMouseClickBk = true;
+
+			//Notify parent
+			POINT mouse = { GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };
+			RECT sb_rc = SCROLL_calc_scrollbar(state);
+			if(mouse.y < sb_rc.top) //mouse hit above the bar
+				SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_PAGEUP, 0), (LPARAM)state->wnd);
+			else //mouse hit below the bar
+				SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_PAGEDOWN, 0), (LPARAM)state->wnd);
+			//Start timer to check if the user wants to continue scrolling
+			SetTimer(state->wnd, timer_id_bk_click_held, 500, NULL);
 		}
 		InvalidateRect(state->wnd, NULL, FALSE);
 		return 0;
