@@ -161,6 +161,7 @@
     <ClInclude Include="unCap_math.h" />
     <ClInclude Include="unCap_scrollbar.h" />
     <ClInclude Include="utf8.h" />
+    <ClInclude Include="windows_msg_mapper.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="format.cc" />

@@ -3,15 +3,17 @@
 #include "unCap_helpers.h"
 
 //NOTE: this scrollbar is only for edit controls (for now), and only vertical
+//NOTE: it's important that the parent uses WS_CLIPCHILDREN to avoid horrible flickering
 
 /*TODOs
 TODO: scrollbar teleports when we press and move the mouse, cause we told it to do that, instead it should have the initial distance between scrollbar origin and mouse into account
-//TODO: reduce flickering when tracking, maybe use double buffering, example: http://www.catch22.net/tuts/win32/flicker-free-drawing from this I understand flicker will always happen if you overdraw, we could fix it now, since all we draw is squares we can calculate the exact area that needs bk clearing, but if we want to do rounded rectangles it's gonna be impossible to get right
+
+TODO: reduce flickering when tracking, maybe use double buffering, example: http://www.catch22.net/tuts/win32/flicker-free-drawing from this I understand flicker will always happen if you overdraw, we could fix it now, since all we draw is squares we can calculate the exact area that needs bk clearing, but if we want to do rounded rectangles it's gonna be impossible to get right. another example: https://docs.microsoft.com/en-us/previous-versions/ms969905(v=msdn.10)?redirectedfrom=MSDN
+
 TODO: scrollbar goes a little too far on the bottom and starts getting cut
+
 TODO: establish clip region so we dont have to worry about errors drawing outside our client area (seems like BeginPaint takes cares of that automatically)
 */
-
-//NOTE: it's important that the parent uses WS_CLIPCHILDREN to avoid horrible flickering
 
 constexpr TCHAR unCap_wndclass_scrollbar[] = TEXT("unCap_wndclass_scrollbar");
 
@@ -47,7 +49,7 @@ void U_SB_set_stats(HWND hwnd, UINT rangemax, UINT pagesz, UINT pos) {
 	SendMessage(hwnd, U_SB_SET_POS, pos, 0);
 }
 
-void SCROLL_resize(ScrollProcState* state, int scrollbar_thickness) {
+static void SCROLL_resize(ScrollProcState* state, int scrollbar_thickness) {
 	RECT r; GetWindowRect(state->parent, &r); //TODO(fran): im using GetWindowRect, but later it may be better to use GetClientRect
 	int spacing = 2;// A few pixels of spacing so the control doesnt feel so suck to the corners
 	switch (state->place) {
@@ -75,11 +77,11 @@ void SCROLL_resize(ScrollProcState* state, int scrollbar_thickness) {
 	state->fullBkRepaint = true;
 }
 
-bool is_vertical(ScrollBarPlacement place) {
+static bool is_vertical(ScrollBarPlacement place) {
 	return place == ScrollBarPlacement::left || place == ScrollBarPlacement::right;
 }
 
-RECT SCROLL_calc_scrollbar(ScrollProcState* state) {
+static RECT SCROLL_calc_scrollbar(ScrollProcState* state) {
 	RECT client_rc;
 	GetClientRect(state->wnd, &client_rc);
 	float sb_pos = safe_ratio0((float)state->p, (float)distance(state->range_max, state->range_min));
@@ -97,7 +99,7 @@ RECT SCROLL_calc_scrollbar(ScrollProcState* state) {
 	return sb_rc;
 }
 
-bool test_point_rc(POINT p, RECT r) {
+static bool test_point_rc(POINT p, RECT r) {
 	bool hit = false;
 	if (p.y >= r.top &&//top
 		p.y < r.bottom &&//bottom
@@ -109,7 +111,7 @@ bool test_point_rc(POINT p, RECT r) {
 	return hit;
 }
 
-bool sameRc(RECT r1, RECT r2) {
+static bool sameRc(RECT r1, RECT r2) {
 	bool res = r1.bottom == r2.bottom && r1.left == r2.left && r1.right == r2.right && r1.top == r2.top;
 	return res;
 }

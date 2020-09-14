@@ -48,6 +48,9 @@
     <ClInclude Include="unCap_global.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
+    <ClInclude Include="windows_msg_mapper.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SrtFix-Win32.cpp">

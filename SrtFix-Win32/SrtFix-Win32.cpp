@@ -1021,6 +1021,9 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 		state->wnd = hwnd;
 	}
 
+	static long long msg_cnt = 0;
+	printf("%lld:%s\n",msg_cnt++, msgToString(msg));
+
 	switch (msg) {
 	case WM_MOUSEWHEEL:
 	{
@@ -1079,6 +1082,7 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 	}break;
 	//Messages that could trigger the need for updating the scrollbar
 	case WM_PAINT:
+	case EM_POSFROMCHAR:
 	//TODO(fran): add more
 	{
 		LRESULT res = DefSubclassProc(hwnd, msg, wparam, lparam);
