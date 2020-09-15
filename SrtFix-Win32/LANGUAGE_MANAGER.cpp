@@ -130,7 +130,7 @@ inline BOOL LANGUAGE_MANAGER::UpdateCombo(HWND hwnd, UINT ID, UINT stringID)
 inline BOOL LANGUAGE_MANAGER::UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID)
 {
 	MENUITEMINFOW menu_setter;
-	menu_setter.cbSize = sizeof(MENUITEMINFOW);
+	menu_setter.cbSize = sizeof(menu_setter);
 	menu_setter.fMask = MIIM_STRING;
 	std::wstring temp_text = this->RequestString(stringID);
 	//menu_setter.dwTypeData = _wcsdup(this->RequestString(stringID).c_str()); //TODO(fran): can we avoid dupping, if not free memory

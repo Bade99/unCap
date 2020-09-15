@@ -35,6 +35,8 @@ namespace fs = std::experimental::filesystem;
 #define TABCONTROL 18
 #define TIMEDMESSAGES 19
 #define INITIALFINALCHAR 20
+#define SEPARATOR1 21
+#define SEPARATOR2 22
 
 #define TCM_RESIZETABS (WM_USER+50) //Sent to a tab control for it to tell its tabs' controls to resize. wParam = lParam = 0
 #define TCM_RESIZE (WM_USER+51) //wParam= pointer to SIZE of the tab control ; lParam = 0
@@ -912,6 +914,16 @@ BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
 	return SetMenuItemInfo(hmenu, item, fByPositon, &i);
 }
 
+BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, TCHAR* str) {
+	MENUITEMINFOW menu_setter;
+	menu_setter.cbSize = sizeof(menu_setter);
+	menu_setter.fMask = MIIM_STRING;
+	//menu_setter.dwTypeData = _wcsdup(this->RequestString(stringID).c_str()); //TODO(fran): can we avoid dupping, if not free memory
+	menu_setter.dwTypeData = str;
+	BOOL res = SetMenuItemInfoW(hmenu, item, FALSE, &menu_setter);
+	return res;
+}
+
 void AddMenus(HWND hWnd) {
 	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
 	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hWnd);
@@ -922,34 +934,31 @@ void AddMenus(HWND hWnd) {
 	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"");
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
 
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, (LPCWSTR)hFileMenu); //NOTE: when MF_OWNERDRAW is used the 4th param is itemData
 	AMT(hFileMenu, OPEN_FILE, LANG_MENU_OPEN);
-	SetMenuItemData(hFileMenu, OPEN_FILE, 0, (ULONG_PTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, NULL, NULL);
+	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, SEPARATOR1, (LPCWSTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_FILE, (LPCWSTR)hFileMenu);
 	AMT(hFileMenu, SAVE_FILE, LANG_MENU_SAVE);
-	SetMenuItemData(hFileMenu, SAVE_FILE, 0, (ULONG_PTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_AS_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_AS_FILE, (LPCWSTR)hFileMenu);
 	AMT(hFileMenu, SAVE_AS_FILE, LANG_MENU_SAVEAS);
-	SetMenuItemData(hFileMenu, SAVE_AS_FILE, 0, (ULONG_PTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_STRING, BACKUP_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, BACKUP_FILE, (LPCWSTR)hFileMenu);
 	AMT(hFileMenu, BACKUP_FILE, LANG_MENU_BACKUP);
-	SetMenuItemData(hFileMenu, BACKUP_FILE, 0, (ULONG_PTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_SEPARATOR, NULL, NULL);
+	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, SEPARATOR2, (LPCWSTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_POPUP, (UINT_PTR)hFileMenuLang, L"");
+	AppendMenuW(hFileMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenuLang, (LPCWSTR)hFileMenu);
 	AMT(hFileMenu, (UINT_PTR)hFileMenuLang, LANG_MENU_LANGUAGE);
 	//TODO(fran): SetMenuItemInfo only accepts UINT, not the UINT_PTR of MF_POPUP, plz dont tell me I have to redo all of it a different way (LANGUAGE_MANAGER just does it normally not caring for the extra 32 bits)
 	
-	AppendMenuW(hFileMenuLang, MF_STRING, LANGUAGE_MANAGER::LANGUAGE::ENGLISH , L"English");
-	SetMenuItemData(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, 0, (ULONG_PTR)hFileMenuLang);
-	AppendMenuW(hFileMenuLang, MF_STRING, LANGUAGE_MANAGER::LANGUAGE::SPANISH, L"Español");
-	SetMenuItemData(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, (ULONG_PTR)hFileMenuLang);
+	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::ENGLISH , (LPCWSTR)hFileMenuLang);
+	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, 0, const_cast<TCHAR*>(TEXT("English")));
+
+	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::SPANISH, (LPCWSTR)hFileMenuLang);
+	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, const_cast<TCHAR*>(TEXT("Español")));
 
 	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK));
 	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CROSS));
@@ -2319,6 +2328,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			switch (menu_type.fType) {
 			case MFT_STRING:
 			{
+				//TODO(fran): check if it has a submenu, in which case, if it opens it to the side, we should leave a little more space for an arrow bmp (though there seems to be some extra space added already)
+
 				//Determine text space:
 				MENUITEMINFO menu_nfo; menu_nfo.cbSize = sizeof(menu_nfo);
 				menu_nfo.fMask = MIIM_STRING; menu_nfo.dwTypeData = NULL;
@@ -2347,7 +2358,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				
 				return TRUE;
 			} break;
-			//NOTE: we dont care about MF_SEPARATOR since that guy doesnt care about its size
+			case MF_SEPARATOR:
+			{
+				item->itemHeight = 3;
+				item->itemWidth = 1;
+				return TRUE;
+			} break;
 			default: return DefWindowProc(hWnd, message, wParam, lParam);
 			}
 		}
@@ -2370,7 +2386,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			//Determine which type of menu we're to draw
 			MENUITEMINFO menu_type;
 			menu_type.cbSize = sizeof(menu_type);
-			menu_type.fMask = MIIM_FTYPE;
+			menu_type.fMask = MIIM_FTYPE | MIIM_SUBMENU;
 			GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_type);
 			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be
 
@@ -2397,9 +2413,40 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				clrPrevText = SetTextColor(item->hDC, ColorFromBrush(txt_br));//TODO(fran): separate menu brushes
 				clrPrevBkgnd = SetBkColor(item->hDC, ColorFromBrush(bk_br));
 				
-				if(item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT)
+				if (item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT) { //TODO(fran): why does this paint over the bmp when on mouseover
 					FillRect(item->hDC, &item->rcItem, bk_br);
-				//TODO(fran): accompanying img rendering 
+				}
+				
+				//Render img on the left
+				{
+					MENUITEMINFO menu_img;
+					menu_img.cbSize = sizeof(menu_img);
+					menu_img.fMask = MIIM_CHECKMARKS | MIIM_STATE;
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_img);
+					HBITMAP hbmp=NULL;
+					if (menu_img.fState & MFS_CHECKED) { //If it is checked you can be sure you are going to draw some bmp
+						if (!menu_img.hbmpChecked) {
+							//TODO(fran): assign default checked bmp
+						}
+						hbmp = menu_img.hbmpChecked;
+					}
+					else if (menu_img.fState == MFS_UNCHECKED || menu_img.fState == MFS_HILITE) {//Really Windows? you really needed to set the value to 0? //TODO(fran): maybe it's better to just use else, maybe that's windows' logic for doing this
+						if (menu_img.hbmpUnchecked) {
+							hbmp = menu_img.hbmpUnchecked;
+						}
+						//If there's no bitmap we dont draw
+					}
+					if (hbmp) {
+						HDC bmp_dc = CreateCompatibleDC(item->hDC);
+						HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
+
+						BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
+						BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
+						//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
+						SelectObject(bmp_dc, oldBitmap);
+						DeleteDC(bmp_dc);
+					}
+				}
 
 				// Determine where to draw and leave space for a check mark. 
 				x = item->rcItem.left;
@@ -2445,11 +2492,24 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				{
 					DeleteObject(restoreRegion);
 				}
-
-
 				free(menu_str);
 
-				//TODO(fran): render img, we'll use the img just for its alpha and paint with the color for the text for example
+				if (menu_type.hSubMenu) { //Draw the submenu arrow
+					//TODO(fran): find out how to differentiate between drop-down menu and sub menu, arrow should only be drawn for submenus
+					//TODO: it seems windows already draws an arrow by default, of course, so we gotta kill that cause it paints over us
+					int img_sz = RECTHEIGHT(item->rcItem);
+					HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
+					if (arrow) {
+						HDC bmp_dc = CreateCompatibleDC(item->hDC);
+						HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
+
+						BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
+						BitBlt(item->hDC, item->rcItem.right-img_sz, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
+						//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
+						SelectObject(bmp_dc, oldBitmap);
+						DeleteDC(bmp_dc);
+					}
+				}
 
 				// Restore the original font and colors. 
 				SelectObject(item->hDC, hfntPrev);
@@ -2458,16 +2518,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			} break;
 			case MFT_SEPARATOR:
 			{
-				const int separator_padding = 3;
+				const int separator_x_padding = 3;
 				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
 				RECT separator_rc;
 				separator_rc.top = item->rcItem.top + RECTHEIGHT(item->rcItem)/2;
 				separator_rc.bottom = separator_rc.top + 1; //TODO(fran): fancier calc and position
-				separator_rc.left = item->rcItem.left + separator_padding;
-				separator_rc.right = item->rcItem.right - separator_padding;
+				separator_rc.left = item->rcItem.left + separator_x_padding;
+				separator_rc.right = item->rcItem.right - separator_x_padding;
 				FillRect(item->hDC, &separator_rc, unCap_colors.ControlTxt);
 				//TODO(fran): clipping
-				//TODO(fran): dont draw edge to edge, remove one pixel from each side
 			}
 			default: return DefWindowProc(hWnd, message, wParam, lParam);
 			}

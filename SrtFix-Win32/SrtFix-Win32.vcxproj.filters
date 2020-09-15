@@ -75,9 +75,6 @@
     <Image Include="small.ico">
       <Filter>Archivos de recursos</Filter>
     </Image>
-    <Image Include="SrtFix-Win32.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
     <Image Include="SrtFixE.ico">
       <Filter>Archivos de recursos</Filter>
     </Image>
@@ -106,6 +103,9 @@
       <Filter>Archivos de recursos</Filter>
     </Image>
     <Image Include="cross.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="RightArrow16.bmp">
       <Filter>Archivos de recursos</Filter>
     </Image>
   </ItemGroup>
