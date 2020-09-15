@@ -14,13 +14,12 @@ namespace fs = std::experimental::filesystem;
 
 
 //----------------------TODOs----------------------:
-//Draw my own Scrollbars
+//Paint Initial char and Final char wnds to look like the rest, add white border so they are more easily noticeable
 //Draw my own menu
 //Draw my own non client area
 //Parametric sizes for everything, and DPI awareness for controls that dont move
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 //Option to retain original file encoding on save, otherwise utf8/user defined default
-//Fonts with japanese support, basically full unicode charset support
 //Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
 
 //----------------------DEFINES----------------------:
@@ -113,7 +112,8 @@ HWND hRemoveCommentWith;
 HWND TextContainer;//The tab control where the text editors are "contained"
 HWND hMessage;//Show timed messages
 
-HFONT hGeneralFont;//Main font manager
+HFONT hGeneralFont;//Main font
+HFONT hMenuFont;//Menus font
 
 HMENU hPopupMenu;
 
@@ -162,6 +162,7 @@ TABCLIENT TabOffset;
 CLOSEBUTTON TabCloseButtonInfo; //Information for the placement of the close button of each tab in a tab control
 
 //----------------------HELPER FUNCTIONS----------------------:
+
 inline COLORREF ColorFromBrush(HBRUSH br) {
 	LOGBRUSH lb;
 	GetObject(br, sizeof(lb), &lb);
@@ -390,7 +391,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 
 	init_wndclass_unCap_scrollbar(hInstance);
 
-	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, appName, WS_OVERLAPPEDWINDOW,
+	//TODO(fran): I think the problem I get that someone else is drawing my nc area is because I ask for OVERLAPPED_WINDOW when I create the window, so it takes care of doing that, which I dont want, REMOVE IT
+	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, appName, /*This is WS_OVERLAPPEDWND ->*/ WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
 		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
 
 	if (!hMain) return FALSE;
@@ -462,7 +464,6 @@ wstring GetFontFaceName() {
 void CreateFonts()
 {
 	LOGFONTW lf;
-	HFONT   hFont;
 
 	memset(&lf, 0, sizeof(lf));
 	lf.lfQuality = CLEARTYPE_QUALITY;
@@ -470,16 +471,22 @@ void CreateFonts()
 	
 	//INFO: by default if I dont set faceName it uses "Modern", looks good but it lacks some charsets
 	wcsncpy_s(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
-	hFont = CreateFontIndirectW(&lf);
 
-	if (hGeneralFont != NULL)
-	{
+	if (hGeneralFont != NULL) {
 		DeleteObject(hGeneralFont);
 		hGeneralFont = NULL;
 	}
-
-	hGeneralFont = hFont;
+	hGeneralFont = CreateFontIndirectW(&lf);
 	if (hGeneralFont == NULL)
+		MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
+
+	if (hMenuFont != NULL) {
+		DeleteObject(hMenuFont);
+		hMenuFont = NULL;
+	}
+	lf.lfHeight = (LONG)((float)GetSystemMetrics(SM_CYMENU)*.85f);
+	hMenuFont = CreateFontIndirectW(&lf);
+	if (hMenuFont == NULL)
 	{
 		MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
 	}
@@ -897,8 +904,16 @@ HRESULT DoSaveAs(HWND textControl) //https://msdn.microsoft.com/en-us/library/wi
 	return hr;
 }
 
-void AddMenus(HWND hWnd) {
+BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
+	MENUITEMINFO i;
+	i.cbSize = sizeof(i);
+	i.fMask = MIIM_DATA;
+	i.dwItemData = data;
+	return SetMenuItemInfo(hmenu, item, fByPositon, &i);
+}
 
+void AddMenus(HWND hWnd) {
+	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
 	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hWnd);
 
 	hMenu = CreateMenu();
@@ -907,27 +922,34 @@ void AddMenus(HWND hWnd) {
 	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"");
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
 
-	AppendMenuW(hFileMenu, MF_STRING, OPEN_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, L"");
 	AMT(hFileMenu, OPEN_FILE, LANG_MENU_OPEN);
+	SetMenuItemData(hFileMenu, OPEN_FILE, 0, (ULONG_PTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_SEPARATOR, NULL, NULL);
+	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, NULL, NULL);
 
-	AppendMenuW(hFileMenu, MF_STRING, SAVE_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_FILE, L"");
 	AMT(hFileMenu, SAVE_FILE, LANG_MENU_SAVE);
+	SetMenuItemData(hFileMenu, SAVE_FILE, 0, (ULONG_PTR)hFileMenu);
 
-	AppendMenuW(hFileMenu, MF_STRING, SAVE_AS_FILE, L"");
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_AS_FILE, L"");
 	AMT(hFileMenu, SAVE_AS_FILE, LANG_MENU_SAVEAS);
+	SetMenuItemData(hFileMenu, SAVE_AS_FILE, 0, (ULONG_PTR)hFileMenu);
 
 	AppendMenuW(hFileMenu, MF_STRING, BACKUP_FILE, L"");
 	AMT(hFileMenu, BACKUP_FILE, LANG_MENU_BACKUP);
+	SetMenuItemData(hFileMenu, BACKUP_FILE, 0, (ULONG_PTR)hFileMenu);
 
 	AppendMenuW(hFileMenu, MF_SEPARATOR, NULL, NULL);
 
 	AppendMenuW(hFileMenu, MF_POPUP, (UINT_PTR)hFileMenuLang, L"");
 	AMT(hFileMenu, (UINT_PTR)hFileMenuLang, LANG_MENU_LANGUAGE);
+	//TODO(fran): SetMenuItemInfo only accepts UINT, not the UINT_PTR of MF_POPUP, plz dont tell me I have to redo all of it a different way (LANGUAGE_MANAGER just does it normally not caring for the extra 32 bits)
 	
 	AppendMenuW(hFileMenuLang, MF_STRING, LANGUAGE_MANAGER::LANGUAGE::ENGLISH , L"English");
+	SetMenuItemData(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, 0, (ULONG_PTR)hFileMenuLang);
 	AppendMenuW(hFileMenuLang, MF_STRING, LANGUAGE_MANAGER::LANGUAGE::SPANISH, L"Español");
+	SetMenuItemData(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, (ULONG_PTR)hFileMenuLang);
 
 	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK));
 	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CROSS));
@@ -2227,6 +2249,10 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE lang, LANGUAGE_MANAGER::LANGUAGE 
 	CheckMenuItem(hFileMenu, oldLang, MF_BYCOMMAND | MF_UNCHECKED);
 }
 
+LONG usable_TabbedTextOut(HDC hdc, int x, int y, LPCSTR lpString, int chCount, int nTabPositions, const INT *lpnTabStopPositions, int nTabOrigin) {
+	return 0;
+}
+
 //TODO(fran): DPI awareness
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -2277,13 +2303,179 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
+	case WM_MEASUREITEM://NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
+	{
+		//wparam has duplicate info from item
+		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lParam;
+		if (item->CtlType == ODT_MENU && item->itemData) { //menu with parent HMENU
+			//item->CtlID is not used
+			
+			//Determine which type of menu we're to measure
+			MENUITEMINFO menu_type;
+			menu_type.cbSize = sizeof(menu_type);
+			menu_type.fMask = MIIM_FTYPE;
+			GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_type);
+			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be
+			switch (menu_type.fType) {
+			case MFT_STRING:
+			{
+				//Determine text space:
+				MENUITEMINFO menu_nfo; menu_nfo.cbSize = sizeof(menu_nfo);
+				menu_nfo.fMask = MIIM_STRING; menu_nfo.dwTypeData = NULL;
+				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
+				UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
+				menu_nfo.cch = menu_str_character_cnt;
+				TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
+				menu_nfo.dwTypeData = menu_str;
+				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
+
+				HDC dc = GetDC(hWnd); //Of course they had to ask for a dc, and not give the option to just provide the font, which is the only thing this function needs
+				HFONT hfntPrev = (HFONT)SelectObject(dc, hMenuFont);
+				int old_mapmode = GetMapMode(dc);
+				SetMapMode(dc, MM_TEXT);
+				WORD text_width = LOWORD(GetTabbedTextExtent(dc, menu_str, menu_str_character_cnt - 1,0,NULL)); //TODO(fran): make common function for this and the one that does rendering, also look at how tabs work
+				text_width += LOWORD(GetTabbedTextExtent(dc, TEXT(" "), 1, 0, NULL)); //a space at the beginning
+				SetMapMode(dc, old_mapmode);
+
+				SelectObject(dc, hfntPrev);
+				ReleaseDC(hWnd, dc);
+				free(menu_str);
+				//
+
+				item->itemWidth = GetSystemMetrics(SM_CXMENUCHECK) + text_width; /*Extra space for left bitmap*/; //TODO(fran): we'll probably add a 1 space separation between bmp and txt
+				item->itemHeight = GetSystemMetrics(SM_CYMENU); //Height of menu
+				
+				return TRUE;
+			} break;
+			//NOTE: we dont care about MF_SEPARATOR since that guy doesnt care about its size
+			default: return DefWindowProc(hWnd, message, wParam, lParam);
+			}
+		}
+		return DefWindowProc(hWnd, message, wParam, lParam);
+	} break;
 	case WM_DRAWITEM:
 	{
+		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lParam;
 		switch (wParam) {//wParam specifies the identifier of the control that needs painting
+		case 0: //menu
+		{ //TODO(fran): handle WM_MEASUREITEM so we can make the menu bigger
+			Assert(item->CtlType == ODT_MENU); //TODO(fran): I could use this instead of wParam
+			/*NOTES
+			- item->CtlID isnt used for menus
+			- item->itemID menu item identifier
+			- item->itemAction required drawing action //TODO(fran): use this 
+			- item->hwndItem handle to the menu that contains the item, aka HMENU
+			*/
+			
+			//Determine which type of menu we're to draw
+			MENUITEMINFO menu_type;
+			menu_type.cbSize = sizeof(menu_type);
+			menu_type.fMask = MIIM_FTYPE;
+			GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_type);
+			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be
+
+			switch (menu_type.fType) {
+				//NOTE: MFT_BITMAP, MFT_SEPARATOR, and MFT_STRING cannot be combined with one another, so we know those are separate types
+			case MFT_STRING: //Text menu
+			{
+				COLORREF clrPrevText, clrPrevBkgnd;
+				HFONT hfntPrev;
+				int x, y;
+
+				// Set the appropriate foreground and background colors. 
+				HBRUSH txt_br, bk_br;
+				if (item->itemState & ODS_SELECTED) //TODO(fran): ODS_CHECKED ODS_FOCUS
+				{
+					txt_br = unCap_colors.ControlTxt;
+					bk_br = unCap_colors.ControlBkMouseOver;
+				}
+				else
+				{
+					txt_br = unCap_colors.ControlTxt;
+					bk_br = unCap_colors.ControlBk;
+				}
+				clrPrevText = SetTextColor(item->hDC, ColorFromBrush(txt_br));//TODO(fran): separate menu brushes
+				clrPrevBkgnd = SetBkColor(item->hDC, ColorFromBrush(bk_br));
+				
+				if(item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT)
+					FillRect(item->hDC, &item->rcItem, bk_br);
+				//TODO(fran): accompanying img rendering 
+
+				// Determine where to draw and leave space for a check mark. 
+				x = item->rcItem.left;
+				y = item->rcItem.top;
+				x += GetSystemMetrics(SM_CXMENUCHECK);
+
+				// Select the font and draw the text. 
+				hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
+
+			//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
+				MENUITEMINFO menu_nfo;
+				menu_nfo.cbSize = sizeof(menu_nfo);
+				menu_nfo.fMask = MIIM_STRING;
+				menu_nfo.dwTypeData = NULL;
+				GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
+				//Get actual text
+				UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
+				menu_nfo.cch = menu_str_character_cnt;
+				TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
+				menu_nfo.dwTypeData = menu_str;
+				GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
+				//ExtTextOut(item->hDC, x, y, ETO_OPAQUE, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
+
+				//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
+				//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
+				HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0);
+				if (GetClipRgn(item->hDC, restoreRegion) != 1)
+				{
+					DeleteObject(restoreRegion);
+					restoreRegion = NULL;
+				}
+
+				// Set new region, do drawing
+				IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
+				const INT tab_spacing = 4;
+				//TODO(fran): tabs are starting spacing from the beginning x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
+				WORD x_pad = LOWORD(TabbedTextOut(item->hDC, x, y, TEXT(" "), 1, 0, NULL, x)); //a space at the beginning
+				TabbedTextOut(item->hDC, x + x_pad, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x + x_pad);//a bit too complex a function for this purpose but ok
+				//TODO(fran): find a better function, this guy doesnt care  about alignment, only TextOut and ExtTextOut do, but, of course, both cant handle tabs //NOTE: the normal rendering seems to have very long tab spacing so maybe it uses TabbedTextOut with 0 and NULL as the tab params
+
+				SelectClipRgn(item->hDC, restoreRegion);
+				if (restoreRegion != NULL)
+				{
+					DeleteObject(restoreRegion);
+				}
+
+
+				free(menu_str);
+
+				//TODO(fran): render img, we'll use the img just for its alpha and paint with the color for the text for example
+
+				// Restore the original font and colors. 
+				SelectObject(item->hDC, hfntPrev);
+				SetTextColor(item->hDC, clrPrevText);
+				SetBkColor(item->hDC, clrPrevBkgnd);
+			} break;
+			case MFT_SEPARATOR:
+			{
+				const int separator_padding = 3;
+				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
+				RECT separator_rc;
+				separator_rc.top = item->rcItem.top + RECTHEIGHT(item->rcItem)/2;
+				separator_rc.bottom = separator_rc.top + 1; //TODO(fran): fancier calc and position
+				separator_rc.left = item->rcItem.left + separator_padding;
+				separator_rc.right = item->rcItem.right - separator_padding;
+				FillRect(item->hDC, &separator_rc, unCap_colors.ControlTxt);
+				//TODO(fran): clipping
+				//TODO(fran): dont draw edge to edge, remove one pixel from each side
+			}
+			default: return DefWindowProc(hWnd, message, wParam, lParam);
+			}
+			
+			return TRUE;
+		} break;
 		case TABCONTROL:
 		{
-			DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lParam;
-
 			switch (item->itemAction) {//Determines what I have to do with the control
 			case ODA_DRAWENTIRE://Draw everything
 			case ODA_FOCUS://Control lost or gained focus, check itemState

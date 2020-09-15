@@ -1,6 +1,6 @@
 #pragma once
 //Thanks to https://stackoverflow.com/questions/8824255/getting-a-windows-message-name/40425868
-//TODO(fran): change to a less (pointless) C++izy solution
+//TODO(fran): change to a less (pointless) C++sy solution
 #ifdef _DEBUG
 #include <map>
 
