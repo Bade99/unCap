@@ -666,7 +666,7 @@ void ProperLineSeparation(wstring &text) {
 	}
 }
 
-void DoBackup() { //TODO(fran): option to change backup folder
+void DoBackup() { //TODO(fran): option to change backup folder //TODO(fran): I feel backup is pretty pointless at this point, more confusing than anything else, REMOVE
 
 	int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
@@ -924,14 +924,19 @@ BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, TCHAR* str) {
 	return res;
 }
 
+HMENU HACK_toplevelmenu = NULL; //TODO(fran)
+
 void AddMenus(HWND hWnd) {
 	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
 	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hWnd);
 
+	//NOTE: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
+
 	hMenu = CreateMenu();
 	hFileMenu = CreateMenu();
 	hFileMenuLang = CreateMenu();
-	AppendMenuW(hMenu, MF_POPUP, (UINT_PTR)hFileMenu, L"");
+	AppendMenuW(hMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenu, (LPCWSTR)hMenu);
+	HACK_toplevelmenu = hFileMenu;
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
 
 	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, (LPCWSTR)hFileMenu); //NOTE: when MF_OWNERDRAW is used the 4th param is itemData
@@ -2330,9 +2335,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				//TODO(fran): check if it has a submenu, in which case, if it opens it to the side, we should leave a little more space for an arrow bmp (though there seems to be some extra space added already)
 
+				//TODO(fran): there's some very weird bug where the top level menu gets drawn with my arrow too
+
 				//Determine text space:
 				MENUITEMINFO menu_nfo; menu_nfo.cbSize = sizeof(menu_nfo);
-				menu_nfo.fMask = MIIM_STRING; menu_nfo.dwTypeData = NULL;
+				menu_nfo.fMask = MIIM_STRING;
+				menu_nfo.dwTypeData = NULL;
 				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
 				UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
 				menu_nfo.cch = menu_str_character_cnt;
@@ -2345,16 +2353,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				int old_mapmode = GetMapMode(dc);
 				SetMapMode(dc, MM_TEXT);
 				WORD text_width = LOWORD(GetTabbedTextExtent(dc, menu_str, menu_str_character_cnt - 1,0,NULL)); //TODO(fran): make common function for this and the one that does rendering, also look at how tabs work
-				text_width += LOWORD(GetTabbedTextExtent(dc, TEXT(" "), 1, 0, NULL)); //a space at the beginning
+				WORD space_width = LOWORD(GetTabbedTextExtent(dc, TEXT(" "), 1, 0, NULL)); //a space at the beginning
 				SetMapMode(dc, old_mapmode);
 
 				SelectObject(dc, hfntPrev);
 				ReleaseDC(hWnd, dc);
 				free(menu_str);
 				//
-
-				item->itemWidth = GetSystemMetrics(SM_CXMENUCHECK) + text_width; /*Extra space for left bitmap*/; //TODO(fran): we'll probably add a 1 space separation between bmp and txt
+				
+				if (item->itemID == ((UINT)HACK_toplevelmenu & 0xFFFFFFFF)) { //Check if we are a "top level" menu
+					item->itemWidth = text_width + space_width * 2;
+				}
+				else {
+					item->itemWidth = GetSystemMetrics(SM_CXMENUCHECK) + text_width + space_width; /*Extra space for left bitmap*/; //TODO(fran): we'll probably add a 1 space separation between bmp and txt
+				
+				}
 				item->itemHeight = GetSystemMetrics(SM_CYMENU); //Height of menu
+
 				
 				return TRUE;
 			} break;
@@ -2382,6 +2397,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			- item->itemAction required drawing action //TODO(fran): use this 
 			- item->hwndItem handle to the menu that contains the item, aka HMENU
 			*/
+
+			//NOTE: do not use itemData here, go straight for item->hwndItem
 			
 			//Determine which type of menu we're to draw
 			MENUITEMINFO menu_type;
@@ -2400,7 +2417,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 				// Set the appropriate foreground and background colors. 
 				HBRUSH txt_br, bk_br;
-				if (item->itemState & ODS_SELECTED) //TODO(fran): ODS_CHECKED ODS_FOCUS
+				if (item->itemState & ODS_SELECTED || item->itemState & ODS_HOTLIGHT /*needed for "top level" menus*/) //TODO(fran): ODS_CHECKED ODS_FOCUS
 				{
 					txt_br = unCap_colors.ControlTxt;
 					bk_br = unCap_colors.ControlBkMouseOver;
@@ -2413,104 +2430,144 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				clrPrevText = SetTextColor(item->hDC, ColorFromBrush(txt_br));//TODO(fran): separate menu brushes
 				clrPrevBkgnd = SetBkColor(item->hDC, ColorFromBrush(bk_br));
 				
-				if (item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT) { //TODO(fran): why does this paint over the bmp when on mouseover
+				if (item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT) { //Draw background
 					FillRect(item->hDC, &item->rcItem, bk_br);
 				}
-				
-				//Render img on the left
-				{
-					MENUITEMINFO menu_img;
-					menu_img.cbSize = sizeof(menu_img);
-					menu_img.fMask = MIIM_CHECKMARKS | MIIM_STATE;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_img);
-					HBITMAP hbmp=NULL;
-					if (menu_img.fState & MFS_CHECKED) { //If it is checked you can be sure you are going to draw some bmp
-						if (!menu_img.hbmpChecked) {
-							//TODO(fran): assign default checked bmp
+				if (item->hwndItem == (HWND)GetMenu(hWnd)) { //If we are a "top level" menu
+
+					//we just want to draw the text, nothing more
+					//TODO(fran): clean this huge if-else, very bug prone with things being set/initialized in different parts
+					// Select the font and draw the text. 
+					hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
+
+					//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
+					MENUITEMINFO menu_nfo;
+					menu_nfo.cbSize = sizeof(menu_nfo);
+					menu_nfo.fMask = MIIM_STRING;
+					menu_nfo.dwTypeData = NULL;
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
+					//Get actual text
+					UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
+					menu_nfo.cch = menu_str_character_cnt;
+					TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
+					menu_nfo.dwTypeData = menu_str;
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
+
+					//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
+					//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
+					HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(item->hDC, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
+
+					// Set new region, do drawing
+					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
+					UINT old_align = GetTextAlign(item->hDC);
+					SetTextAlign(item->hDC, TA_CENTER); //TODO(fran): VTA_CENTER for kanji and the like
+					// Calculate vertical and horizontal position for the string so that it will be centered
+					TEXTMETRIC tm; GetTextMetrics(item->hDC, &tm);
+					int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
+					int xPos = (item->rcItem.right - item->rcItem.left) / 2;
+					//TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1);
+					ExtTextOut(item->hDC, xPos+10, yPos, ETO_CLIPPED, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
+					free(menu_str);
+					SetTextAlign(item->hDC, old_align);
+					
+					SelectClipRgn(item->hDC, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion); //Restore old region
+				}
+				else {
+
+					//Render img on the left
+					{
+						MENUITEMINFO menu_img;
+						menu_img.cbSize = sizeof(menu_img);
+						menu_img.fMask = MIIM_CHECKMARKS | MIIM_STATE;
+						GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_img);
+						HBITMAP hbmp = NULL;
+						if (menu_img.fState & MFS_CHECKED) { //If it is checked you can be sure you are going to draw some bmp
+							if (!menu_img.hbmpChecked) {
+								//TODO(fran): assign default checked bmp
+							}
+							hbmp = menu_img.hbmpChecked;
 						}
-						hbmp = menu_img.hbmpChecked;
-					}
-					else if (menu_img.fState == MFS_UNCHECKED || menu_img.fState == MFS_HILITE) {//Really Windows? you really needed to set the value to 0? //TODO(fran): maybe it's better to just use else, maybe that's windows' logic for doing this
-						if (menu_img.hbmpUnchecked) {
-							hbmp = menu_img.hbmpUnchecked;
+						else if (menu_img.fState == MFS_UNCHECKED || menu_img.fState == MFS_HILITE) {//Really Windows? you really needed to set the value to 0? //TODO(fran): maybe it's better to just use else, maybe that's windows' logic for doing this
+							if (menu_img.hbmpUnchecked) {
+								hbmp = menu_img.hbmpUnchecked;
+							}
+							//If there's no bitmap we dont draw
 						}
-						//If there's no bitmap we dont draw
+						if (hbmp) {
+							HDC bmp_dc = CreateCompatibleDC(item->hDC);
+							HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
+
+							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
+							BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
+							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
+							SelectObject(bmp_dc, oldBitmap);
+							DeleteDC(bmp_dc);
+						}
 					}
-					if (hbmp) {
-						HDC bmp_dc = CreateCompatibleDC(item->hDC);
-						HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
 
-						BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
-						BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
-						//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
-						SelectObject(bmp_dc, oldBitmap);
-						DeleteDC(bmp_dc);
+					// Determine where to draw and leave space for a check mark. 
+					x = item->rcItem.left;
+					y = item->rcItem.top;
+					x += GetSystemMetrics(SM_CXMENUCHECK);
+
+					// Select the font and draw the text. 
+					hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
+
+					//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
+					MENUITEMINFO menu_nfo;
+					menu_nfo.cbSize = sizeof(menu_nfo);
+					menu_nfo.fMask = MIIM_STRING;
+					menu_nfo.dwTypeData = NULL;
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
+					//Get actual text
+					UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
+					menu_nfo.cch = menu_str_character_cnt;
+					TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
+					menu_nfo.dwTypeData = menu_str;
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
+					//ExtTextOut(item->hDC, x, y, ETO_OPAQUE, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
+
+					//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
+					//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
+					HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0);
+					if (GetClipRgn(item->hDC, restoreRegion) != 1)
+					{
+						DeleteObject(restoreRegion);
+						restoreRegion = NULL;
+					}
+
+					// Set new region, do drawing
+					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
+					const INT tab_spacing = 4;
+					//TODO(fran): tabs are starting spacing from the beginning x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
+					WORD x_pad = LOWORD(TabbedTextOut(item->hDC, x, y, TEXT(" "), 1, 0, NULL, x)); //a space at the beginning
+					TabbedTextOut(item->hDC, x + x_pad, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x + x_pad);//a bit too complex a function for this purpose but ok
+					free(menu_str);
+					//TODO(fran): find a better function, this guy doesnt care  about alignment, only TextOut and ExtTextOut do, but, of course, both cant handle tabs //NOTE: the normal rendering seems to have very long tab spacing so maybe it uses TabbedTextOut with 0 and NULL as the tab params
+
+					SelectClipRgn(item->hDC, restoreRegion);
+					if (restoreRegion != NULL)
+					{
+						DeleteObject(restoreRegion);
+					}
+
+					if (menu_type.hSubMenu) { //Draw the submenu arrow
+
+						//TODO: it seems windows already draws an arrow by default, of course, so we gotta kill that cause it paints over us
+						int img_sz = RECTHEIGHT(item->rcItem);
+						HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
+						if (arrow) {
+							HDC bmp_dc = CreateCompatibleDC(item->hDC);
+							HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
+
+							BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
+							BitBlt(item->hDC, item->rcItem.right - img_sz, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
+							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
+							SelectObject(bmp_dc, oldBitmap);
+							DeleteDC(bmp_dc);
+						}
 					}
 				}
-
-				// Determine where to draw and leave space for a check mark. 
-				x = item->rcItem.left;
-				y = item->rcItem.top;
-				x += GetSystemMetrics(SM_CXMENUCHECK);
-
-				// Select the font and draw the text. 
-				hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
-
-			//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
-				MENUITEMINFO menu_nfo;
-				menu_nfo.cbSize = sizeof(menu_nfo);
-				menu_nfo.fMask = MIIM_STRING;
-				menu_nfo.dwTypeData = NULL;
-				GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
-				//Get actual text
-				UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
-				menu_nfo.cch = menu_str_character_cnt;
-				TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
-				menu_nfo.dwTypeData = menu_str;
-				GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
-				//ExtTextOut(item->hDC, x, y, ETO_OPAQUE, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
-
-				//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
-				//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
-				HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0);
-				if (GetClipRgn(item->hDC, restoreRegion) != 1)
-				{
-					DeleteObject(restoreRegion);
-					restoreRegion = NULL;
-				}
-
-				// Set new region, do drawing
-				IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
-				const INT tab_spacing = 4;
-				//TODO(fran): tabs are starting spacing from the beginning x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
-				WORD x_pad = LOWORD(TabbedTextOut(item->hDC, x, y, TEXT(" "), 1, 0, NULL, x)); //a space at the beginning
-				TabbedTextOut(item->hDC, x + x_pad, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x + x_pad);//a bit too complex a function for this purpose but ok
-				//TODO(fran): find a better function, this guy doesnt care  about alignment, only TextOut and ExtTextOut do, but, of course, both cant handle tabs //NOTE: the normal rendering seems to have very long tab spacing so maybe it uses TabbedTextOut with 0 and NULL as the tab params
-
-				SelectClipRgn(item->hDC, restoreRegion);
-				if (restoreRegion != NULL)
-				{
-					DeleteObject(restoreRegion);
-				}
-				free(menu_str);
-
-				if (menu_type.hSubMenu) { //Draw the submenu arrow
-					//TODO(fran): find out how to differentiate between drop-down menu and sub menu, arrow should only be drawn for submenus
-					//TODO: it seems windows already draws an arrow by default, of course, so we gotta kill that cause it paints over us
-					int img_sz = RECTHEIGHT(item->rcItem);
-					HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
-					if (arrow) {
-						HDC bmp_dc = CreateCompatibleDC(item->hDC);
-						HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
-
-						BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
-						BitBlt(item->hDC, item->rcItem.right-img_sz, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
-						//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
-						SelectObject(bmp_dc, oldBitmap);
-						DeleteDC(bmp_dc);
-					}
-				}
-
 				// Restore the original font and colors. 
 				SelectObject(item->hDC, hfntPrev);
 				SetTextColor(item->hDC, clrPrevText);
