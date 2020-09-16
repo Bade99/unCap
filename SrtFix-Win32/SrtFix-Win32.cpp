@@ -972,7 +972,8 @@ void AddMenus(HWND hWnd) {
 	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
 
 	SetMenuItemBitmaps(hFileMenu, BACKUP_FILE, MF_BYCOMMAND,bCross,bTick);//1ºunchecked,2ºchecked
-	CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
+	if(Backup_Is_Checked) CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
+	else CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED);
 
 	SetMenuItemBitmaps(hFileMenu, (UINT)hFileMenuLang, MF_BYCOMMAND, bEarth, bEarth);
 	//https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmenustate
@@ -983,7 +984,7 @@ void AddMenus(HWND hWnd) {
 	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, MF_BYCOMMAND, NULL, bTick);
 	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, MF_BYCOMMAND, NULL, bTick);
 
-	CheckMenuItem(hFileMenuLang, startup_locale, MF_BYCOMMAND | MF_CHECKED);
+	CheckMenuItem(hFileMenuLang, LANGUAGE_MANAGER::Instance().GetCurrentLanguage(), MF_BYCOMMAND | MF_CHECKED);
 
 	SetMenu(hWnd, hMenu);
 }
@@ -1809,7 +1810,7 @@ void CreateInfoFile(HWND mainWindow){
 		create_info_file << info_parameters[RC_RIGHT] << rect.right << L"\n";			//sizex
 		create_info_file << info_parameters[RC_BOTTOM] << rect.bottom << L"\n";			//sizey
 		create_info_file << info_parameters[DIR] << last_accepted_file_dir << L"\n";	//directory of the last valid file directory
-		create_info_file << info_parameters[BACKUP] << (bool)(GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED) << L"\n"; //SDH
+		create_info_file << info_parameters[BACKUP] << Backup_Is_Checked << L"\n"; //SDH
 		create_info_file << info_parameters[LOCALE] << LANGUAGE_MANAGER::Instance().GetCurrentLanguage() << L"\n"; //global locale
 		//@los otros caracteres??(quiza deberiamos guardarlos, puede que moleste)
 		create_info_file.close();
@@ -2251,16 +2252,15 @@ vec2d GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin
 	return dpi;
 }
 
-void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE lang, LANGUAGE_MANAGER::LANGUAGE oldLang) {
-	LCID ret = LANGUAGE_MANAGER::Instance().ChangeLanguage(lang);
-
-	if (lang == oldLang)return;
-
-	//Check this one
-	CheckMenuItem(hFileMenu, lang, MF_BYCOMMAND | MF_CHECKED);
+void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE new_lang) {
+	LANGUAGE_MANAGER::LANGUAGE old_lang = LANGUAGE_MANAGER::Instance().GetCurrentLanguage();
+	LANGUAGE_MANAGER::Instance().ChangeLanguage(new_lang);
 
 	//Uncheck the old lang
-	CheckMenuItem(hFileMenu, oldLang, MF_BYCOMMAND | MF_UNCHECKED);
+	CheckMenuItem(hFileMenu, old_lang, MF_BYCOMMAND | MF_UNCHECKED);
+
+	//Check the new one
+	CheckMenuItem(hFileMenu, new_lang, MF_BYCOMMAND | MF_CHECKED);
 }
 
 //LONG usable_TabbedTextOut(HDC hdc, int x, int y, LPCSTR lpString, int chCount, int nTabPositions, const INT *lpnTabStopPositions, int nTabOrigin) {
@@ -2271,18 +2271,15 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE lang, LANGUAGE_MANAGER::LANGUAGE 
 //TODO(fran): DPI awareness
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	printf(msgToString(message)); printf("\n");
+	//printf(msgToString(message)); printf("\n");
 	switch (message)
 	{
 	case WM_CREATE:
 	{
 		AddMenus(hWnd);
 		AddControls(hWnd, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE));
-		if (Backup_Is_Checked)CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
-		else CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED);
-
-		break;
-	}
+		
+	} break;
 	case WM_CTLCOLORLISTBOX:
 	{
 		HDC comboboxDC = (HDC)wParam;
@@ -2413,7 +2410,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			switch (menu_type.fType) {
 				//NOTE: MFT_BITMAP, MFT_SEPARATOR, and MFT_STRING cannot be combined with one another, so we know those are separate types
 			case MFT_STRING: //Text menu
-			{
+			{//NOTE: we render the bitmaps inverted, cause I find it easier to edit on external programs, this may change later, not a hard change
+				//TODO(fran): we should just do 1 channel bmps, easier to edit, we can precalculate all each time the color changes and that's it
 				COLORREF clrPrevText, clrPrevBkgnd;
 				HFONT hfntPrev;
 				int x, y;
@@ -2436,12 +2434,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				if (item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT) { //Draw background
 					FillRect(item->hDC, &item->rcItem, bk_br);
 				}
+				
+				// Select the font and draw the text. 
+				hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
+				
+				WORD x_pad = LOWORD(GetTabbedTextExtent(item->hDC, TEXT(" "), 1, 0, NULL)); //an extra 1 space before drawing text (for not top level menus)
+
 				if (item->hwndItem == (HWND)GetMenu(hWnd)) { //If we are a "top level" menu
 
 					//we just want to draw the text, nothing more
 					//TODO(fran): clean this huge if-else, very bug prone with things being set/initialized in different parts
-					// Select the font and draw the text. 
-					hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
 
 					//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
 					MENUITEMINFO menu_nfo;
@@ -2463,13 +2465,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					// Set new region, do drawing
 					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
 					UINT old_align = GetTextAlign(item->hDC);
-					SetTextAlign(item->hDC, TA_LEFT); //TODO(fran): VTA_CENTER for kanji and the like
+					SetTextAlign(item->hDC, TA_CENTER); //TODO(fran): VTA_CENTER for kanji and the like
 					// Calculate vertical and horizontal position for the string so that it will be centered
 					TEXTMETRIC tm; GetTextMetrics(item->hDC, &tm);
 					int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
-					int xPos = (item->rcItem.right - item->rcItem.left) / 2;
-					TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1); //TODO(fran): fix horizontal alignment
-					//ExtTextOut(item->hDC, xPos+10, yPos, ETO_CLIPPED, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
+					int xPos = item->rcItem.left + (item->rcItem.right - item->rcItem.left) / 2;
+					TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1);
 					free(menu_str);
 					SetTextAlign(item->hDC, old_align);
 					
@@ -2501,20 +2502,28 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
 
 							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
-							BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
+							//BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
+
+							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
+							int img_max_y = RECTHEIGHT(item->rcItem);
+							int img_sz = min(img_max_x, img_max_y);
+							StretchBlt(item->hDC,
+								item->rcItem.left + (img_max_x+x_pad - img_sz)/2, item->rcItem.top + (img_max_y - img_sz)/2, img_sz, img_sz,
+								bmp_dc,
+								0, 0, bitmap.bmWidth, bitmap.bmHeight,
+								NOTSRCCOPY
+							);
+
 							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
 							SelectObject(bmp_dc, oldBitmap);
 							DeleteDC(bmp_dc);
 						}
 					}
 
-					// Determine where to draw and leave space for a check mark. 
+					// Determine where to draw, leave space for a check mark and the extra 1 space
 					x = item->rcItem.left;
 					y = item->rcItem.top;
-					x += GetSystemMetrics(SM_CXMENUCHECK);
-
-					// Select the font and draw the text. 
-					hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
+					x += GetSystemMetrics(SM_CXMENUCHECK) + x_pad;
 
 					//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
 					MENUITEMINFO menu_nfo;
@@ -2541,10 +2550,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					// Set new region, do drawing
 					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
-					const INT tab_spacing = 4;
-					//TODO(fran): tabs are starting spacing from the beginning x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
-					WORD x_pad = LOWORD(TabbedTextOut(item->hDC, x, y, TEXT(" "), 1, 0, NULL, x)); //a space at the beginning
-					TabbedTextOut(item->hDC, x + x_pad, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x + x_pad);//a bit too complex a function for this purpose but ok
+					//TODO(fran): tabs start spacing from the initial x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
+					TabbedTextOut(item->hDC, x, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x);
 					free(menu_str);
 					//TODO(fran): find a better function, this guy doesnt care  about alignment, only TextOut and ExtTextOut do, but, of course, both cant handle tabs //NOTE: the normal rendering seems to have very long tab spacing so maybe it uses TabbedTextOut with 0 and NULL as the tab params
 
@@ -2564,7 +2571,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
 
 							BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
-							BitBlt(item->hDC, item->rcItem.right - img_sz, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, SRCCOPY);
+							BitBlt(item->hDC, item->rcItem.right - img_sz, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
 							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
 							SelectObject(bmp_dc, oldBitmap);
 							DeleteDC(bmp_dc);
@@ -2692,12 +2699,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			break;
 		}
-		case BACKUP_FILE:
+		case BACKUP_FILE: //Do backup menu item was clicked
 		{
-			if (GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED)
-				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED);
-			else CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
-
+			if (Backup_Is_Checked) {
+				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED); //turn it off
+			}
+			else {
+				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);//turn it on
+			}
+			Backup_Is_Checked = !Backup_Is_Checked;
+			printf("BACKUP=%s\n", Backup_Is_Checked ? "true" : "false");
 			break;
 		}
 		case COMBO_BOX:
@@ -2736,7 +2747,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case ID_SAVE:
 		{
 			//if (IsAcceptedFile()) {
-			if (GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED) DoBackup();
+			if (Backup_Is_Checked) DoBackup();
 
 			int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
@@ -2764,11 +2775,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case LANGUAGE_MANAGER::LANGUAGE::SPANISH:
 		{
 			//NOTE: maybe I can force menu item remeasuring by SetMenu, basically sending it the current menu
-			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wParam), LANGUAGE_MANAGER::Instance().GetCurrentLanguage());
+			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wParam));
 #if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
-			HMENU men = GetMenu(hWnd);
+			HMENU old_menu = GetMenu(hWnd);
 			SetMenu(hWnd, NULL);
-			DestroyMenu(men);
+			DestroyMenu(old_menu); //NOTE: I could also use RemoveMenu which doesnt destroy it's submenus and reattach them to a new "main" menu and correct parenting (itemData param)
 			AddMenus(hWnd); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
 #else //the undocumented way, aka the way it should have always been
 			//WIP
