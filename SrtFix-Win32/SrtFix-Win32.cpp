@@ -2263,13 +2263,15 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE lang, LANGUAGE_MANAGER::LANGUAGE 
 	CheckMenuItem(hFileMenu, oldLang, MF_BYCOMMAND | MF_UNCHECKED);
 }
 
-LONG usable_TabbedTextOut(HDC hdc, int x, int y, LPCSTR lpString, int chCount, int nTabPositions, const INT *lpnTabStopPositions, int nTabOrigin) {
-	return 0;
-}
+//LONG usable_TabbedTextOut(HDC hdc, int x, int y, LPCSTR lpString, int chCount, int nTabPositions, const INT *lpnTabStopPositions, int nTabOrigin) {
+//	return 0;
+//}
 
+//TODO(fran): UNDO support for comment removal
 //TODO(fran): DPI awareness
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	printf(msgToString(message)); printf("\n");
 	switch (message)
 	{
 	case WM_CREATE:
@@ -2317,7 +2319,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
-	case WM_MEASUREITEM://NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
+	case WM_MEASUREITEM: //TODO(fran): find out how to re-measure when we change language
+		//NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
 	{
 		//wparam has duplicate info from item
 		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lParam;
@@ -2460,13 +2463,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					// Set new region, do drawing
 					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
 					UINT old_align = GetTextAlign(item->hDC);
-					SetTextAlign(item->hDC, TA_CENTER); //TODO(fran): VTA_CENTER for kanji and the like
+					SetTextAlign(item->hDC, TA_LEFT); //TODO(fran): VTA_CENTER for kanji and the like
 					// Calculate vertical and horizontal position for the string so that it will be centered
 					TEXTMETRIC tm; GetTextMetrics(item->hDC, &tm);
 					int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
 					int xPos = (item->rcItem.right - item->rcItem.left) / 2;
-					//TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1);
-					ExtTextOut(item->hDC, xPos+10, yPos, ETO_CLIPPED, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
+					TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1); //TODO(fran): fix horizontal alignment
+					//ExtTextOut(item->hDC, xPos+10, yPos, ETO_CLIPPED, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
 					free(menu_str);
 					SetTextAlign(item->hDC, old_align);
 					
@@ -2751,32 +2754,43 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		case SAVE_AS_FILE:
 		case ID_SAVE_AS:
-			//if (IsAcceptedFile()) {
-
+		{
 			//TODO(fran): DoSaveAs allows for saving of file when no tab is created and sets all the controls but doesnt create an empty tab,
 			//should we create the tab or not allow to save?
 			DoSaveAs(GetCurrentTabExtraInfo().hText); //No DoBackup() for Save As since the idea is the user saves to a new file obviously
 
-			//}
-			break;
+		} break;
 		case LANGUAGE_MANAGER::LANGUAGE::ENGLISH://INFO: this relates to the menu item, TODO(fran): a way to check a range of numbers, from first lang to last
-		{
-
-			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wParam),LANGUAGE_MANAGER::Instance().GetCurrentLanguage());
-
-		}
-			break;
 		case LANGUAGE_MANAGER::LANGUAGE::SPANISH:
 		{
+			//NOTE: maybe I can force menu item remeasuring by SetMenu, basically sending it the current menu
 			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wParam), LANGUAGE_MANAGER::Instance().GetCurrentLanguage());
+#if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
+			HMENU men = GetMenu(hWnd);
+			SetMenu(hWnd, NULL);
+			DestroyMenu(men);
+			AddMenus(hWnd); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
+#else //the undocumented way, aka the way it should have always been
+			//WIP
+#endif
+		} break;
+		default: return DefWindowProc(hWnd, message, wParam, lParam);
 		}
-			break;
-
-		default:
-			return DefWindowProc(hWnd, message, wParam, lParam);
-		}
-	}
-	break;
+	} break;
+	//TODO(fran): continue with this undocumented search, it doesnt look very good, I could only get the hwnd when opening the languages sub menu
+	//https://www.google.com/search?q=FindWindow(NULL,+%22%2332768%22)%3B&rlz=1C1GIWA_enAR589AR589&sxsrf=ALeKk03pPU3gTyENAggyeDZgCHuNKyustA:1600226751225&ei=v4VhX6WFDZCz5OUPwJ2y6A8&start=10&sa=N&ved=2ahUKEwjl4MOY3ezrAhWQGbkGHcCODP0Q8NMDegQIDhBA&biw=1645&bih=1646
+	//https://www.codeproject.com/Articles/2080/Transparent-Menu
+	//https://microsoft.public.win32.programmer.ui.narkive.com/jQJBmxzp/open-submenu-programmatically#post5
+	//https://comp.os.ms-windows.programmer.win32.narkive.com/RhPGGM4C/forcing-menu-item-to-refresh
+	//case WM_INITMENU:
+	//case WM_INITMENUPOPUP:
+	//{
+	//	HWND hMenuWnd = FindWindow(TEXT("#32768"), NULL);
+	//	if (IsWindow(hMenuWnd)) {
+	//		PostMessage(hMenuWnd, 0x1e2, 0, 0); //doesnt seem to work
+	//		PostMessage(hMenuWnd, 0x1e5, 0, 0); //works
+	//	}
+	//} break;
 	case WM_SIZE:
 		ResizeWindows(hWnd);
 		break;
