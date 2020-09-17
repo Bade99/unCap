@@ -2537,7 +2537,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
 					menu_nfo.dwTypeData = menu_str;
 					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
-					//ExtTextOut(item->hDC, x, y, ETO_OPAQUE, &item->rcItem, menu_str, menu_str_character_cnt-1 /*doesnt want null terminator*/, NULL);
 
 					//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
 					//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
@@ -2563,7 +2562,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					if (menu_type.hSubMenu) { //Draw the submenu arrow
 
-						//TODO: it seems windows already draws an arrow by default, of course, so we gotta kill that cause it paints over us
 						int img_sz = RECTHEIGHT(item->rcItem);
 						HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
 						if (arrow) {
@@ -2571,10 +2569,30 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
 
 							BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
-							BitBlt(item->hDC, item->rcItem.right - img_sz, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
-							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
+							//TODO(fran): transparency & render in the text color (take some value as transparent and the rest use just for intensity)
+
+							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
+							int img_max_y = RECTHEIGHT(item->rcItem);
+							int img_sz = min(img_max_x, img_max_y); 
+
+							//NOTE: think I found a semi solution, maintain the new value even or odd depending on the sz of the img, odd -> odd, even -> even
+							if ((bitmap.bmHeight % 2) == 0) { if ((img_sz % 2) != 0)img_sz--; } 
+							else { if ((img_sz % 2) == 0)img_sz--; } 
+
+							//TODO(fran): all of these Blt functions are terrible, I really need to move to my own drawing or directx/...
+							StretchBlt(item->hDC,
+								item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz,
+								bmp_dc,
+								0, 0, bitmap.bmWidth, bitmap.bmHeight,
+								NOTSRCCOPY
+							);
+
 							SelectObject(bmp_dc, oldBitmap);
 							DeleteDC(bmp_dc);
+
+							//Prevent windows from drawing what nobody asked it to draw
+							//Many thanks to David Sumich https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm 
+							ExcludeClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
 						}
 					}
 				}
@@ -2865,300 +2883,3 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	return 0;
 }
-
-
-//wstring GetExecFolder() {
-//	WCHAR ownPth[MAX_PATH_LENGTH];
-//	HMODULE hModule = GetModuleHandle(NULL);
-//	if (hModule != NULL) GetModuleFileName(hModule, ownPth, (sizeof(ownPth)));//INFO: that sizeof is probably wrong
-//	else { 
-//		return L"C:\\Temp\\";
-//	}
-//	wstring dir = ownPth;
-//	dir.erase(dir.rfind(L"\\") + 1, string::npos);
-//	return dir;
-//}
-
-/*
-void SetLocaleW(int locale) {
-	global_locale = locale;
-	//Menu text
-	MENUITEMINFOW menu_setter;
-	menu_setter.cbSize = sizeof(MENUITEMINFOW);
-	menu_setter.fMask = MIIM_STRING;
-	menu_setter.dwTypeData = _wcsdup(file_T[global_locale]);
-	SetMenuItemInfoW(hMenu, (UINT_PTR)hFileMenu, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(open_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, OPEN_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(save_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, SAVE_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(save_as_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, SAVE_AS_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(backup_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, BACKUP_FILE, FALSE, &menu_setter);
-	menu_setter.dwTypeData = _wcsdup(language_T[global_locale]);
-	SetMenuItemInfoW(hFileMenu, (UINT_PTR)hFileMenuLang, FALSE, &menu_setter);
-
-	DrawMenuBar(hWnd);
-
-	//Control text
-	SetWindowTextW(hRemoveCommentWith, remove_comment_with_T[global_locale]);
-	SetOptionsComboBox(hOptions, FALSE);
-	SetWindowTextW(hInitialText, initial_char_T[global_locale]);
-	SetWindowTextW(hFinalText,final_char_T[global_locale]);
-	SetWindowTextW(hRemove,remove_T[global_locale]);
-
-	UpdateWindow(hWnd);
-
-	//@@Alguna forma de alinear los controles por la derecha?? (asi todo queda alineado)
-
-	//notification messages get updated on their own
-}
-*/
-
-//typedef struct GetLineParam {
-//	wstring *text;
-//	WCHAR file[MAX_PATH] = { 0 };
-//} GLP, *PGLP;
-//DWORD WINAPI ReadTextThread(LPVOID lpParam) {//receives filename and wstring to save to
-//
-//	PGLP parameters = (PGLP)lpParam; 
-//
-//	unsigned char encoding = GetTextEncoding(parameters->file);
-//
-//	wifstream file(parameters->file, ios::binary);
-//
-//	if (file.is_open()) {
-//
-//		//set encoding for getline
-//		if (encoding == UTF8)
-//			file.imbue(locale(file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
-//		else if (encoding == UTF16)
-//			file.imbue(locale(file.getloc(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
-//		//if encoding is ASCII we do nothing
-//
-//		wstringstream buffer;
-//		buffer << file.rdbuf();
-//		//wstring for_testing = buffer.str();
-//		(*((PGLP)lpParam)->text) = buffer.str();
-//
-//		file.close();
-//	}
-//	return 0;
-//}
-
-// //For GetTextEncoding
-//	else {//do manual checking
-//		wifstream file(filename, ios::in | ios::binary);
-//		wstringstream buffer;
-//		buffer << file.rdbuf(); 
-//		file.close();
-//		buffer.seekg(0, ios::end);
-//		int length = buffer.tellg();//long enough length
-//		buffer.clear();
-//		buffer.seekg(0, ios::beg);
-//		//https://unicodebook.readthedocs.io/guess_encoding.html
-//		//NOTE: creo q esto testea UTF16 asi que probablemente haya errores, y toma ascii como utf
-//		int test;
-//		test = IS_TEXT_UNICODE_ILLEGAL_CHARS;
-//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return ASCII;
-//		test = IS_TEXT_UNICODE_STATISTICS;
-//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-//		test = IS_TEXT_UNICODE_REVERSE_STATISTICS;
-//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-//		test = IS_TEXT_UNICODE_ASCII16;
-//		if (IsTextUnicode(buffer.str().c_str(), length, &test)) return UTF8;
-//		return ASCII; 
-//	}
-//}
-
-//std::vector<wstring> GetFiles2(LPCWSTR dir) {//dir should not contain \\ in the end
-//	wstring dirfilter = dir;
-//	dirfilter += L"\\*";
-//
-//	std::vector<wstring> files;
-//
-//	WIN32_FIND_DATA data;
-//	HANDLE hFind = FindFirstFile(dirfilter.c_str(), &data);
-//	//IMPORTANT INFO: this is not recursive, doesnt go inside folders
-//	do
-//	{
-//		if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-//		{
-//			//directory
-//		}
-//		else
-//		{
-//			files.push_back(data.cFileName);//TODO(fran): compare extension
-//		}
-//	} while (FindNextFile(hFind, &data) != 0);
-//
-//	return files;
-//}
-
-/*
-void SetOptionsComboBox(HWND & hCombo, bool isNew) {//@is there a simpler way to modify the combo box??
-	int previous_index=0;
-	if (!isNew) {
-		previous_index = SendMessageW(hCombo, CB_GETCURSEL, 0, 0);
-		for (int number_of_options = 4; number_of_options > 0; number_of_options--)
-			//@Remember to change number_of_options if I add more!!
-			SendMessageW(hCombo, CB_DELETESTRING, (WPARAM)0, 0);
-	}
-	SendMessageW(hCombo, CB_ADDSTRING, 0, (LPARAM)brackets_T[global_locale]);
-	SendMessageW(hCombo, CB_ADDSTRING, 1, (LPARAM)parenthesis_T[global_locale]);
-	SendMessageW(hCombo, CB_ADDSTRING, 2, (LPARAM)braces_T[global_locale]);
-	SendMessageW(hCombo, CB_ADDSTRING, 3, (LPARAM)other_T[global_locale]);
-	SendMessageW(hCombo, CB_SETCURSEL, previous_index, 0);
-}
-*/
-
-//#define NO_SEPARATION 0
-//#define ENTER 1
-//#define CARRIAGE_RETURN 2
-//#define CR_ENTER 3
-
-//CommentRemoval old
-//wifstream file(accepted_file);
-//wstring line;
-//wstring completed_text;
-//int enter_found = 0;
-//if (file.is_open()) {
-//	while (!file.eof()) { //o .good()
-//		getline(file, line,start);
-//		
-//		enter_found = line.find(L'\n', enter_found);
-//		while (enter_found != -1) {
-//			line.insert(enter_found, L"\r");
-//			enter_found = line.find(L'\n', enter_found + 2);
-//		}
-//		enter_found = 0;
-
-//		completed_text += line;
-
-//		//int lenght = GetWindowTextLengthW(hSubs); //To append text instead of setting it all at once, though it doesnt do it fast enough, maybe needs to send a != type of msg
-//		//SendMessageW(hSubs, EM_SETSEL, (WPARAM)lenght, (LPARAM)lenght);
-//		//SendMessageW(hSubs, EM_REPLACESEL, 0, (LPARAM)line.c_str());
-
-//		line = L"";//por las dudas
-//		file.ignore(200, end);
-//	}
-
-//SetWindowTextW(hSubs, completed_text.c_str());
-//file.close();
-//}
-
-//void DoSaveAs() { old method
-//WCHAR name[MAX_PATH_LENGTH];
-//name[0] = L'\0';
-
-//OPENFILENAMEW save_file;
-//ZeroMemory(&save_file, sizeof(OPENFILENAMEW));
-//save_file.lStructSize = sizeof(OPENFILENAMEW);
-//save_file.hwndOwner = NULL;
-//save_file.lpstrFile = name;
-//save_file.nMaxFile = MAX_PATH_LENGTH;
-//save_file.lpstrFilter = L"All files(*.*)\0*.*\0";
-//save_file.lpstrFileTitle = &accepted_file_name_with_ext[0];
-//save_file.nMaxFileTitle = accepted_file_name_with_ext.length();
-//save_file.lpstrInitialDir = &accepted_file_dir[0];
-//save_file.lpstrDefExt = &accepted_file_ext[0];
-
-//if (GetSaveFileNameW(&save_file)) {
-//	if ( (GetMenuState(hFileMenu, BACKUP_FILE, MF_BYCOMMAND) & MF_CHECKED) &&
-//		accepted_file.compare(save_file.lpstrFile) == 0 ) DoBackup();
-//	DoSave(save_file.lpstrFile);
-//}
-
-//OFN_ENABLETEMPLATE as a flag for file encoding?
-//OFN_NOREADONLYRETURN tambien?
-//OFN_NOVALIDATE
-//OFN_OVERWRITEPROMPT
-//OFN_PATHMUSTEXIST
-//https://stackoverflow.com/questions/9193944/how-to-customize-open-save-file-dialogs
-
-//DefaultSaveAs(); (new method)
-//
-//https://msdn.microsoft.com/en-us/library/Bb776913(v=VS.85).aspx
-//}
-
-//int GetLineSeparation(wifstream &file) {
-//	wstringstream buffer;
-//	buffer << file.rdbuf();
-//	file.clear();
-//	file.seekg(0, ios::beg);
-//	return GetLineSeparation(buffer.str());
-//}
-
-//int GetLineSeparation(wstring text) { //Check the format that the file uses to encode line changes, \n , \r or \r\n
-//	if (text.find(L"\r\n", 0) != string::npos) return CR_ENTER;
-//	else if (text.find(L"\r", 0) != string::npos) return CARRIAGE_RETURN;
-//	else if (text.find(L"\n", 0) != string::npos) return ENTER;
-//	else return NO_SEPARATION;
-//}
-
-//int LineCount(wifstream &file) {
-//	int text_length = count(istreambuf_iterator<wchar_t>(file),istreambuf_iterator<wchar_t>(), L'\n');
-//	file.clear();
-//	file.seekg(0, ios::beg);
-//	return text_length;
-//}
-
-//void LineSeparation(wstring &text) { //@@Check what happens in different encodings 
-//
-//	int separator_found; //store position where to insert new separator
-//
-//	switch (GetLineSeparation(text)) {
-//	case CARRIAGE_RETURN: // \r -> \r\n
-//		separator_found = text.find(L'\r', 0);
-//		while (separator_found != string::npos) {
-//			text.insert(separator_found + 1, L"\n");
-//			separator_found = text.find(L'\r', separator_found + 2);
-//		}
-//		break;
-//	case ENTER: // \n -> \r\n
-//		separator_found = text.find(L'\n', 0);
-//		while (separator_found != string::npos) {
-//			text.insert(separator_found, L"\r");
-//			separator_found = text.find(L'\n', separator_found + 2);
-//		}
-//		break;
-//	case CR_ENTER: // already \r\n
-//	case NO_SEPARATION: //no line separators found
-//		return;
-//	}
-//
-//	//SetWindowTextW(hSubs, text.c_str()/*+L'\0'*/);
-//}
-
-//void LineSeparation() { //@@Check what happens in different encodings 
-//	
-//	int separator_found; //store position where to insert new separator
-//
-//	int text_length = GetWindowTextLengthW(hSubs) + 1;
-//	wstring text(text_length,L'\0');
-//	//GetWindowTextW(hSubs, const_cast<WCHAR*>(text.c_str()), text_length - 1);
-//	GetWindowTextW(hSubs, &text[0], text_length);
-//	
-//	switch (GetLineSeparation(text)) {
-//	case CARRIAGE_RETURN: // \r -> \r\n
-//		separator_found = text.find(L'\r', 0);
-//		while (separator_found != string::npos) {
-//			text.insert(separator_found + 1, L"\n");
-//			separator_found = text.find(L'\r', separator_found + 2);
-//		}
-//		break;
-//	case ENTER: // \n -> \r\n
-//		separator_found = text.find(L'\n', 0);
-//		while (separator_found != string::npos) {
-//			text.insert(separator_found, L"\r");
-//			separator_found = text.find(L'\n', separator_found + 2);
-//		}
-//		break;
-//	case CR_ENTER: // already \r\n
-//	case NO_SEPARATION: //no line separators found
-//		return;
-//	}
-//
-//	SetWindowTextW(hSubs, text.c_str()/*+L'\0'*/);
-//}
