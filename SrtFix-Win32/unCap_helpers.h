@@ -13,3 +13,12 @@
 #define RECTWIDTH(r) (r.right >= r.left ? r.right - r.left : r.left - r.right )
 
 #define RECTHEIGHT(r) (r.bottom >= r.top ? r.bottom - r.top : r.top - r.bottom )
+
+RECT rectWH(LONG left, LONG top, LONG width, LONG height) {
+	RECT r;
+	r.left = left;
+	r.top = top;
+	r.right = r.left + width;
+	r.bottom = r.top + height;
+	return r;
+}

@@ -12,6 +12,7 @@ struct UNCAP_COLORS {
 	HBRUSH Scrollbar;
 	HBRUSH ScrollbarMouseOver;
 	HBRUSH ScrollbarBk;
+	HBRUSH Img;
 };
 
 extern UNCAP_COLORS unCap_colors;

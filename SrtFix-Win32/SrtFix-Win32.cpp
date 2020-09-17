@@ -15,7 +15,6 @@ namespace fs = std::experimental::filesystem;
 
 //----------------------TODOs----------------------:
 //Paint Initial char and Final char wnds to look like the rest, add white border so they are more easily noticeable
-//Draw my own menu
 //Draw my own non client area
 //Parametric sizes for everything, and DPI awareness for controls that dont move
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
@@ -24,7 +23,6 @@ namespace fs = std::experimental::filesystem;
 
 //----------------------DEFINES----------------------:
 
-//INFO: Check resource.h for already taken defines
 #define OPEN_FILE 11
 #define COMBO_BOX 12
 #define SAVE_AS_FILE 13
@@ -88,7 +86,7 @@ struct CLOSEBUTTON {
 	SIZE icon;//Size of the icon (will be placed centered in respect to each tab's rectangle)
 };
 
-struct vec2d {
+struct v2 {
 	float x, y;
 };
 
@@ -149,7 +147,7 @@ RECT rcMainWnd = {75,75,600,850}; //Main window size and position //TODO(fran) t
 
 int y_place = 10;
 
-const COMDLG_FILTERSPEC c_rgSaveTypes[] = //TODO(fran): am I using this? if so this should go in resource file
+const COMDLG_FILTERSPEC c_rgSaveTypes[] = //TODO(fran): this should go in resource file, but it isnt really necessary
 {
 { L"Srt (*.srt)",       L"*.srt" },
 { L"Advanced SSA (*.ass)",       L"*.ass" },
@@ -157,7 +155,6 @@ const COMDLG_FILTERSPEC c_rgSaveTypes[] = //TODO(fran): am I using this? if so t
 { L"Txt (*.txt)",       L"*.txt" },
 { L"All Documents (*.*)",         L"*.*" }
 };
-
 
 TABCLIENT TabOffset;
 
@@ -264,7 +261,6 @@ BOOL SetCurrentTabTitle(wstring title) {
 	else return index;
 }
 
-
 int GetNextTabPos() {
 	int count = (int)SendMessage(TextContainer, TCM_GETITEMCOUNT, 0, 0);
 	return count + 1; //TODO(fran): check if this is correct, or there is a better way
@@ -344,9 +340,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 
 	WCHAR szWindowClass[40] = L"unCapClass";	// nombre de clase de la ventana principal
 
-    //LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-	//LoadStringW(hInstance, IDC_SRTFIXWIN32, szWindowClass, MAX_LOADSTRING);
-
 	CheckInfoFile();
 
 	LANGUAGE_MANAGER::Instance().SetHInstance(hInstance);
@@ -363,6 +356,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 	unCap_colors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
 	unCap_colors.ScrollbarMouseOver = CreateSolidBrush(RGB(188, 188, 182));
 	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(50, 51, 45));
+	unCap_colors.Img = CreateSolidBrush(RGB(228, 228, 222));
 
 	//Setting offsets for what will define the "client" area of a tab control
 	TabOffset.leftOffset = 3;
@@ -389,7 +383,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 
 	ATOM class_atom = RegisterClassExW(&wcex);
 	if (!class_atom) return FALSE;
-	//RegisterSubtitleWindowClass(hInstance,SubtitleWindowClassName, IDC_ARROW, COLOR_BTNFACE + 1);
 
 	init_wndclass_unCap_scrollbar(hInstance);
 
@@ -406,7 +399,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,
 
     MSG msg;
 
-    // Bucle principal de mensajes:
     while (GetMessage(&msg, nullptr, 0, 0))
     {
 		
@@ -497,9 +489,6 @@ void CreateFonts()
 /// <summary>
 /// Performs comment removal for .srt type formats
 /// </summary>
-/// <param name="text"></param>
-/// <param name="start"></param>
-/// <param name="end"></param>
 /// <returns>The number of comments removed, 0 indicates no comments were found</returns>
 size_t CommentRemovalSRT(wstring& text, WCHAR start, WCHAR end) {
 	size_t comment_count = 0;
@@ -522,9 +511,6 @@ size_t CommentRemovalSRT(wstring& text, WCHAR start, WCHAR end) {
 /// <summary>
 /// Performs comment removal for all .ssa versions including .ass (v1,v2,v3,v4,v4+)
 /// </summary>
-/// <param name="text"></param>
-/// <param name="start"></param>
-/// <param name="end"></param>
 /// <returns>The number of comments removed, 0 indicates no comments were found</returns>
 size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 
@@ -918,7 +904,6 @@ BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, TCHAR* str) {
 	MENUITEMINFOW menu_setter;
 	menu_setter.cbSize = sizeof(menu_setter);
 	menu_setter.fMask = MIIM_STRING;
-	//menu_setter.dwTypeData = _wcsdup(this->RequestString(stringID).c_str()); //TODO(fran): can we avoid dupping, if not free memory
 	menu_setter.dwTypeData = str;
 	BOOL res = SetMenuItemInfoW(hmenu, item, FALSE, &menu_setter);
 	return res;
@@ -930,7 +915,7 @@ void AddMenus(HWND hWnd) {
 	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
 	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hWnd);
 
-	//NOTE: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
+	//INFO: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
 
 	hMenu = CreateMenu();
 	hFileMenu = CreateMenu();
@@ -965,8 +950,9 @@ void AddMenus(HWND hWnd) {
 	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::SPANISH, (LPCWSTR)hFileMenuLang);
 	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, const_cast<TCHAR*>(TEXT("Español")));
 
-	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK));
+	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK)); //TODO(fran): preload the bitmaps or destroy them when we destroy the menu
 	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CROSS));
+	BITMAP bitmap; GetObject(bCross, sizeof(bitmap), &bitmap);
 	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(EARTH));
 
 	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
@@ -1035,22 +1021,9 @@ void EDIT_update_scrollbar(EditProcState* state) {
 		int range_max = (int)DefSubclassProc(state->wnd, EM_GETLINECOUNT, 0, 0);
 		int pos = (int)DefSubclassProc(state->wnd, EM_GETFIRSTVISIBLELINE, 0, 0);
 		U_SB_set_stats(state->vscrollbar, range_max, line_count, pos);
-		//SCROLLINFO vscrollnfo;
-		//vscrollnfo.cbSize = sizeof(vscrollnfo);
-		//vscrollnfo.fMask = SIF_PAGE | SIF_RANGE | SIF_POS;
-		//vscrollnfo.nPage = line_count; //NOTE: changed when text editor resizes
-		//vscrollnfo.nMin = 0; //NOTE: always 0
-		//vscrollnfo.nMax = (int)DefSubclassProc(hwnd, EM_GETLINECOUNT, 0, 0); //NOTE: changed when new lines are written on the text editor or on resize
-		//vscrollnfo.nPos = (int)DefSubclassProc(hwnd, EM_GETFIRSTVISIBLELINE, 0, 0);
-		//SetScrollInfo(state->vscrollbar, SB_CTL, &vscrollnfo, TRUE);
 	}
 }
 LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) {
-//
-//	if (Msg == WM_CTLCOLORSCROLLBAR) {
-//		return (LRESULT)unCap_colors.ControlBk;
-//	}
-//	return DefSubclassProc(hWnd, Msg, wParam, lParam);
 	Assert(dwRefData);
 	EditProcState* state = (EditProcState*)dwRefData;
 	if (!state->initialized) {
@@ -1058,8 +1031,8 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 		state->wnd = hwnd;
 	}
 
-	static long long msg_cnt = 0;
-	printf("%lld:%s\n",msg_cnt++, msgToString(msg));
+	//static long long msg_cnt = 0;
+	//printf("%lld:%s\n",msg_cnt++, msgToString(msg));
 
 	switch (msg) {
 	case WM_MOUSEWHEEL:
@@ -1385,8 +1358,6 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 	}
 	return 0;
 }
-
-
 
 void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
@@ -2242,10 +2213,10 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 	return DefSubclassProc(hWnd, Msg, wParam, lParam);
 }
 
-vec2d GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/dpi-and-device-independent-pixels
+v2 GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/dpi-and-device-independent-pixels
 {
 	HDC hdc = GetDC(hwnd);
-	vec2d dpi;
+	v2 dpi;
 	dpi.x = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0f;
 	dpi.y = GetDeviceCaps(hdc, LOGPIXELSY) / 96.0f;
 	ReleaseDC(hwnd, hdc);
@@ -2266,6 +2237,61 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE new_lang) {
 //LONG usable_TabbedTextOut(HDC hdc, int x, int y, LPCSTR lpString, int chCount, int nTabPositions, const INT *lpnTabStopPositions, int nTabOrigin) {
 //	return 0;
 //}
+
+void DrawMenuArrow(HDC destDC, RECT& r)
+{
+	//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
+	//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
+
+	//Create the DCs and Bitmaps we will need
+	HDC arrowDC = CreateCompatibleDC(destDC);
+	HDC fillDC = CreateCompatibleDC(destDC);
+	int arrowW = RECTWIDTH(r);
+	int arrowH = RECTHEIGHT(r);
+	HBITMAP arrowBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
+	HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(arrowDC, arrowBitmap);
+	HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
+	HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
+
+	//Set the offscreen arrow rect
+	RECT tmpArrowR = rectWH(0, 0, arrowW, arrowH);
+
+	//Draw the frame control arrow (The OS draws this as a black on white bitmap mask)
+	DrawFrameControl(arrowDC, &tmpArrowR, DFC_MENU, DFCS_MENUARROW);
+
+	//Set the arrow color
+	HBRUSH arrowBrush = unCap_colors.Img;
+
+	//Fill the fill bitmap with the arrow color
+	FillRect(fillDC, &tmpArrowR, arrowBrush);
+
+	//Blit the items in a masking fashion
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, arrowDC, 0, 0, SRCAND);
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
+
+	//Clean up
+	SelectObject(fillDC, oldFillBitmap);
+	DeleteObject(fillBitmap);
+	SelectObject(arrowDC, oldArrowBitmap);
+	DeleteObject(arrowBitmap);
+	DeleteDC(fillDC);
+	DeleteDC(arrowDC);
+}
+
+void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
+	int imgW = RECTWIDTH(r);
+	int imgH = RECTHEIGHT(r);
+
+	HBRUSH imgBr = unCap_colors.Img;
+	HBRUSH oldBr = SelectBrush(destDC, imgBr);
+
+	//TODO(fran): I have no idea why I need to pass the "srcDC", no information from it is needed, and the function explicitly says it should be NULL, but if I do it returns false aka error (some error, cause it also doesnt tell you what it is)
+	//NOTE: info on creating your own raster ops https://docs.microsoft.com/en-us/windows/win32/gdi/ternary-raster-operations?redirectedfrom=MSDN
+	//Thanks https://stackoverflow.com/questions/778666/raster-operator-to-use-for-maskblt
+	BOOL res = MaskBlt(destDC, r.left, r.top, imgW, imgH, destDC, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY)); 
+	SelectBrush(destDC, oldBr);
+}
 
 //TODO(fran): UNDO support for comment removal
 //TODO(fran): DPI awareness
@@ -2316,8 +2342,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
-	case WM_MEASUREITEM: //TODO(fran): find out how to re-measure when we change language
-		//NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
+	case WM_MEASUREITEM: //NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
 	{
 		//wparam has duplicate info from item
 		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lParam;
@@ -2334,8 +2359,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			case MFT_STRING:
 			{
 				//TODO(fran): check if it has a submenu, in which case, if it opens it to the side, we should leave a little more space for an arrow bmp (though there seems to be some extra space added already)
-
-				//TODO(fran): there's some very weird bug where the top level menu gets drawn with my arrow too
 
 				//Determine text space:
 				MENUITEMINFO menu_nfo; menu_nfo.cbSize = sizeof(menu_nfo);
@@ -2498,25 +2521,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							//If there's no bitmap we dont draw
 						}
 						if (hbmp) {
-							HDC bmp_dc = CreateCompatibleDC(item->hDC);
-							HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
-
-							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
+							//HDC bmp_dc = CreateCompatibleDC(item->hDC);
+							//HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
+							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap); //TODO SOMETHING GETS FUCKED UP IN THE MIDDLE, ON CREATION THE BMP IS 1 BIT AS IT SHOULD, HERE I THINK SOMEONE CHANGED IT
 							//BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
 
 							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
 							int img_max_y = RECTHEIGHT(item->rcItem);
 							int img_sz = min(img_max_x, img_max_y);
-							StretchBlt(item->hDC,
-								item->rcItem.left + (img_max_x+x_pad - img_sz)/2, item->rcItem.top + (img_max_y - img_sz)/2, img_sz, img_sz,
-								bmp_dc,
-								0, 0, bitmap.bmWidth, bitmap.bmHeight,
-								NOTSRCCOPY
-							);
+							//StretchBlt(item->hDC,
+							//	item->rcItem.left + (img_max_x+x_pad - img_sz)/2, item->rcItem.top + (img_max_y - img_sz)/2, img_sz, img_sz,
+							//	bmp_dc,
+							//	0, 0, bitmap.bmWidth, bitmap.bmHeight,
+							//	NOTSRCCOPY
+							//);
+							RECT mask_rc = rectWH(item->rcItem.left + (img_max_x + x_pad - img_sz) / 2, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz,img_sz);
+							DrawMenuImg(item->hDC, mask_rc, hbmp); //TODO(fran): stretch the mask bmp
 
 							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
-							SelectObject(bmp_dc, oldBitmap);
-							DeleteDC(bmp_dc);
+							//SelectObject(bmp_dc, oldBitmap);
+							//DeleteDC(bmp_dc);
 						}
 					}
 
@@ -2562,13 +2586,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 					if (menu_type.hSubMenu) { //Draw the submenu arrow
 
-						int img_sz = RECTHEIGHT(item->rcItem);
-						HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
-						if (arrow) {
-							HDC bmp_dc = CreateCompatibleDC(item->hDC);
-							HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
+						//int img_sz = RECTHEIGHT(item->rcItem);
+						//HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
+						//if (arrow) {
+							//HDC bmp_dc = CreateCompatibleDC(item->hDC);
+							//HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
 
-							BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
+							//BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
 							//TODO(fran): transparency & render in the text color (take some value as transparent and the rest use just for intensity)
 
 							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
@@ -2576,24 +2600,27 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 							int img_sz = min(img_max_x, img_max_y); 
 
 							//NOTE: think I found a semi solution, maintain the new value even or odd depending on the sz of the img, odd -> odd, even -> even
-							if ((bitmap.bmHeight % 2) == 0) { if ((img_sz % 2) != 0)img_sz--; } 
-							else { if ((img_sz % 2) == 0)img_sz--; } 
+							//if ((bitmap.bmHeight % 2) == 0) { if ((img_sz % 2) != 0)img_sz--; } 
+							//else { if ((img_sz % 2) == 0)img_sz--; } 
 
 							//TODO(fran): all of these Blt functions are terrible, I really need to move to my own drawing or directx/...
-							StretchBlt(item->hDC,
-								item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz,
-								bmp_dc,
-								0, 0, bitmap.bmWidth, bitmap.bmHeight,
-								NOTSRCCOPY
-							);
+							//StretchBlt(item->hDC,
+							//	item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz,
+							//	bmp_dc,
+							//	0, 0, bitmap.bmWidth, bitmap.bmHeight,
+							//	NOTSRCCOPY
+							//);
 
-							SelectObject(bmp_dc, oldBitmap);
-							DeleteDC(bmp_dc);
+							RECT arrow_rc = rectWH(item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz);
+							DrawMenuArrow(item->hDC, arrow_rc);
+
+							//SelectObject(bmp_dc, oldBitmap);
+							//DeleteDC(bmp_dc);
 
 							//Prevent windows from drawing what nobody asked it to draw
 							//Many thanks to David Sumich https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm 
 							ExcludeClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
-						}
+						//}
 					}
 				}
 				// Restore the original font and colors. 
