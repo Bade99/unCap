@@ -5,6 +5,7 @@
 #pragma comment(lib, "comctl32.lib" ) //common controls lib
 #pragma comment(lib,"propsys.lib") //open save file handler
 #pragma comment(lib,"shlwapi.lib") //open save file handler
+#pragma comment(lib,"UxTheme.lib") // setwindowtheme
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"") 
 //#pragma comment(lib,"User32.lib")
 
@@ -2293,6 +2294,44 @@ void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
 	SelectBrush(destDC, oldBr);
 }
 
+//NOTE: used for both WM_NCPAINT and WM_NCACTIVATE, which, of couse have different wparam/lparam values for obtaining the rgn and active/inactive state, so here we request the params already converted from windows nonsense to something usable, also, for WM_NCPAINT is_active is _always_ TRUE
+void OnNcPaint(HWND hwnd, HRGN rgn, BOOL is_active) {
+	// because GetDCEx states that it will delete the region, passing it would be unreliable
+#define DCX_USESTYLE 0x00010000 /*Windows never disappoints with its crucial undocumented features*/
+	HDC dc = GetDCEx(hwnd, 0, DCX_WINDOW | DCX_USESTYLE);
+	RECT rc, rw;
+	GetClientRect(hwnd, &rc);
+	GetWindowRect(hwnd, &rw);
+	POINT p2; p2.x = rw.left; p2.y = rw.top;
+	MapWindowPoints(NULL, hwnd, (POINT*)&rw, 2);
+	OffsetRect(&rc, -rw.left, -rw.top);
+	OffsetRect(&rw, -rw.left, -rw.top);
+	HRGN temprgn;
+	if (rgn == (HRGN)1 || rgn == (HRGN)0) {
+		// 1 means entire area (undocumented)
+		ExcludeClipRect(dc, rc.left, rc.top, rc.right, rc.bottom);
+		temprgn = 0;
+	}
+	else {
+		temprgn = CreateRectRgn(rc.left + p2.x, rc.top + p2.y, rc.right + p2.x, rc.bottom + p2.y);
+		if (CombineRgn(temprgn, rgn, temprgn, RGN_DIFF) == NULLREGION) // nothing to paint, you can take a shortcut
+			OffsetRgn(temprgn, -p2.x, -p2.y);
+		ExtSelectClipRgn(dc, temprgn, RGN_AND);
+	}
+	// paint your borders here
+	COLORREF col;
+	if (is_active) col = RGB(0xff, 0, 0);
+	else col = RGB(0, 0, 0xff);
+
+	HBRUSH colbr = CreateSolidBrush(col);
+	FillRect(dc, &rw, colbr);
+	DeleteBrush(colbr);
+
+	// cleanup
+	ReleaseDC(hwnd, dc);
+	if (temprgn) DeleteObject(temprgn);
+}
+
 //TODO(fran): UNDO support for comment removal
 //TODO(fran): DPI awareness
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -2306,6 +2345,31 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		AddControls(hWnd, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE));
 		
 	} break;
+	case WM_NCCREATE: 
+	{
+		CREATESTRUCT* create_nfo = (CREATESTRUCT*)lParam;
+		SetWindowTheme(hWnd, L" ", L" ");
+		//TODO(fran): check for minimize and maximize button requirements
+		return TRUE;
+	} break;
+	case WM_NCACTIVATE:
+	{
+		//So basically this guy is another WM_NCPAINT, just do exactly the same, but also here we have the option to paint slightly different if we are deactivated, so the user can see the change
+		BOOL active = (BOOL)wParam; //Indicates active or inactive state for a title bar or icon that needs to be changed
+		HRGN opt_upd_rgn = (HRGN)lParam; // handle to optional update region for the nonclient area. If set to -1, do nothing
+		OnNcPaint(hWnd, opt_upd_rgn, active);
+		return TRUE; //NOTE: it says we can return FALSE to "prevent the change"
+	} break;
+	case WM_NCPAINT:
+	{
+		OnNcPaint(hWnd, (HRGN)wParam, TRUE);
+		return 0;
+	} break;
+	//case WM_NCCALCSIZE: //NOTE: we can use the defwindowproc for this msg to store the current size parameters for the non client area
+	//{
+	//	printf("WM_NCCALCSIZE\n");
+	//	return DefWindowProc(hWnd, message, wParam, lParam);
+	//} break;
 	case WM_CTLCOLORLISTBOX:
 	{
 		HDC comboboxDC = (HDC)wParam;

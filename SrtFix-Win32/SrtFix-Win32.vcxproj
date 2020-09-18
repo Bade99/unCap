@@ -181,7 +181,6 @@
     <Image Include="icon2.ico" />
     <Image Include="icon3.ico" />
     <Image Include="RightArrow16.bmp" />
-    <Image Include="small.ico" />
     <Image Include="SrtFixE.ico" />
     <Image Include="SrtFixESmall.ico" />
     <Image Include="Tick16.bmp" />

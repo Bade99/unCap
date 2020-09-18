@@ -72,9 +72,6 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
     <Image Include="SrtFixE.ico">
       <Filter>Archivos de recursos</Filter>
     </Image>

@@ -1014,7 +1014,10 @@ const char* msgToString(unsigned int msg) {
 	const char* res = wmTranslation[msg];
 	if (res == NULL)
 	{
-		res = "UnknownMessage";
+		static char unkown[25] = "UnknownMessage ";
+		static size_t len = strlen(unkown);
+		sprintf_s(unkown + len, sizeof(unkown)/sizeof(unkown[0]) - len, "%u", msg);
+		res = unkown;
 	}
 	return res;
 }
