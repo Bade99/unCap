@@ -1,6 +1,7 @@
 #pragma once
 //Thanks to https://stackoverflow.com/questions/8824255/getting-a-windows-message-name/40425868
 //TODO(fran): change to a less (pointless) C++sy solution
+//TODO(fran): sometimes you struck gold http://blog.airesoft.co.uk/2009/11/wm_messages/ add everyone to the party
 #ifdef _DEBUG
 #include <map>
 
@@ -84,6 +85,13 @@ static std::map<int, const char*> wmTranslation = {
 {134, "WM_NCACTIVATE" },
 {135, "WM_GETDLGCODE" },
 {136, "WM_SYNCPAINT" },
+{144, "WM_UAHDESTROYWINDOW" },
+{145, "WM_UAHDRAWMENU" },
+{146, "WM_UAHDRAWMENUITEM" },
+{147, "WM_UAHINITMENU" },
+{148, "WM_UAHMEASUREMENUITEM" },
+{149, "WM_UAHNCPAINTMENUPOPUP" },
+{150, "WM_UAHUPDATE" },
 {160, "WM_NCMOUSEMOVE" },
 {161, "WM_NCLBUTTONDOWN" },
 {162, "WM_NCLBUTTONUP" },
@@ -281,6 +289,12 @@ static std::map<int, const char*> wmTranslation = {
 {791, "WM_PRINT" },
 {792, "WM_PRINTCLIENT" },
 {793, "WM_APPCOMMAND" },
+{798, "WM_DWMCOMPOSITIONCHANGED" },
+{799, "WM_DWMNCRENDERINGCHANGED" },
+{800, "WM_DWMCOLORIZATIONCOLORCHANGED" },
+{801, "WM_DWMWINDOWMAXIMIZEDCHANGE" },
+{803, "WM_DWMSENDICONICTHUMBNAIL" },
+{806, "WM_DWMSENDICONICLIVEPREVIEWBITMAP" },
 {856, "WM_HANDHELDFIRST" },
 {863, "WM_HANDHELDLAST" },
 {864, "WM_AFXFIRST" },
@@ -1024,6 +1038,53 @@ const char* msgToString(unsigned int msg) {
 #else
 const char* msgToString(unsigned int /*msg*/) {
 	const char* res = "UnknownMessage";
+	return res;
+}
+#endif
+
+#ifdef _DEBUG
+#include <map>
+
+static std::map<int, const char*> htTranslation = {
+{-2, "HTERROR" },
+{-1, "HTTRANSPARENT" },
+{0, "HTNOWHERE" },
+{1, "HTCLIENT" },
+{2, "HTCAPTION" },
+{3, "HTSYSMENU" },
+{4, "HTSIZE" },
+{5, "HTMENU" },
+{6, "HTHSCROLL" },
+{7, "HTVSCROLL" },
+{8, "HTMINBUTTON" },
+{9, "HTMAXBUTTON" },
+{10, "HTLEFT" },
+{11, "HTRIGHT" },
+{12, "HTTOP" },
+{13, "HTTOPLEFT" },
+{14, "HTTOPRIGHT" },
+{15, "HTBOTTOM" },
+{16, "HTBOTTOMLEFT" },
+{17, "HTBOTTOMRIGHT" },
+{18, "HTBORDER" },
+{20, "HTCLOSE" },
+{21, "HTHELP" },
+};
+
+const char* hittestToString(unsigned int hittest) {
+	const char* res = htTranslation[hittest];
+	if (res == NULL)
+	{
+		static char unkown[25] = "UnknownHitTest ";
+		static size_t len = strlen(unkown);
+		sprintf_s(unkown + len, sizeof(unkown) / sizeof(unkown[0]) - len, "%u", hittest);
+		res = unkown;
+	}
+	return res;
+}
+#else
+const char* hittestToString(unsigned int /*hittest*/) {
+	const char* res = "UnknownHitTest";
 	return res;
 }
 #endif

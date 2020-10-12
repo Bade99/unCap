@@ -1,4 +1,46 @@
-﻿#include "SrtFix-Win32.h"
+﻿#pragma once
+
+//Pointless warnings
+#pragma warning(disable : 4505) //unreferenced local function has been removed
+#pragma warning(disable : 4189) //local variable is initialized but not referenced
+
+//Pointless unsafe complaints
+#ifdef _DEBUG
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
+#include "windows_msg_mapper.h"
+
+#define WIN32_LEAN_AND_MEAN 
+#define STRICT_TYPED_ITEMIDS
+#include "targetver.h"
+
+#include "resource.h"
+#include <Windows.h>
+#include <Windowsx.h> //GET_X_LPARAM GET_Y_LPARAM
+#include "Open_Save_FileHandler.h"
+#include <string>
+#include <experimental/filesystem>
+#include <fstream>
+#include <sstream>
+#include <propvarutil.h>
+#include <Propsys.h>
+#include <propkey.h>
+#include <Commdlg.h>
+#include <Commctrl.h>
+#include <Shellapi.h>
+#include <wchar.h> //_wcsdup
+#include "LANGUAGE_MANAGER.h"
+#include <Shlobj.h>//SHGetKnownFolderPath
+#include "utf8.h" //Thanks to http://utfcpp.sourceforge.net/
+#include "text_encoding_detect.h" //Thanks to https://github.com/AutoItConsulting/text-encoding-detect
+#include "fmt/format.h" //Thanks to https://github.com/fmtlib/fmt
+#include "unCap_helpers.h"
+#include "unCap_global.h"
+#include "unCap_math.h"
+#include "unCap_scrollbar.h"
+#include "unCap_button.h"
+#include"unCap_Renderer.h"
 
 //----------------------LINKER----------------------:
 // Linker->Input->Additional Dependencies (right way to link the .lib)
@@ -6,6 +48,7 @@
 #pragma comment(lib,"propsys.lib") //open save file handler
 #pragma comment(lib,"shlwapi.lib") //open save file handler
 #pragma comment(lib,"UxTheme.lib") // setwindowtheme
+
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"") 
 //#pragma comment(lib,"User32.lib")
 
@@ -16,7 +59,6 @@ namespace fs = std::experimental::filesystem;
 
 //----------------------TODOs----------------------:
 //Paint Initial char and Final char wnds to look like the rest, add white border so they are more easily noticeable
-//Draw my own non client area
 //Parametric sizes for everything, and DPI awareness for controls that dont move
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 //Option to retain original file encoding on save, otherwise utf8/user defined default
@@ -87,12 +129,11 @@ struct CLOSEBUTTON {
 	SIZE icon;//Size of the icon (will be placed centered in respect to each tab's rectangle)
 };
 
-struct v2 {
-	float x, y;
-};
-
 //----------------------GLOBALS----------------------:
-WCHAR appName[] = L"unCap"; //Program name, to be displayed on the title of windows
+TCHAR unCap_wndclass_uncap_nc[] = TEXT("unCap_wndclass_uncap_nc"); //Non client uncap
+TCHAR unCap_wndclass_uncap_cl[] = TEXT("unCap_wndclass_uncap_cl"); //Client uncap
+
+TCHAR appName[] = TEXT("unCap"); //Program name, to be displayed on the title of windows
 
 HMENU hMenu;//main menu bar(only used to append the rest)
 HMENU hFileMenu;
@@ -163,11 +204,7 @@ CLOSEBUTTON TabCloseButtonInfo; //Information for the placement of the close but
 
 //----------------------HELPER FUNCTIONS----------------------:
 
-inline COLORREF ColorFromBrush(HBRUSH br) {
-	LOGBRUSH lb;
-	GetObject(br, sizeof(lb), &lb);
-	return lb.lbColor;
-}
+
 
 inline bool FileOrDirExists(const wstring& file) {
 	return fs::exists(file);//true if exists
@@ -298,10 +335,9 @@ void UpdateMainWindowTitle_Filename(const WCHAR* new_filename) {
 //----------------------FUNCTION PROTOTYPES----------------------:
 LRESULT CALLBACK	ShowMessageProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	ComboProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-LRESULT CALLBACK	ButtonProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-void				AddMenus(HWND);
+LRESULT CALLBACK    UncapNcProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK	UncapClProc(HWND, UINT, WPARAM, LPARAM);
 void				ChooseFile(wstring);
 void				CommentRemoval(HWND, FILE_FORMAT, WCHAR, WCHAR);
 void				CustomCommentRemoval(HWND, FILE_FORMAT);
@@ -315,115 +351,6 @@ void				CheckInfoFile();
 void				CreateFonts();
 void				AcceptedFile(wstring);
 ENCODING			GetTextEncoding(wstring);
-void				SetOptionsComboBox(HWND&, bool);
-void				ResizeWindows(HWND);
-
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,_In_opt_ HINSTANCE hPrevInstance,_In_ LPWSTR lpCmdLine,_In_ int nCmdShow)
-{
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
-
-	//Initialization of common controls
-	INITCOMMONCONTROLSEX icc;
-
-	icc.dwSize = sizeof(icc);
-	icc.dwICC = ICC_STANDARD_CLASSES;
-
-	BOOL comm_res = InitCommonControlsEx(&icc);
-	Assert(comm_res);
-
-#ifdef _DEBUG
-		AllocConsole();
-		freopen("CONIN$", "r", stdin);
-		freopen("CONOUT$", "w", stdout);
-		freopen("CONOUT$", "w", stderr);
-#endif
-
-	WCHAR szWindowClass[40] = L"unCapClass";	// nombre de clase de la ventana principal
-
-	CheckInfoFile();
-
-	LANGUAGE_MANAGER::Instance().SetHInstance(hInstance);
-	LANGUAGE_MANAGER::Instance().ChangeLanguage(startup_locale);
-
-	unCap_colors.ControlBk = CreateSolidBrush(RGB(40,41,35));
-	unCap_colors.ControlBkPush = CreateSolidBrush(RGB(0, 110, 200));
-	unCap_colors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
-	unCap_colors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
-	unCap_colors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
-	//Thanks to Windows' broken Static Control text color when disabled
-	unCap_colors.InitialFinalCharDisabledColor = RGB(128,128,128);
-	unCap_colors.InitialFinalCharCurrentColor = unCap_colors.InitialFinalCharDisabledColor;
-	unCap_colors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
-	unCap_colors.ScrollbarMouseOver = CreateSolidBrush(RGB(188, 188, 182));
-	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(50, 51, 45));
-	unCap_colors.Img = CreateSolidBrush(RGB(228, 228, 222));
-
-	//Setting offsets for what will define the "client" area of a tab control
-	TabOffset.leftOffset = 3;
-	TabOffset.rightOffset = TabOffset.leftOffset;
-	TabOffset.bottomOffset = TabOffset.leftOffset;
-	TabOffset.topOffset = 24;
-
-	CreateFonts();
-
-	WNDCLASSEXW wcex;
-
-	wcex.cbSize = sizeof(WNDCLASSEX);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc = WndProc;
-	wcex.cbClsExtra = 0;
-	wcex.cbWndExtra = 0;
-	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_SRTFIXWIN32));
-	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = unCap_colors.ControlBk;//(HBRUSH)(COLOR_BTNFACE +1);
-	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_SRTFIXWIN32);
-	wcex.lpszClassName = szWindowClass;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
-
-	ATOM class_atom = RegisterClassExW(&wcex);
-	if (!class_atom) return FALSE;
-
-	init_wndclass_unCap_scrollbar(hInstance);
-
-	//TODO(fran): I think the problem I get that someone else is drawing my nc area is because I ask for OVERLAPPED_WINDOW when I create the window, so it takes care of doing that, which I dont want, REMOVE IT
-	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, szWindowClass, appName, /*This is WS_OVERLAPPEDWND ->*/ WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX,
-		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
-
-	if (!hMain) return FALSE;
-
-	ShowWindow(hMain, nCmdShow);
-	UpdateWindow(hMain);
-
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_SRTFIXWIN32));
-
-    MSG msg;
-
-    while (GetMessage(&msg, nullptr, 0, 0))
-    {
-		
-        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-        {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
-        }
-		
-
-		//if (!IsDialogMessage(hWnd, &msg))
-		//{
-		//	TranslateMessage(&msg);
-		//	DispatchMessage(&msg);
-		//}
-
-    }
-
-	//Cleanup
-	if (unCap_colors.ControlBk)DeleteObject(unCap_colors.ControlBk);//TODO(fran): destructor?
-	if (unCap_colors.ControlTxt)DeleteObject(unCap_colors.ControlTxt);
-
-    return (int) msg.wParam;
-}
 
 /// <summary>
 /// Decides which font FaceName is appropiate for the current system
@@ -912,9 +839,9 @@ BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, TCHAR* str) {
 
 HMENU HACK_toplevelmenu = NULL; //TODO(fran)
 
-void AddMenus(HWND hWnd) {
+void AddMenus(HWND hwnd) {
 	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
-	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hWnd);
+	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hwnd);
 
 	//INFO: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
 
@@ -924,7 +851,7 @@ void AddMenus(HWND hWnd) {
 	AppendMenuW(hMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenu, (LPCWSTR)hMenu);
 	HACK_toplevelmenu = hFileMenu;
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
-
+	
 	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, (LPCWSTR)hFileMenu); //NOTE: when MF_OWNERDRAW is used the 4th param is itemData
 	AMT(hFileMenu, OPEN_FILE, LANG_MENU_OPEN);
 
@@ -952,8 +879,7 @@ void AddMenus(HWND hWnd) {
 	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, const_cast<TCHAR*>(TEXT("Español")));
 
 	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK)); //TODO(fran): preload the bitmaps or destroy them when we destroy the menu
-	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CROSS));
-	BITMAP bitmap; GetObject(bCross, sizeof(bitmap), &bitmap);
+	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CLOSE));
 	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(EARTH));
 
 	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
@@ -966,19 +892,19 @@ void AddMenus(HWND hWnd) {
 	//https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmenustate
 	//https://docs.microsoft.com/es-es/windows/desktop/menurc/using-menus#using-custom-check-mark-bitmaps
 	//https://www.daniweb.com/programming/software-development/threads/490612/win32-can-i-change-the-hbitmap-structure-for-be-transparent
-
+	
 	//TODO(fran): some automatic way to add this to all langs?
 	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, MF_BYCOMMAND, NULL, bTick);
 	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, MF_BYCOMMAND, NULL, bTick);
 
 	CheckMenuItem(hFileMenuLang, LANGUAGE_MANAGER::Instance().GetCurrentLanguage(), MF_BYCOMMAND | MF_CHECKED);
-
-	SetMenu(hWnd, hMenu);
+	
+	SetMenu(hwnd, hMenu);
 }
 
 //Method for managing edit control special features (ie dropped files,...)
 //there seems to be other ways like using SetWindowsHookExW or SetWindowLongPtrW 
-LRESULT CALLBACK EditCatchDrop(HWND hWnd, UINT uMsg, WPARAM wParam,
+LRESULT CALLBACK EditCatchDrop(HWND hwnd, UINT uMsg, WPARAM wParam,
 	LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/)
 {
 	switch (uMsg)
@@ -987,7 +913,7 @@ LRESULT CALLBACK EditCatchDrop(HWND hWnd, UINT uMsg, WPARAM wParam,
 		CatchDrop(wParam);
 		return TRUE;
 	}
-	return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+	return DefSubclassProc(hwnd, uMsg, wParam, lParam);
 }
 
 #define EM_GET_MAX_VISIBLE_LINES (WM_USER+200) /*Retrieves a count for the max number of lines that can be displayed at once in the current window. return=int*/
@@ -1252,20 +1178,21 @@ void CleanTabRelatedControls() {//TODO(fran): probably should ask for a blank TE
 	EnableTab(blank);
 }
 
-LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+LRESULT CALLBACK TabProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: if I ever feel like managing WM_PAINT: https://social.msdn.microsoft.com/Forums/expression/en-US/d25d08fb-acf1-489e-8e6c-55ac0f3d470d/tab-controls-in-win32-api?forum=windowsuidevelopment
 	switch (Msg) {
+		//TODO(fran): NCPAINT
 	case TCM_RESIZETABS:
 	{
-		int item_count = (int)SendMessage(hWnd, TCM_GETITEMCOUNT, 0, 0);
+		int item_count = (int)SendMessage(hwnd, TCM_GETITEMCOUNT, 0, 0);
 		if (item_count != 0) {
 			for (int i = 0; i < item_count; i++) {
 				CUSTOM_TCITEM item;
 				item.tab_info.mask = TCIF_PARAM;
-				BOOL ret = (BOOL)SendMessage(hWnd, TCM_GETITEM, i, (LPARAM)&item);
+				BOOL ret = (BOOL)SendMessage(hwnd, TCM_GETITEM, i, (LPARAM)&item);
 				if (ret) {
 					RECT rc;
-					GetClientRect(hWnd, &rc);
+					GetClientRect(hwnd, &rc);
 					SIZE control_size;
 					control_size.cx = RECTWIDTH(rc);
 					control_size.cy = RECTHEIGHT(rc);
@@ -1284,36 +1211,36 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 	{
 		HDC  hdc = (HDC)wParam;
 		RECT rc;
-		GetClientRect(hWnd, &rc);
+		GetClientRect(hwnd, &rc);
 
 		FillRect(hdc, &rc, unCap_colors.ControlBk);
 		return 1;
 	}
 	case WM_CTLCOLOREDIT:
 	{
-		//if ((HWND)lParam == GetDlgItem(hWnd, EDIT_ID)) //TODO(fran): check we are changing the control we want
+		//if ((HWND)lParam == GetDlgItem(hwnd, EDIT_ID)) //TODO(fran): check we are changing the control we want
 		if(TRUE)
 		{
 			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
 			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlTxt));
 			return (LRESULT)unCap_colors.ControlBk;
 		}
-		else return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		else return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	case WM_LBUTTONUP:
 	{
 		POINT p;
 		p.x = GET_X_LPARAM(lParam);
 		p.y = GET_Y_LPARAM(lParam);
-		int index = TestCloseButton(hWnd, TabCloseButtonInfo, p);
+		int index = TestCloseButton(hwnd, TabCloseButtonInfo, p);
 		if (index != -1) {
 			//Delete corresponding tab
-			SendMessage(hWnd, TCM_DELETEITEM, index, 0); //After this no other messages are sent and the tab control's index gets set to -1
+			SendMessage(hwnd, TCM_DELETEITEM, index, 0); //After this no other messages are sent and the tab control's index gets set to -1
 			//Now we have to send a TCM_SETCURSEL, but in the special case that no other tabs are left we should clean the controls
-			int item_count = (int)SendMessage(hWnd, TCM_GETITEMCOUNT, 0, 0);
+			int item_count = (int)SendMessage(hwnd, TCM_GETITEMCOUNT, 0, 0);
 			if (item_count == 0) CleanTabRelatedControls();									//if there's no tabs left clean the controls
-			else if (index == item_count) SendMessage(hWnd, TCM_SETCURSEL, index - 1, 0);	//if the deleted tab was the rightmost one change to the one on the left
-			else SendMessage(hWnd, TCM_SETCURSEL, index, 0);								//otherwise change to the tab that now holds the index that this one did(will select the one on its right)
+			else if (index == item_count) SendMessage(hwnd, TCM_SETCURSEL, index - 1, 0);	//if the deleted tab was the rightmost one change to the one on the left
+			else SendMessage(hwnd, TCM_SETCURSEL, index, 0);								//otherwise change to the tab that now holds the index that this one did(will select the one on its right)
 
 		} 
 		break;
@@ -1327,7 +1254,7 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 		//Any hwnd should be destroyed
 		DestroyWindow(info.hText);
 
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	//case WM_PARENTNOTIFY:
 	//{
@@ -1335,47 +1262,47 @@ LRESULT CALLBACK TabProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 	//	case WM_CREATE:
 	//	{//Each time a new tab gets created this message is received and the lParam is the new HWND
 	//		TESTTAB = (HWND)lParam;
-	//		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	//		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	//	}
-	//	default: return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	//	default: return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	//	}
-	//	return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	//	return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	//}
 	case TCM_SETCURSEL: //When sending SETCURSEL, TCN_SELCHANGING and TCN_SELCHANGE are no sent, therefore we have to do everything in one message here
 	{
-		SaveAndDisableCurrentTab(hWnd);
+		SaveAndDisableCurrentTab(hwnd);
 
 		CUSTOM_TCITEM new_item;
 		new_item.tab_info.mask = TCIF_PARAM;
-		BOOL ret = (BOOL)SendMessage(hWnd, TCM_GETITEM, wParam, (LPARAM)&new_item);
+		BOOL ret = (BOOL)SendMessage(hwnd, TCM_GETITEM, wParam, (LPARAM)&new_item);
 		if (ret) {
 			EnableTab(new_item.extra_info);
 		}
 
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	default:
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	return 0;
 }
 
-void AddControls(HWND hWnd, HINSTANCE hInstance) {
+void AddControls(HWND hwnd, HINSTANCE hInstance) {
 	hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
 			| ES_AUTOHSCROLL | SS_CENTERIMAGE
-			, 10, y_place, 664, 20, hWnd, NULL, NULL, NULL);
+			, 10, y_place, 664, 20, hwnd, NULL, NULL, NULL);
 	//ChangeWindowMessageFilterEx(hFile, WM_DROPFILES, MSGFLT_ADD,NULL); y mas que habia
 	
 	//TODO(fran): add more interesting progress bar
 	//hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
-	//	, 10, y_place, 664, 20, hWnd, (HMENU)NULL, NULL, NULL);
+	//	, 10, y_place, 664, 20, hwnd, (HMENU)NULL, NULL, NULL);
 
 	hRemoveCommentWith = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
-	, 25, y_place+3, 155, 20, hWnd, NULL, NULL, NULL);
+	, 25, y_place+3, 155, 20, hwnd, NULL, NULL, NULL);
 	AWT(hRemoveCommentWith, LANG_CONTROL_REMOVECOMMENTWITH);
 
 	hOptions = CreateWindowW(L"ComboBox", NULL, WS_VISIBLE | WS_CHILD| CBS_DROPDOWNLIST|WS_TABSTOP
-		, 195, y_place, 130, 90/*20*/, hWnd, (HMENU)COMBO_BOX, hInstance, NULL);
+		, 195, y_place, 130, 90/*20*/, hwnd, (HMENU)COMBO_BOX, hInstance, NULL);
 	//SetOptionsComboBox(hOptions, TRUE);
 	ACT(hOptions, COMMENT_TYPE::brackets, LANG_CONTROL_CHAROPTIONS_BRACKETS);
 	ACT(hOptions, COMMENT_TYPE::parenthesis, LANG_CONTROL_CHAROPTIONS_PARENTHESIS);
@@ -1384,41 +1311,41 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	SendMessageW(hOptions, CB_SETCURSEL, 0, 0);
 	SetWindowSubclass(hOptions, ComboProc, 0, 0);
 	//WCHAR explain_combobox[] = L"Also separates the lines";
-	//CreateToolTip(COMBO_BOX, hWnd, explain_combobox);
+	//CreateToolTip(COMBO_BOX, hwnd, explain_combobox);
 
 	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED 
-		, 78, y_place + 35, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+		, 78, y_place + 35, 105, 20, hwnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(hInitialText, LANG_CONTROL_INITIALCHAR);
 
 	hInitialChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER |ES_CENTER | WS_TABSTOP | WS_DISABLED
-		, 195, y_place + 34, 20, 21, hWnd, NULL, NULL, NULL);
+		, 195, y_place + 34, 20, 21, hwnd, NULL, NULL, NULL);
 	SendMessageW(hInitialChar, EM_LIMITTEXT, 1, 0);
 
 	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED
-		, 78, y_place + 65, 105, 20, hWnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+		, 78, y_place + 65, 105, 20, hwnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(hFinalText, LANG_CONTROL_FINALCHAR);
 
 	hFinalChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER| WS_TABSTOP| WS_DISABLED
-		, 195, y_place + 64, 20, 21, hWnd, NULL, NULL, NULL);
+		, 195, y_place + 64, 20, 21, hwnd, NULL, NULL, NULL);
 	SendMessageW(hFinalChar, EM_LIMITTEXT, 1, 0);
 
-	hRemove = CreateWindowW(L"Button", NULL, WS_VISIBLE | WS_CHILD| WS_TABSTOP
-		, 256, y_place + 44, 70, 30, hWnd, (HMENU)REMOVE, NULL, NULL);
+	hRemove = CreateWindowW(unCap_wndclass_button, NULL, WS_VISIBLE | WS_CHILD| WS_TABSTOP
+		, 256, y_place + 44, 70, 30, hwnd, (HMENU)REMOVE, NULL, NULL);
 	AWT(hRemove, LANG_CONTROL_REMOVE);
-	SetWindowSubclass(hRemove, ButtonProc, 0, 0);
+	UNCAPBTN_set_brushes(hRemove, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
 
 	hMessage = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
-		, 256+70+10, y_place + 44, 245, 30,hWnd,(HMENU)TIMEDMESSAGES,NULL,NULL); //INFO: width will be as large as needed to show the needed string
+		, 256+70+10, y_place + 44, 245, 30,hwnd,(HMENU)TIMEDMESSAGES,NULL,NULL); //INFO: width will be as large as needed to show the needed string
 	SetWindowSubclass(hMessage, ShowMessageProc, 0, 0);
 	SendMessage(hMessage, UNCAP_SETTEXTDURATION, 5000, 0);
 
 	//hRemoveProgress = CreateWindowExW(0,PROGRESS_CLASS,(LPWSTR)NULL, WS_CHILD
-	//	, 256, y_place + 74, 70, 30,hWnd, (HMENU)NULL,NULL,NULL);
+	//	, 256, y_place + 74, 70, 30,hwnd, (HMENU)NULL,NULL,NULL);
 
 	//TODO(fran): init common controls for tab control
 	//INFO:https://docs.microsoft.com/en-us/windows/win32/controls/tab-controls
 	TextContainer = CreateWindowExW(WS_EX_ACCEPTFILES, WC_TABCONTROL, NULL, WS_CHILD | WS_VISIBLE | TCS_FORCELABELLEFT | TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH
-							, 10, y_place + 104, 664 - 50, 618, hWnd, (HMENU)TABCONTROL, NULL, NULL);
+							, 10, y_place + 104, 664 - 50, 618, hwnd, (HMENU)TABCONTROL, NULL, NULL);
 	TabCtrl_SetItemExtra(TextContainer, sizeof(TEXT_INFO));
 	int tabWidth = 100,tabHeight=20;
 	SendMessage(TextContainer, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
@@ -1436,16 +1363,16 @@ void AddControls(HWND hWnd, HINSTANCE hInstance) {
 	SendMessage(hFinalText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(hFinalChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(TextContainer, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 	SendMessage(hMessage, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
 }
 
+bool HACK_EnableOtherChar = false;
+
 void EnableOtherChar(bool op) {
 	//EnableWindow(hInitialText, op);
 	//EnableWindow(hFinalText, op);
-	if (op) unCap_colors.InitialFinalCharCurrentColor = ColorFromBrush(unCap_colors.ControlTxt);
-	else unCap_colors.InitialFinalCharCurrentColor = unCap_colors.InitialFinalCharDisabledColor;
+	HACK_EnableOtherChar = op;
 	InvalidateRect(hInitialText, NULL, TRUE);
 	InvalidateRect(hFinalText, NULL, TRUE);
 	EnableWindow(hInitialChar, op);
@@ -1890,13 +1817,14 @@ void CheckInfoFile() {	//changes default values if file exists
 	}
 }
 
-void ResizeWindows(HWND mainWindow) {
+void UNCAPCL_ResizeWindows(HWND mainWindow) {
 	RECT rect;
-	GetWindowRect(mainWindow, &rect);
+	GetClientRect(mainWindow, &rect);
 	//MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
 	MoveWindow(hMessage, 256 + 70 + 10, y_place + 44, RECTWIDTH(rect) - (256+70+4) - 36, 30, TRUE);
 	//@No se si actualizar las demas
-	MoveWindow(TextContainer, 10, y_place + 104, RECTWIDTH(rect) - 36, RECTHEIGHT(rect) - 182, TRUE);
+	int txtcont_top = y_place + 104;
+	MoveWindow(TextContainer, 10, txtcont_top, RECTWIDTH(rect) - 20, RECTHEIGHT(rect) - txtcont_top - 10, TRUE);
 	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
 }
 
@@ -1910,19 +1838,19 @@ void ResizeWindows(HWND mainWindow) {
 /// </summary>
 /// <param name="uIdSubclass">Not used</param>
 /// <param name="dwRefData">Not used</param>
-LRESULT CALLBACK ShowMessageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+LRESULT CALLBACK ShowMessageProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: for this procedure and its hwnds we are going to try the SetProp method for storing info in the hwnd
 	TCHAR text_duration[] = TEXT("TextDuration_unCap");
 	switch (Msg)
 	{
 	case UNCAP_SETTEXTDURATION:
 	{
-		SetProp(hWnd, text_duration, (HANDLE)wParam);
+		SetProp(hwnd, text_duration, (HANDLE)wParam);
 		return TRUE;
 	}
 	case WM_TIMER: {
-		KillTimer(hWnd, 1);//Stop timer, otherwise it keeps sending messages
-		ShowWindow(hWnd, SW_HIDE);
+		KillTimer(hwnd, 1);//Stop timer, otherwise it keeps sending messages
+		ShowWindow(hwnd, SW_HIDE);
 		break;
 	}
 	case WM_SETTEXT: 
@@ -1936,171 +1864,57 @@ LRESULT CALLBACK ShowMessageProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lPar
 			//...
 
 			//Start Timer for text removal: this messages will be shown for a little period of time before the control is hidden again
-			UINT msgDuration = (UINT)GetProp(hWnd, text_duration);	//Retrieve the user defined duration of text on screen
+			UINT msgDuration = (UINT)GetProp(hwnd, text_duration);	//Retrieve the user defined duration of text on screen
 																	//If this value was not set then the timer is not used and the text remains on screen
 			if(msgDuration)
-				SetTimer(hWnd, 1, msgDuration, NULL); //By always setting the second param to 1 we are going to override any existing timer
+				SetTimer(hwnd, 1, msgDuration, NULL); //By always setting the second param to 1 we are going to override any existing timer
 
-			ShowWindow(hWnd, SW_SHOW); //Show the control with its new text
+			ShowWindow(hwnd, SW_SHOW); //Show the control with its new text
 		}
 		else { //We want to hide the control and clear whatever text is in it
-			ShowWindow(hWnd, SW_HIDE);
+			ShowWindow(hwnd, SW_HIDE);
 		}
 
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	case WM_DESTROY:
 	{
 		//Cleanup
-		RemoveProp(hWnd, text_duration);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		RemoveProp(hwnd, text_duration);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
-	default: return DefSubclassProc(hWnd, Msg, wParam, lParam);
-	}
-	return 0;
-}
-
-LRESULT CALLBACK ButtonProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
-	static BOOL MouseOver = false;
-	static HWND CurrentMouseOverButton;
-
-	switch (Msg) {
-	case WM_MOUSEHOVER:
-	{
-		//force button to repaint and specify hover or not
-		if (MouseOver && CurrentMouseOverButton == hWnd) break;
-		MouseOver = true;
-		CurrentMouseOverButton = hWnd;
-		InvalidateRect(hWnd, 0, 1);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
-	}
-	case WM_MOUSELEAVE:
-	{
-		MouseOver = false;
-		CurrentMouseOverButton = NULL;
-		InvalidateRect(hWnd, 0, 1);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
-	}
-	case WM_MOUSEMOVE:
-	{
-		//TODO(fran): We are tracking the mouse every single time it moves, kind of suspect solution
-		TRACKMOUSEEVENT tme;
-		tme.cbSize = sizeof(TRACKMOUSEEVENT);
-		tme.dwFlags = TME_HOVER | TME_LEAVE;
-		tme.dwHoverTime = 1;
-		tme.hwndTrack = hWnd;
-
-		TrackMouseEvent(&tme);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
-	}
-	case WM_PAINT://TODO(fran): I think we should handle erasebkgnd cause there some weird problems happen, we are patching them by calling update every time we change the control from the outside
-	{
-		PAINTSTRUCT ps; //TODO(fran): we arent using the rectangle from the ps, I think we should for performance
-		HDC hdc = BeginPaint(hWnd, &ps);
-
-		RECT rc; GetClientRect(hWnd, &rc);
-		//int controlID = GetDlgCtrlID(hWnd);
-
-		WORD ButtonState = (WORD)SendMessageW(hWnd, BM_GETSTATE, 0, 0);
-
-		if (ButtonState & BST_PUSHED) {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
-			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
-		}
-		else if (MouseOver && CurrentMouseOverButton == hWnd) {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
-			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
-		}
-		else {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBk));
-			FillRect(hdc, &rc, unCap_colors.ControlBk);
-		}
-
-		int borderSize = max(1, (int)(RECTHEIGHT(rc)*.06f));
-
-		HPEN pen = CreatePen(PS_SOLID, borderSize, ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
-
-		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
-		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
-
-		//Border
-		Rectangle(hdc, rc.left, rc.top, rc.right, rc.bottom);
-
-		SelectObject(hdc, oldbrush);
-		SelectObject(hdc, oldpen);
-		DeleteObject(pen);
-
-		DWORD style = (DWORD)GetWindowLongPtr(hWnd, GWL_STYLE);
-		if (style & BS_ICON) {//Here will go buttons that only have an icon
-			//For this app we dont need buttons with icons
-		}
-		else { //Here will go buttons that only have text
-			HFONT font = (HFONT)SendMessage(hWnd, WM_GETFONT, 0, 0);
-			if (font) {//if font == NULL then it is using system font(default I assume)
-				(HFONT)SelectObject(hdc, (HGDIOBJ)(HFONT)font);
-			}
-			SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
-			WCHAR Text[40];
-			int len = (int)SendMessage(hWnd, WM_GETTEXT,
-				ARRAYSIZE(Text), (LPARAM)Text);
-
-			TEXTMETRIC tm;
-			GetTextMetrics(hdc, &tm);
-			// Calculate vertical position for the item string so that it will be vertically centered
-			int yPos = (rc.bottom + rc.top - tm.tmHeight) / 2;
-
-			SetTextAlign(hdc, TA_CENTER);
-			//int xPos = ((rc.right - rc.left) - tm.tmAveCharWidth*len)/2; //not good enough
-			int xPos = (rc.right - rc.left) / 2;
-			TextOut(hdc, xPos, yPos, Text, len);
-		}
-		EndPaint(hWnd, &ps);
-		//test
-
-		return 0;
-	}
-	default:
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	default: return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	return 0;
 }
 
-LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+LRESULT CALLBACK ComboProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	static BOOL MouseOverCombo = FALSE;
 	static HWND CurrentMouseOverCombo;
 
 	switch (Msg)
 	{
-	//case WM_ERASEBKGND:
-	//{
-	//	HDC  hdc = (HDC)wParam;
-	//	RECT rc;
-	//	GetClientRect(hWnd, &rc);
-
-	//	FillRect(hdc, &rc, unCap_colors.ControlBk);
-	//	return 1;
-	//}
 	case CB_SETCURSEL:
 	{
 		EnableOtherChar(wParam == COMMENT_TYPE::other);
-		InvalidateRect(hWnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		InvalidateRect(hwnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	case WM_MOUSEHOVER:
 	{
 		//force button to repaint and specify hover or not
-		if (MouseOverCombo && CurrentMouseOverCombo == hWnd) break;
+		if (MouseOverCombo && CurrentMouseOverCombo == hwnd) break;
 		MouseOverCombo = true;
-		CurrentMouseOverCombo = hWnd;
-		InvalidateRect(hWnd, 0, 1);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		CurrentMouseOverCombo = hwnd;
+		InvalidateRect(hwnd, 0, 1);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	case WM_MOUSELEAVE:
 	{
 		MouseOverCombo = false;
 		CurrentMouseOverCombo = NULL;
-		InvalidateRect(hWnd, 0, 1);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		InvalidateRect(hwnd, 0, 1);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	case WM_MOUSEMOVE:
 	{
@@ -2109,30 +1923,30 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		tme.cbSize = sizeof(TRACKMOUSEEVENT);
 		tme.dwFlags = TME_HOVER | TME_LEAVE;
 		tme.dwHoverTime = 1;
-		tme.hwndTrack = hWnd;
+		tme.hwndTrack = hwnd;
 
 		TrackMouseEvent(&tme);
-		return DefSubclassProc(hWnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	}
 	//case CBN_DROPDOWN://lets us now that the list is about to be show, therefore the user clicked us
 	case WM_PAINT:
 	{
-		DWORD style = (DWORD)GetWindowLongPtr(hWnd, GWL_STYLE);
+		DWORD style = (DWORD)GetWindowLongPtr(hwnd, GWL_STYLE);
 		if (!(style & CBS_DROPDOWNLIST))
 			break;
 
 		RECT rc;
-		GetClientRect(hWnd, &rc);
+		GetClientRect(hwnd, &rc);
 
 		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hWnd, &ps);
+		HDC hdc = BeginPaint(hwnd, &ps);
 
-		BOOL ButtonState = (BOOL)SendMessageW(hWnd, CB_GETDROPPEDSTATE, 0, 0);
+		BOOL ButtonState = (BOOL)SendMessageW(hwnd, CB_GETDROPPEDSTATE, 0, 0);
 		if (ButtonState) {
 			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
 			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
 		}
-		else if (MouseOverCombo && CurrentMouseOverCombo == hWnd) {
+		else if (MouseOverCombo && CurrentMouseOverCombo == hwnd) {
 			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
 			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
 		}
@@ -2142,14 +1956,14 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		}
 
 		RECT client_rec;
-		GetClientRect(hWnd, &client_rec);
+		GetClientRect(hwnd, &client_rec);
 
 		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
 
 		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
 		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
 
-		SelectObject(hdc, (HFONT)SendMessage(hWnd, WM_GETFONT, 0, 0));
+		SelectObject(hdc, (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0));
 		//SetBkColor(hdc, bkcolor);
 		SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
 
@@ -2157,7 +1971,7 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		Rectangle(hdc, 0, 0, rc.right, rc.bottom);
 
 		/*
-		if (GetFocus() == hWnd)
+		if (GetFocus() == hwnd)
 		{
 			//INFO: with this we know when the control has been pressed
 			RECT temp = rc;
@@ -2167,24 +1981,24 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		*/
 		int DISTANCE_TO_SIDE = 5;
 
-		int index = (int)SendMessage(hWnd, CB_GETCURSEL, 0, 0);
+		int index = (int)SendMessage(hwnd, CB_GETCURSEL, 0, 0);
 		if (index >= 0)
 		{
-			int buflen = (int)SendMessage(hWnd, CB_GETLBTEXTLEN, index, 0);
+			int buflen = (int)SendMessage(hwnd, CB_GETLBTEXTLEN, index, 0);
 			TCHAR *buf = new TCHAR[(buflen + 1)];
-			SendMessage(hWnd, CB_GETLBTEXT, index, (LPARAM)buf);
+			SendMessage(hwnd, CB_GETLBTEXT, index, (LPARAM)buf);
 			rc.left += DISTANCE_TO_SIDE;
 			DrawText(hdc, buf, -1, &rc, DT_EDITCONTROL | DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 			delete[]buf;
 		}
 		RECT r;
 		SIZE icon_size;
-		GetClientRect(hWnd, &r);
+		GetClientRect(hwnd, &r);
 		icon_size.cy = (LONG)((float)(r.bottom - r.top)*.6f);
 		icon_size.cx = icon_size.cy;
 
-		HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
-		//LONG icon_id = GetWindowLongPtr(hWnd, GWL_USERDATA);
+		HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+		//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
 		//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
 		HICON combo_dropdown_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(COMBO_ICON), IMAGE_ICON, icon_size.cx, icon_size.cy, LR_SHARED);
 
@@ -2199,19 +2013,19 @@ LRESULT CALLBACK ComboProc(HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam, UI
 		//DeleteObject(brush);
 		DeleteObject(pen);
 
-		EndPaint(hWnd, &ps);
+		EndPaint(hwnd, &ps);
 		return 0;
 	}
 
 	//case WM_NCDESTROY:
 	//{
-	//	RemoveWindowSubclass(hWnd, this->ComboProc, uIdSubclass);
+	//	RemoveWindowSubclass(hwnd, this->ComboProc, uIdSubclass);
 	//	break;
 	//}
 
 	}
 
-	return DefSubclassProc(hWnd, Msg, wParam, lParam);
+	return DefSubclassProc(hwnd, Msg, wParam, lParam);
 }
 
 v2 GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/dpi-and-device-independent-pixels
@@ -2234,10 +2048,6 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE new_lang) {
 	//Check the new one
 	CheckMenuItem(hFileMenu, new_lang, MF_BYCOMMAND | MF_CHECKED);
 }
-
-//LONG usable_TabbedTextOut(HDC hdc, int x, int y, LPCSTR lpString, int chCount, int nTabPositions, const INT *lpnTabStopPositions, int nTabOrigin) {
-//	return 0;
-//}
 
 void DrawMenuArrow(HDC destDC, RECT& r)
 {
@@ -2294,85 +2104,127 @@ void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
 	SelectBrush(destDC, oldBr);
 }
 
-//NOTE: used for both WM_NCPAINT and WM_NCACTIVATE, which, of couse have different wparam/lparam values for obtaining the rgn and active/inactive state, so here we request the params already converted from windows nonsense to something usable, also, for WM_NCPAINT is_active is _always_ TRUE
-void OnNcPaint(HWND hwnd, HRGN rgn, BOOL is_active) {
-	// because GetDCEx states that it will delete the region, passing it would be unreliable
-#define DCX_USESTYLE 0x00010000 /*Windows never disappoints with its crucial undocumented features*/
-	HDC dc = GetDCEx(hwnd, 0, DCX_WINDOW | DCX_USESTYLE);
-	RECT rc, rw;
-	GetClientRect(hwnd, &rc);
-	GetWindowRect(hwnd, &rw);
-	POINT p2; p2.x = rw.left; p2.y = rw.top;
-	MapWindowPoints(NULL, hwnd, (POINT*)&rw, 2);
-	OffsetRect(&rc, -rw.left, -rw.top);
-	OffsetRect(&rw, -rw.left, -rw.top);
-	HRGN temprgn;
-	if (rgn == (HRGN)1 || rgn == (HRGN)0) {
-		// 1 means entire area (undocumented)
-		ExcludeClipRect(dc, rc.left, rc.top, rc.right, rc.bottom);
-		temprgn = 0;
-	}
-	else {
-		temprgn = CreateRectRgn(rc.left + p2.x, rc.top + p2.y, rc.right + p2.x, rc.bottom + p2.y);
-		if (CombineRgn(temprgn, rgn, temprgn, RGN_DIFF) == NULLREGION) // nothing to paint, you can take a shortcut
-			OffsetRgn(temprgn, -p2.x, -p2.y);
-		ExtSelectClipRgn(dc, temprgn, RGN_AND);
-	}
-	// paint your borders here
-	COLORREF col;
-	if (is_active) col = RGB(0xff, 0, 0);
-	else col = RGB(0, 0, 0xff);
+struct unCapClProcState {
+	HWND wnd;
+	HWND nc_parent;
+};
 
-	HBRUSH colbr = CreateSolidBrush(col);
-	FillRect(dc, &rw, colbr);
-	DeleteBrush(colbr);
+ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
+	WNDCLASSEXW wcex{ sizeof(wcex) };
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = UncapClProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = sizeof(unCapClProcState*);
+	wcex.hInstance = inst;
+	wcex.hIcon = 0;
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = unCap_colors.ControlBk;
+	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
+	wcex.lpszClassName = unCap_wndclass_uncap_cl;
+	wcex.hIconSm = 0;
 
-	// cleanup
-	ReleaseDC(hwnd, dc);
-	if (temprgn) DeleteObject(temprgn);
+	ATOM class_atom = RegisterClassExW(&wcex);
+	Assert(class_atom);
+	return class_atom;
 }
 
-//TODO(fran): UNDO support for comment removal
-//TODO(fran): DPI awareness
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	//printf(msgToString(message)); printf("\n");
-	switch (message)
+
+LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+	unCapClProcState * state = (unCapClProcState *)GetWindowLongPtr(hwnd, 0);
+	switch (msg) {
+	case WM_DRAWITEM:
 	{
-	case WM_CREATE:
-	{
-		AddMenus(hWnd);
-		AddControls(hWnd, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE));
-		
-	} break;
-	case WM_NCCREATE: 
-	{
-		CREATESTRUCT* create_nfo = (CREATESTRUCT*)lParam;
-		SetWindowTheme(hWnd, L" ", L" ");
-		//TODO(fran): check for minimize and maximize button requirements
-		return TRUE;
-	} break;
-	case WM_NCACTIVATE:
-	{
-		//So basically this guy is another WM_NCPAINT, just do exactly the same, but also here we have the option to paint slightly different if we are deactivated, so the user can see the change
-		BOOL active = (BOOL)wParam; //Indicates active or inactive state for a title bar or icon that needs to be changed
-		HRGN opt_upd_rgn = (HRGN)lParam; // handle to optional update region for the nonclient area. If set to -1, do nothing
-		OnNcPaint(hWnd, opt_upd_rgn, active);
-		return TRUE; //NOTE: it says we can return FALSE to "prevent the change"
-	} break;
-	case WM_NCPAINT:
-	{
-		OnNcPaint(hWnd, (HRGN)wParam, TRUE);
+		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lparam;
+		switch (wparam) {//wParam specifies the identifier of the control that needs painting
+		case TABCONTROL:
+		{
+			switch (item->itemAction) {//Determines what I have to do with the control
+			case ODA_DRAWENTIRE://Draw everything
+			case ODA_FOCUS://Control lost or gained focus, check itemState
+			case ODA_SELECT://Selection status changed, check itemState
+				//Fill background //TODO(fran): the original background is still visible for some reason
+				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
+				//IMPORTANT INFO: this is no region set so I can actually draw to the entire control, useful for going over what the control draws
+
+				UINT index = item->itemID;
+
+				//Draw text
+				wstring text = GetTabTitle(index);
+
+				TEXTMETRIC tm;
+				GetTextMetrics(item->hDC, &tm);
+				// Calculate vertical position for the item string so that it will be vertically centered
+
+				int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
+
+				int xPos = item->rcItem.left + (int)((float)RECTWIDTH(item->rcItem)*.1f);
+
+
+				//SIZE text_size;
+				//GetTextExtentPoint32(item->hDC, text.c_str(), text.length(), &text_size);
+
+				//INFO TODO: probably simpler is to just mark a region and then unmark it, not sure how it will work for animation though
+				//also I'm not sure how this method handles other unicode chars, ie japanese
+				int max_count;
+				SIZE fulltext_size;
+				RECT modified_rc = item->rcItem;
+				modified_rc.left = xPos;
+				modified_rc.right -= (TabCloseButtonInfo.rightPadding + TabCloseButtonInfo.icon.cx);
+				BOOL res = GetTextExtentExPoint(item->hDC, text.c_str(), (int)text.length()
+					, RECTWIDTH(modified_rc)/*TODO(fran):This should be DPI aware*/, &max_count, NULL, &fulltext_size);
+				Assert(res);
+				int len = max_count;
+
+
+				COLORREF old_bk_color = GetBkColor(item->hDC);
+				COLORREF old_txt_color = GetTextColor(item->hDC);
+
+				SetBkColor(item->hDC, ColorFromBrush(unCap_colors.ControlBk));
+				SetTextColor(item->hDC, ColorFromBrush(unCap_colors.ControlTxt));
+				TextOut(item->hDC, xPos, yPos, text.c_str(), len);
+
+				//Reset hdc as it was before our painting
+				SetBkColor(item->hDC, old_bk_color);
+				SetTextColor(item->hDC, old_txt_color);
+
+				//Draw close button 
+
+				POINT button_topleft;
+				button_topleft.x = item->rcItem.right - TabCloseButtonInfo.rightPadding - TabCloseButtonInfo.icon.cx;
+				button_topleft.y = item->rcItem.top + (RECTHEIGHT(item->rcItem) - TabCloseButtonInfo.icon.cy) / 2;
+
+				//RECT r;
+				//r.left = button_topleft.x;
+				//r.right = r.left + TabCloseButtonInfo.icon.cx;
+				//r.top = button_topleft.y; 
+				//r.bottom = r.top + TabCloseButtonInfo.icon.cy;
+				//FillRect(item->hDC, &r, unCap_colors.ControlTxt);
+
+				HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+				//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
+				//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
+				HICON close_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(CROSS_ICON), IMAGE_ICON, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, LR_SHARED);
+
+				if (close_icon) {
+					DrawIconEx(item->hDC, button_topleft.x, button_topleft.y,
+						close_icon, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
+					DestroyIcon(close_icon);
+				}
+
+				//TODO?(fran): add a plus sign for the last tab and when pressed launch choosefile? or no plus sign at all since we dont really need it
+
+				break;
+			}
+
+			return TRUE;
+		}
+		default: return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
 		return 0;
 	} break;
-	//case WM_NCCALCSIZE: //NOTE: we can use the defwindowproc for this msg to store the current size parameters for the non client area
-	//{
-	//	printf("WM_NCCALCSIZE\n");
-	//	return DefWindowProc(hWnd, message, wParam, lParam);
-	//} break;
 	case WM_CTLCOLORLISTBOX:
 	{
-		HDC comboboxDC = (HDC)wParam;
+		HDC comboboxDC = (HDC)wparam;
 		SetBkColor(comboboxDC, ColorFromBrush(unCap_colors.ControlBk));
 		SetTextColor(comboboxDC, ColorFromBrush(unCap_colors.ControlTxt));
 
@@ -2381,35 +2233,652 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CTLCOLORSTATIC:
 	{
 		//TODO(fran): check we are changing the right controls
-		switch (GetDlgCtrlID((HWND)lParam)) {
+		switch (GetDlgCtrlID((HWND)lparam)) {
 		case TIMEDMESSAGES:
 		{
-			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
-			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlMsg));
+			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlMsg));
 			return (LRESULT)unCap_colors.ControlBk;
 		}
-		case INITIALFINALCHAR: 
+		case INITIALFINALCHAR:
 		{
-			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
-			SetTextColor((HDC)wParam, unCap_colors.InitialFinalCharCurrentColor);
+			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
+			COLORREF txt=NULL;
+			if (HACK_EnableOtherChar) {
+				txt = ColorFromBrush(unCap_colors.ControlTxt);
+			}
+			else txt = ColorFromBrush(unCap_colors.InitialFinalCharDisabled);
+			SetTextColor((HDC)wparam, txt);
 			return (LRESULT)unCap_colors.ControlBk;
 		}
 		default:
 		{
 			//TODO(fran): there's something wrong with Initial & Final character controls when they are disabled, documentation says windows always uses same color
 			//text when window is disabled but it looks to me that it is using both this and its own color
-			SetBkColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlBk));
-			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlTxt));
+			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlTxt));
 			return (LRESULT)unCap_colors.ControlBk;
 		}
 		}
-		
-		return DefWindowProc(hWnd, message, wParam, lParam);
+
+		return DefWindowProc(hwnd, msg, wparam, lparam);
 	}
+	case WM_CREATE:
+	{
+		AddControls(state->wnd, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE));
+		AddMenus(state->nc_parent); //TODO(fran): menu rendering //TODO(fran): nc_parent has to re-send all the menu msgs to me, the client, via the standard WM_COMMAND way it gets them
+
+		return 0;
+	} break;
+	case WM_SIZE:
+	{
+		UNCAPCL_ResizeWindows(state->wnd);
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_NCDESTROY:
+	{
+		CreateInfoFile(hwnd);
+		if (state) {
+			free(state);
+			state = nullptr;
+		}
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_NCCREATE:
+	{
+		CREATESTRUCT* create_nfo = (CREATESTRUCT*)lparam;
+		unCapClProcState* state = (unCapClProcState*)calloc(1, sizeof(unCapClProcState));
+		Assert(state);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)state);
+		state->wnd = hwnd;
+		state->nc_parent = create_nfo->hwndParent;
+		return TRUE;
+	} break;
+	case WM_NOTIFY:
+	{
+		NMHDR* msg_info = (NMHDR*)lparam;
+		switch (msg_info->code) {
+			//Handling tab changes, since there is no specific msg to manage this from inside the tab control, THANKS WINDOWS
+		case TCN_SELCHANGING: //TODO(fran): now we are outside the tab control we should use the other parameters to check we are actually changing the control we want
+		{
+			SaveAndDisableCurrentTab(msg_info->hwndFrom);
+			return FALSE; //FALSE=Allow selection to change. TRUE= prevent it from changing
+		}
+		case TCN_SELCHANGE:
+		{
+			int index = (int)SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
+			if (index != -1) {
+				CUSTOM_TCITEM new_item;
+				new_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
+				//WCHAR buf[20] = { 0 };
+				//prev_item.tab_info.pszText = buf;
+				//prev_item.tab_info.cchTextMax = 20;
+				BOOL ret = (BOOL)SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
+				if (ret) {
+					EnableTab(new_item.extra_info);
+				}
+			}
+			return 0;//Return value isnt used
+		}
+		default:
+			return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
+	} break;
+	case WM_COMMAND:
+	{
+		// Msgs from my controls
+		switch (LOWORD(wparam))
+		{
+		case OPEN_FILE:
+		case ID_OPEN:
+		{
+			ChooseFile(L"srt");
+			return 0;
+		}
+		case BACKUP_FILE: //Do backup menu item was clicked
+		{
+			if (Backup_Is_Checked) {
+				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED); //turn it off
+			}
+			else {
+				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);//turn it on
+			}
+			Backup_Is_Checked = !Backup_Is_Checked;
+			printf("BACKUP=%s\n", Backup_Is_Checked ? "true" : "false");
+			return 0;
+		}
+		case COMBO_BOX:
+			if (HIWORD(wparam) == CBN_SELCHANGE)
+				EnableOtherChar(SendMessageW(hOptions, CB_GETCURSEL, 0, 0) == COMMENT_TYPE::other);
+			return 0;
+
+		case REMOVE:
+		{
+			FILE_FORMAT format = GetCurrentTabExtraInfo().fileFormat;
+			switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
+			case COMMENT_TYPE::brackets:
+				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'[', L']');
+				break;
+			case COMMENT_TYPE::parenthesis:
+				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'(', L')');
+				break;
+			case COMMENT_TYPE::braces:
+				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'{', L'}');
+				break;
+			case COMMENT_TYPE::other:
+				CustomCommentRemoval(GetCurrentTabExtraInfo().hText, format);
+				break;
+			}
+			return 0;
+		}
+		case SAVE_FILE:
+		case ID_SAVE:
+		{
+			//if (IsAcceptedFile()) {
+			if (Backup_Is_Checked) DoBackup();
+
+			int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
+
+			wstring text(text_length, L'\0');
+			GetWindowTextW(hFile, &text[0], text_length);
+
+			TEXT_INFO text_data = GetCurrentTabExtraInfo();
+
+			if (text[0] != L'\0')
+				DoSave(text_data.hText, text);
+			//TODO(fran): error handling
+
+			//}
+			return 0;
+		}
+		case SAVE_AS_FILE:
+		case ID_SAVE_AS:
+		{
+			//TODO(fran): DoSaveAs allows for saving of file when no tab is created and sets all the controls but doesnt create an empty tab,
+			//should we create the tab or not allow to save?
+			DoSaveAs(GetCurrentTabExtraInfo().hText); //No DoBackup() for Save As since the idea is the user saves to a new file obviously
+			return 0;
+		}
+		case LANGUAGE_MANAGER::LANGUAGE::ENGLISH://INFO: this relates to the menu item, TODO(fran): a way to check a range of numbers, from first lang to last
+		case LANGUAGE_MANAGER::LANGUAGE::SPANISH:
+		{
+			//NOTE: maybe I can force menu item remeasuring by SetMenu, basically sending it the current menu
+			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wparam));
+#if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
+			HMENU old_menu = GetMenu(state->nc_parent);
+			SetMenu(state->nc_parent, NULL);
+			DestroyMenu(old_menu); //NOTE: I could also use RemoveMenu which doesnt destroy it's submenus and reattach them to a new "main" menu and correct parenting (itemData param)
+			AddMenus(state->nc_parent); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
+#else //the undocumented way, aka the way it should have always been
+			//WIP
+#endif
+			//TODO(fran): continue with this undocumented search, it doesnt look very good, I could only get the hwnd when opening the languages sub menu
+			//https://www.google.com/search?q=FindWindow(NULL,+%22%2332768%22)%3B&rlz=1C1GIWA_enAR589AR589&sxsrf=ALeKk03pPU3gTyENAggyeDZgCHuNKyustA:1600226751225&ei=v4VhX6WFDZCz5OUPwJ2y6A8&start=10&sa=N&ved=2ahUKEwjl4MOY3ezrAhWQGbkGHcCODP0Q8NMDegQIDhBA&biw=1645&bih=1646
+			//https://www.codeproject.com/Articles/2080/Transparent-Menu
+			//https://microsoft.public.win32.programmer.ui.narkive.com/jQJBmxzp/open-submenu-programmatically#post5
+			//https://comp.os.ms-windows.programmer.win32.narkive.com/RhPGGM4C/forcing-menu-item-to-refresh
+			//case WM_INITMENU:
+			//case WM_INITMENUPOPUP:
+			//{
+			//	HWND hMenuWnd = FindWindow(TEXT("#32768"), NULL);
+			//	if (IsWindow(hMenuWnd)) {
+			//		PostMessage(hMenuWnd, 0x1e2, 0, 0); //doesnt seem to work
+			//		PostMessage(hMenuWnd, 0x1e5, 0, 0); //works
+			//	}
+			//} break;
+			return 0;
+		} 
+		default: return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
+	} break;
+	//case WM_ERASEBKGND:
+	//{
+	//	return 1;
+	//} break;
+	default:
+//#ifdef _DEBUG //TODO(fran): uncomment
+//		Assert(0);
+//#else 
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+//#endif
+	}
+	return 0;
+}
+
+struct unCapNcProcState {
+	HWND wnd;//TODO(fran): might be good to store client and wnd rect, find the one place where we get this two. Then we wont have the code littered with those two calls
+	HWND client;
+
+	HWND btn_min, btn_max, btn_close;
+
+	RECT rc_caption;
+	SIZE caption_btn;
+	bool active;
+	bool has_menu;
+};
+
+ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
+	WNDCLASSEXW wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = UncapNcProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = sizeof(unCapNcProcState*);
+	wcex.hInstance = inst;
+	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(IDI_SRTFIXWIN32));
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = unCap_colors.ControlBk;
+	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
+	wcex.lpszClassName = unCap_wndclass_uncap_nc;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+	ATOM class_atom = RegisterClassExW(&wcex);
+	Assert(class_atom);
+	return class_atom;
+}
+
+int FillRectAlpha(HDC dc, RECT* r, HBRUSH br, unsigned char alpha) {
+	COLORREF color = ColorFromBrush(br);
+	color |= (alpha << 24);
+
+	BITMAPINFO nfo;
+	nfo.bmiHeader.biSize = sizeof(nfo.bmiHeader);
+	nfo.bmiHeader.biWidth = 1;
+	nfo.bmiHeader.biHeight = -1;
+	nfo.bmiHeader.biPlanes = 1;
+	nfo.bmiHeader.biBitCount = 32;
+	nfo.bmiHeader.biCompression = BI_RGB;
+	nfo.bmiHeader.biSizeImage = 0;
+	nfo.bmiHeader.biXPelsPerMeter = 0;
+	nfo.bmiHeader.biYPelsPerMeter = 0;
+	nfo.bmiHeader.biClrUsed = 0;
+	nfo.bmiHeader.biClrImportant = 0;
+
+	int res = StretchDIBits(dc, r->left, r->top, RECTWIDTH((*r)), RECTHEIGHT((*r)), 0, 0, 1, 1, &color, &nfo, DIB_RGB_COLORS, SRCCOPY);
+	return res;
+}
+
+//INFO: WM_NCACTIVATE also does painting, again making no sense, but we can use it to know when to change drawing from active to inactive
+
+void UNCAPNC_calc_caption(unCapNcProcState* state) {
+	GetClientRect(state->wnd, &state->rc_caption);
+
+	RECT testrc{ 0,0,100,100 }; RECT ncrc = testrc;
+	AdjustWindowRect(&ncrc, WS_OVERLAPPEDWINDOW, FALSE);//no menu
+
+	state->rc_caption.bottom = distance(testrc.top, ncrc.top);
+
+	state->caption_btn.cy = RECTHEIGHT(state->rc_caption); state->caption_btn.cx = state->caption_btn.cy * 16 / 9;;
+}
+
+RECT UNCAPNC_calc_menu_rc(unCapNcProcState* state) {
+	RECT rc{0};
+	if (state->has_menu) {
+		RECT r; GetClientRect(state->wnd, &r);
+		rc.left = r.left;
+		rc.top = RECTHEIGHT(state->rc_caption);
+		rc.right = r.right;
+		rc.bottom = rc.top + GetSystemMetrics(SM_CYMENU);
+	}
+	return rc;
+}
+
+RECT UNCAPNC_calc_client_rc(unCapNcProcState* state) {
+	RECT r; GetClientRect(state->wnd, &r);
+	RECT menu_rc = UNCAPNC_calc_menu_rc(state);
+	RECT rc{ r.left, RECTHEIGHT(state->rc_caption) + RECTHEIGHT(menu_rc), r.right, r.bottom };
+	return rc;
+}
+
+RECT UNCAPNC_calc_btn_min_rc(unCapNcProcState* state) {
+	RECT r; GetClientRect(state->wnd, &r);
+	RECT rc{ r.right - 3 * state->caption_btn.cx, r.top, r.right - 2 * state->caption_btn.cx, r.top + state->caption_btn.cy };
+	return rc;
+}
+
+RECT UNCAPNC_calc_btn_max_rc(unCapNcProcState* state) {
+	RECT r; GetClientRect(state->wnd, &r);
+	RECT rc{ r.right - 2 * state->caption_btn.cx, r.top, r.right - 1 * state->caption_btn.cx, r.top + state->caption_btn.cy };
+	return rc;
+}
+
+RECT UNCAPNC_calc_btn_close_rc(unCapNcProcState* state) {
+	RECT r; GetClientRect(state->wnd, &r);
+	RECT rc{ r.right - 1 * state->caption_btn.cx, r.top, r.right - 0 * state->caption_btn.cx, r.top + state->caption_btn.cy };
+	return rc;
+}
+
+#define WM_UAHDESTROYWINDOW 0x90
+#define WM_UAHDRAWMENU 0x91
+#define WM_UAHDRAWMENUITEM 0x92
+#define WM_UAHINITMENU 0x93
+#define WM_UAHMEASUREMENUITEM 0x94
+#define WM_UAHNCPAINTMENUPOPUP 0x95
+#define WM_UAHUPDATE 0x96
+
+//TODO(fran): UNDO support for comment removal
+//TODO(fran): DPI awareness
+LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+	//TODO(fran): beware of the menu bar, it decided to draw itself for some reason once I moved the window
+	//TODO(fran): it'd be nice to have a way to implement good subclassing, eg letting the user assign clip regions where they can draw and we dont, things like that, more communication
+#define UNCAPNC_MINIMIZE 100 //sent through WM_COMMAND
+#define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
+#define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
+
+	//printf(msgToString(msg)); printf("\n");
+	unCapNcProcState* state = (unCapNcProcState*)GetWindowLongPtr(hwnd, 0);
+
+	switch (msg)
+	{
+	case WM_UAHDESTROYWINDOW: //Only called when the window is being destroyed, wparam=lparam=0
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_UAHDRAWMENU: //Non here were ever called
+	case WM_UAHDRAWMENUITEM:
+	case WM_UAHMEASUREMENUITEM:
+	case WM_UAHNCPAINTMENUPOPUP:
+	case WM_UAHUPDATE:
+	{
+		Assert(0);
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_UAHINITMENU: //After a SetMenu: lParam=some system generated HMENU with your HMENU stored in the ""unused"" member ; wParam=0
+							//NOTE: this system HMENU uses the first byte from the top 32bits, no other HMENU does that
+						 //When clicking on a submenu:
+	{
+		/*static int c = 1;
+		printf("%d: WM_UAHINITMENU\n",c++);*/
+		//TODO(fran): since this msg gets called multiple times and not only for the main menu it is not reliable, we should add an intermediary call for the user, and we call SetMenu ourselves, same for other menu procedures
+
+		//NOTE: for some reason, after SetMenu, this msg gets sent more than once after different events, but always with the same params. This does not depend on the number of menus/submenus it has, but it seems like SetMenu checks that your HMENU has at least one submenu, otherwise this msg doesnt get sent
+		HMENU menu = (HMENU)lparam;
+
+		//{
+		//	MENUINFO mi{ sizeof(mi) };mi.fMask = MIM_BACKGROUND; mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
+		//	BOOL res = SetMenuInfo(hMenu, &mi); Assert(res);
+		//}
+
+		//TODO(fran): why on the first time we create a menu its borders are only 1 pixel but the next times they grow to like 3 ???? looks awful
+
+		if (menu->unused == (int)hMenu) {
+			MENUINFO mi { sizeof(mi) };
+			mi.fMask = MIM_BACKGROUND;
+			//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
+			
+			mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
+
+			SetMenuInfo(hMenu, &mi);
+		}
+		Assert(wparam == 0);
+		state->has_menu = true;
+
+
+		//Ask to update client area to accommodate for menu
+		RECT newcl = UNCAPNC_calc_client_rc(state); //TODO(fran): maybe I should start using this like windows wants me to
+		WORD w = RECTWIDTH(newcl), h = RECTHEIGHT(newcl);
+		SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(w,h));
+		
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_WINDOWPOSCHANGED: //TODO(fran): we can use this guy to replace WM_SIZE and WM_MOVE by not calling defwindowproc
+	{
+		UNCAPNC_calc_caption(state);
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC dc = BeginPaint(state->wnd, &ps);
+
+		FillRect(dc, &state->rc_caption, state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive);
+
+		SelectFont(dc, GetStockFont(DEFAULT_GUI_FONT));
+		TCHAR title[256]; int sz = GetWindowText(state->wnd, title, ARRAYSIZE(title));
+		TEXTMETRIC tm; GetTextMetrics(dc, &tm);
+
+
+		HICON icon = (HICON)GetClassLongPtr(state->wnd, GCLP_HICONSM);
+		int icon_height = (int)((float)tm.tmHeight*1.5f);
+		int icon_width = icon_height;
+		int icon_align_height = (RECTHEIGHT(state->rc_caption) - icon_height) / 2;
+		int icon_align_width = icon_align_height;
+		MYICON_INFO iconnfo = MyGetIconInfo(icon);
+		urender::draw_icon(dc, icon_align_height, icon_align_width, icon_width, icon_height, icon, 0, 0, iconnfo.nWidth, iconnfo.nHeight);
+
+		int yPos = (state->rc_caption.bottom + state->rc_caption.top - tm.tmHeight) / 2;
+		HBRUSH txtbr = state->active ? unCap_colors.ControlTxt : unCap_colors.ControlTxt_Inactive;
+		SetTextColor(dc, ColorFromBrush(txtbr)); SetBkMode(dc, TRANSPARENT);
+
+
+		TextOut(dc, icon_align_width * 2 + icon_width, yPos, title, sz);
+
+		if (state->active) {
+			UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
+			UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
+			UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
+		}
+		else {
+			UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
+			UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
+			UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
+		}
+		DrawMenuBar(state->wnd); //TODO(fran): we need to update the menu more often, specifically when the mouse goes over some submenu in the menu bar
+
+		EndPaint(state->wnd, &ps);
+
+
+		return 0;
+	} break;
+	case WM_CREATE:
+	{
+
+		CREATESTRUCT* createnfo = (CREATESTRUCT*)lparam; 
+		SetWindowText(state->wnd, createnfo->lpszName); //TODO(fran): for some weird reason I have to manually call setwindowtext
+
+		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state);
+		state->btn_min = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), state->wnd, (HMENU)UNCAPNC_MINIMIZE, 0, 0);
+		UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+
+		RECT btn_max_rc = UNCAPNC_calc_btn_max_rc(state);
+		state->btn_max = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_max_rc.left, btn_max_rc.top, RECTWIDTH(btn_max_rc), RECTHEIGHT(btn_max_rc), state->wnd, (HMENU)UNCAPNC_MAXIMIZE, 0, 0);
+		UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+
+		RECT btn_close_rc = UNCAPNC_calc_btn_close_rc(state);
+		state->btn_close = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_close_rc.left, btn_close_rc.top, RECTWIDTH(btn_close_rc), RECTHEIGHT(btn_close_rc), state->wnd,(HMENU)UNCAPNC_CLOSE, 0, 0);
+		UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+
+		HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CLOSE));//TODO(fran): let the user set this guys, store them in state
+		HBITMAP bMax = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(MAX));
+		HBITMAP bMin = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(MIN));
+		SendMessage(state->btn_close, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bCross);
+		SendMessage(state->btn_max, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bMax);
+		SendMessage(state->btn_min, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bMin);
+
+		//TODO(fran): create the icons, one idea is to ask windows to paint them in some dc, and then I can store the HBITMAP and re-use it all I want
+
+		ATOM class_res = init_wndclass_unCap_uncap_cl((HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
+		Assert(class_res);
+		RECT rc = UNCAPNC_calc_client_rc(state);
+		state->client = CreateWindow(unCap_wndclass_uncap_cl, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, 0);
+
+		return 0;
+	} break;
+	case WM_NCLBUTTONDBLCLK:
+	{
+		LRESULT hittest = (LRESULT)wparam;
+		if (hittest == HTCAPTION) {
+			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
+
+			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
+			else ShowWindow(state->wnd, SW_MAXIMIZE);
+		}
+		return 0;
+	} break;
+	case WM_NCHITTEST:
+	{
+		
+		LRESULT res = DefWindowProc(hwnd, msg, wparam, lparam);
+		if (res == HTCLIENT) {
+			int top_margin = 8;
+			int top_side_margin = 16;
+			POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) }; ScreenToClient(hwnd, &mouse);
+			RECT rc; GetClientRect(hwnd, &rc);
+			RECT rc_top; rc_top.top = rc.top; rc_top.left = rc.left + top_side_margin; rc_top.bottom = rc_top.top + top_margin; rc_top.right = rc.right - top_side_margin;
+			RECT rc_topleft; rc_topleft.top = rc.top; rc_topleft.left = rc.left; rc_topleft.bottom = rc_topleft.top + top_margin; rc_topleft.right = rc_topleft.left + top_side_margin;
+			RECT rc_topright; rc_topright.top = rc.top; rc_topright.left = rc.right - top_side_margin; rc_topright.bottom = rc_topright.top + top_margin; rc_topright.right = rc.right;
+
+			RECT rc_menu = UNCAPNC_calc_menu_rc(state);
+
+			if		(test_pt_rc(mouse, rc_top)) res = HTTOP;
+			else if (test_pt_rc(mouse, rc_topleft)) res = HTTOPLEFT;
+			else if (test_pt_rc(mouse, rc_topright)) res = HTTOPRIGHT;
+			/*else if (test_pt_rc(mouse, close_btn)) res = HTCLOSE; //TODO(fran): request this buttons for their rc
+			else if (test_pt_rc(mouse, max_btn)) res = HTMAXBUTTON;
+			else if (test_pt_rc(mouse, min_btn)) res = HTMINBUTTON;*/
+			else if (test_pt_rc(mouse, state->rc_caption)) res = HTCAPTION;
+			else if (test_pt_rc(mouse, rc_menu)) res = HTSYSMENU;//HTMENU also works, but it seems a little slower on clicking for some reason, IMPORTANT INFO: this is crucial for the menu to detect clicks, otherwise no mouse input goes to it
+
+			//if (res == HTSYSMENU) {
+			//	HMENU submenu = GetSubMenu(hMenu, 0); Assert(submenu);
+			//	ClientToScreen(state->wnd, &mouse);
+			//	TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, mouse.x, mouse.y, 0, state->wnd, 0);
+			//}
+		}
+
+
+		//printf("%s\n", hittestToString(res));
+		return res;
+	} break;
+	case WM_NCCALCSIZE:
+	{
+		RECT testrc{ 0,0,100,100 };
+		RECT ncrc = testrc;
+		AdjustWindowRect(&ncrc, WS_OVERLAPPEDWINDOW, FALSE); //TODO(fran): somehow link this params with UNCAPNC_calc_caption
+
+		UNCAPNC_calc_caption(state);//TODO(fran): find out which is the one and only magical msg where this can be put in
+
+		struct MY_MARGINS
+		{
+			int cxLeftWidth;      
+			int cxRightWidth;     
+			int cyTopHeight;      
+			int cyBottomHeight;   
+		} margins;
+
+		margins.cxLeftWidth = distance(testrc.left, ncrc.left);
+		margins.cxRightWidth = distance(testrc.right, ncrc.right);
+		margins.cyBottomHeight = distance(testrc.bottom, ncrc.bottom);
+		margins.cyTopHeight = 0;
+
+		if ((BOOL)wparam == TRUE) {
+			//IMPORTANT: absolutely _everything_ is in screen coords
+			NCCALCSIZE_PARAMS* calcsz = (NCCALCSIZE_PARAMS*)lparam; //input and ouput respectively is and has to be in screen coords
+			RECT new_wnd_coords_proposed = calcsz->rgrc[0];
+			calcsz->rgrc[1];//old wnd coords
+			calcsz->rgrc[2];//old client coords
+
+			//new client coords
+			calcsz->rgrc[0].left += margins.cxLeftWidth;
+			calcsz->rgrc[0].top += margins.cyTopHeight;
+			calcsz->rgrc[0].right -= margins.cxRightWidth;
+			calcsz->rgrc[0].bottom -= margins.cyBottomHeight;
+
+			//valid dest coords
+			calcsz->rgrc[1] = new_wnd_coords_proposed;
+
+			//valid source coords
+			calcsz->rgrc[1] = calcsz->rgrc[0];
+		}
+		else {
+			RECT* calcrc = (RECT*)lparam; //input and ouput respectively is and has to be in screen coords
+			RECT new_wnd_coords_proposed = *calcrc;
+
+			//new client coords
+			calcrc->left += margins.cxLeftWidth;
+			calcrc->top += margins.cyTopHeight;
+			calcrc->right -= margins.cxRightWidth;
+			calcrc->bottom -= margins.cyBottomHeight;
+		}
+		return 0; //For wparam==TRUE this means we will reuse the old client area's painting and just align it with the top-left corner of the new client area pos
+	} break;
+	case WM_SIZE:
+	{
+		//TODO(fran):resize buttons
+		RECT rc = UNCAPNC_calc_client_rc(state); MoveWindow(state->client, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), TRUE);
+
+		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state); MoveWindow(state->btn_min, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), TRUE);//TODO(fran): I dont really need to ask for repaint do I?
+		RECT btn_max_rc = UNCAPNC_calc_btn_max_rc(state); MoveWindow(state->btn_max, btn_max_rc.left, btn_max_rc.top, RECTWIDTH(btn_max_rc), RECTHEIGHT(btn_max_rc), TRUE);
+		RECT btn_close_rc = UNCAPNC_calc_btn_close_rc(state); MoveWindow(state->btn_close, btn_close_rc.left, btn_close_rc.top, RECTWIDTH(btn_close_rc), RECTHEIGHT(btn_close_rc), TRUE);
+
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_SETTEXT:
+	{
+		//This function is insane, it actually does painting on it's own without telling nobody, so we need a way to kill that
+		//I think there are a couple approaches that work, I took this one which works since windows 95 (from what the article says)
+		//Many thanks for yet another hack http://www.catch22.net/tuts/win32/custom-titlebar
+		LONG_PTR  dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
+		// turn off WS_VISIBLE
+		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle & ~WS_VISIBLE);
+
+		// perform the default action, minus painting
+		LRESULT ret = DefWindowProc(hwnd, msg, wparam, lparam);
+
+		// turn on WS_VISIBLE
+		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle);
+
+		// perform custom painting, aka dont and do what should be done, repaint, it's really not that expensive for our case, we barely call WM_SETTEXT, and it can be optimized out later
+		RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE);
+
+		return ret;
+	} break;
+	case WM_NCDESTROY:
+	{
+		if (state) {
+			free(state);
+			state = nullptr;
+		}
+	} break;
+	case WM_NCCREATE: 
+	{
+		CREATESTRUCT* create_nfo = (CREATESTRUCT*)lparam;
+		//TODO(fran): check for minimize and maximize button requirements
+		unCapNcProcState* state = (unCapNcProcState*)calloc(1, sizeof(unCapNcProcState));
+		Assert(state);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)state);
+		state->wnd = hwnd;
+		return TRUE;
+	} break;
+	case WM_NCACTIVATE:
+	{
+		//So basically this guy is another WM_NCPAINT, just do exactly the same, but also here we have the option to paint slightly different if we are deactivated, so the user can see the change
+		BOOL active = (BOOL)wparam; //Indicates active or inactive state for a title bar or icon that needs to be changed
+		state->active = active;
+		HRGN opt_upd_rgn = (HRGN)lparam; // handle to optional update region for the nonclient area. If set to -1, do nothing
+
+		if (state->has_menu) {
+			MENUINFO mi{ sizeof(mi) };
+			mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS; //TODO(fran): MIM_APPLYTOSUBMENUS is garbage, it only goes one level down, just terrible, make my own
+			//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
+
+			mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
+
+			SetMenuInfo(hMenu, &mi);
+		}
+
+		RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE); //TODO(fran): we should draw here, so we can show a different color for deactivated
+		return TRUE; //NOTE: it says we can return FALSE to "prevent the change"
+	} break;
+//NOTE: WM_NCPAINT: check https://chromium.googlesource.com/chromium/chromium/+/5db69ae220c803e9c1675219b5cc5766ea3bb698/chrome/views/window.cc they block drawing so windows doesnt draw on top of them, cause the non client area is also painted in other msgs like settext
+//also check https://social.msdn.microsoft.com/Forums/windows/en-US/a407591a-4b1e-4adc-ab0b-3c8b3aec3153/the-evil-wmncpaint?forum=windowsuidevelopment I took the implementation from there, but there's also two others I can try
+
 	case WM_MEASUREITEM: //NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
 	{
 		//wparam has duplicate info from item
-		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lParam;
+		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lparam;
 		if (item->CtlType == ODT_MENU && item->itemData) { //menu with parent HMENU
 			//item->CtlID is not used
 			
@@ -2435,7 +2904,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				menu_nfo.dwTypeData = menu_str;
 				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
 
-				HDC dc = GetDC(hWnd); //Of course they had to ask for a dc, and not give the option to just provide the font, which is the only thing this function needs
+				HDC dc = GetDC(hwnd); //Of course they had to ask for a dc, and not give the option to just provide the font, which is the only thing this function needs
 				HFONT hfntPrev = (HFONT)SelectObject(dc, hMenuFont);
 				int old_mapmode = GetMapMode(dc);
 				SetMapMode(dc, MM_TEXT);
@@ -2444,7 +2913,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				SetMapMode(dc, old_mapmode);
 
 				SelectObject(dc, hfntPrev);
-				ReleaseDC(hWnd, dc);
+				ReleaseDC(hwnd, dc);
 				free(menu_str);
 				//
 				
@@ -2466,18 +2935,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				item->itemWidth = 1;
 				return TRUE;
 			} break;
-			default: return DefWindowProc(hWnd, message, wParam, lParam);
+			default: return DefWindowProc(hwnd, msg, wparam, lparam);
 			}
 		}
-		return DefWindowProc(hWnd, message, wParam, lParam);
+		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_DRAWITEM:
 	{
-		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lParam;
-		switch (wParam) {//wParam specifies the identifier of the control that needs painting
+		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lparam;
+		switch (wparam) {//wparam specifies the identifier of the control that needs painting
 		case 0: //menu
 		{ //TODO(fran): handle WM_MEASUREITEM so we can make the menu bigger
-			Assert(item->CtlType == ODT_MENU); //TODO(fran): I could use this instead of wParam
+			Assert(item->CtlType == ODT_MENU); //TODO(fran): I could use this instead of wparam
 			/*NOTES
 			- item->CtlID isnt used for menus
 			- item->itemID menu item identifier
@@ -2513,13 +2982,19 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				else
 				{
 					txt_br = unCap_colors.ControlTxt;
-					bk_br = unCap_colors.ControlBk;
+					Assert((int)item->hwndItem);
+					MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
+					//GetMenuInfo((HMENU)item->hwndItem, &mnfo); //We will not ask our "parent" hmenu since sometimes it decides it doesnt have the hbrush, we'll go straight to the menu bar
+					GetMenuInfo(hMenu, &mnfo);
+
+					bk_br = mnfo.hbrBack; //TODO: unfinished trash
 				}
 				clrPrevText = SetTextColor(item->hDC, ColorFromBrush(txt_br));//TODO(fran): separate menu brushes
 				clrPrevBkgnd = SetBkColor(item->hDC, ColorFromBrush(bk_br));
 				
 				if (item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT) { //Draw background
 					FillRect(item->hDC, &item->rcItem, bk_br);
+					//printf("PAINTED BK: %#08X\n", ColorFromBrush(bk_br));
 				}
 				
 				// Select the font and draw the text. 
@@ -2527,8 +3002,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				
 				WORD x_pad = LOWORD(GetTabbedTextExtent(item->hDC, TEXT(" "), 1, 0, NULL)); //an extra 1 space before drawing text (for not top level menus)
 
-				if (item->hwndItem == (HWND)GetMenu(hWnd)) { //If we are a "top level" menu
-
+				if (item->hwndItem == (HWND)GetMenu(hwnd)) { //If we are a "top level" menu
+					
 					//we just want to draw the text, nothing more
 					//TODO(fran): clean this huge if-else, very bug prone with things being set/initialized in different parts
 
@@ -2558,6 +3033,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
 					int xPos = item->rcItem.left + (item->rcItem.right - item->rcItem.left) / 2;
 					TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1);
+					//wprintf(L"%s\n",menu_str);
 					free(menu_str);
 					SetTextAlign(item->hDC, old_align);
 					
@@ -2565,7 +3041,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				}
 				else {
 
-					//Render img on the left
+					//Render img on the left //TODO(fran): there seems to be a bug somewhere, the img isnt shown till the user moves the mouse on top of the item, maybe Im not checking some state
 					{
 						MENUITEMINFO menu_img;
 						menu_img.cbSize = sizeof(menu_img);
@@ -2587,7 +3063,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 						if (hbmp) {
 							//HDC bmp_dc = CreateCompatibleDC(item->hDC);
 							//HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
-							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap); //TODO SOMETHING GETS FUCKED UP IN THE MIDDLE, ON CREATION THE BMP IS 1 BIT AS IT SHOULD, HERE I THINK SOMEONE CHANGED IT
+							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
 							//BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
 
 							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
@@ -2639,6 +3115,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
 					//TODO(fran): tabs start spacing from the initial x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
 					TabbedTextOut(item->hDC, x, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x);
+					//wprintf(L"%s\n", menu_str);
 					free(menu_str);
 					//TODO(fran): find a better function, this guy doesnt care  about alignment, only TextOut and ExtTextOut do, but, of course, both cant handle tabs //NOTE: the normal rendering seems to have very long tab spacing so maybe it uses TabbedTextOut with 0 and NULL as the tab params
 
@@ -2704,273 +3181,219 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				FillRect(item->hDC, &separator_rc, unCap_colors.ControlTxt);
 				//TODO(fran): clipping
 			}
-			default: return DefWindowProc(hWnd, message, wParam, lParam);
+			default: return DefWindowProc(hwnd, msg, wparam, lparam);
 			}
 			
 			return TRUE;
+		}
+		default: return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
 		} break;
-		case TABCONTROL:
-		{
-			switch (item->itemAction) {//Determines what I have to do with the control
-			case ODA_DRAWENTIRE://Draw everything
-			case ODA_FOCUS://Control lost or gained focus, check itemState
-			case ODA_SELECT://Selection status changed, check itemState
-				//Fill background //TODO(fran): the original background is still visible for some reason
-				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
-				//IMPORTANT INFO: this is no region set so I can actually draw to the entire control, useful for going over what the control draws
-				
-				UINT index = item->itemID;
-
-				//Draw text
-				wstring text = GetTabTitle(index);
-
-				TEXTMETRIC tm;
-				GetTextMetrics(item->hDC, &tm);
-				// Calculate vertical position for the item string so that it will be vertically centered
-				
-				int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
-
-				int xPos = item->rcItem.left + (int)((float)RECTWIDTH(item->rcItem)*.1f);
-
-
-				//SIZE text_size;
-				//GetTextExtentPoint32(item->hDC, text.c_str(), text.length(), &text_size);
-
-				//INFO TODO: probably simpler is to just mark a region and then unmark it, not sure how it will work for animation though
-				//also I'm not sure how this method handles other unicode chars, ie japanese
-				int max_count;
-				SIZE fulltext_size;
-				RECT modified_rc = item->rcItem;
-				modified_rc.left = xPos;
-				modified_rc.right -= (TabCloseButtonInfo.rightPadding + TabCloseButtonInfo.icon.cx);
-				BOOL res = GetTextExtentExPoint(item->hDC, text.c_str(), (int)text.length()
-					, RECTWIDTH(modified_rc)/*TODO(fran):This should be DPI aware*/, &max_count, NULL, &fulltext_size);
-				Assert(res);
-				int len = max_count;
-
-
-				COLORREF old_bk_color = GetBkColor(item->hDC);
-				COLORREF old_txt_color = GetTextColor(item->hDC);
-
-				SetBkColor(item->hDC, ColorFromBrush(unCap_colors.ControlBk));
-				SetTextColor(item->hDC, ColorFromBrush(unCap_colors.ControlTxt));
-				TextOut(item->hDC, xPos, yPos, text.c_str(), len);
-
-				//Reset hdc as it was before our painting
-				SetBkColor(item->hDC, old_bk_color);
-				SetTextColor(item->hDC, old_txt_color);
-
-				//Draw close button 
-
-				POINT button_topleft;
-				button_topleft.x = item->rcItem.right - TabCloseButtonInfo.rightPadding - TabCloseButtonInfo.icon.cx;
-				button_topleft.y = item->rcItem.top + (RECTHEIGHT(item->rcItem) - TabCloseButtonInfo.icon.cy) / 2;
-
-				//RECT r;
-				//r.left = button_topleft.x;
-				//r.right = r.left + TabCloseButtonInfo.icon.cx;
-				//r.top = button_topleft.y; 
-				//r.bottom = r.top + TabCloseButtonInfo.icon.cy;
-				//FillRect(item->hDC, &r, unCap_colors.ControlTxt);
-				
-				HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
-				//LONG icon_id = GetWindowLongPtr(hWnd, GWL_USERDATA);
-				//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
-				HICON close_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(CROSS_ICON), IMAGE_ICON, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, LR_SHARED);
-
-				if (close_icon) {
-					DrawIconEx(item->hDC, button_topleft.x, button_topleft.y,
-						close_icon, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
-					DestroyIcon(close_icon);
-				}
-
-				//TODO?(fran): add a plus sign for the last tab and when pressed launch choosefile? or no plus sign at all since we dont really need it
-
-				break;
-			}
-
-			return TRUE;
-		}
-		default: return DefWindowProc(hWnd, message, wParam, lParam);
-		}
-		return 0;
-	}
+		
 	case WM_COMMAND:
 	{
-		// Analizar los mensajes de mis controles:
-		switch (LOWORD(wParam))
+		// Msgs from my controls
+		switch (LOWORD(wparam))
 		{
-
-		case OPEN_FILE:
-		case ID_OPEN:
+		case UNCAPNC_MINIMIZE:
 		{
-			ChooseFile(L"srt");
-
-			break;
-		}
-		case BACKUP_FILE: //Do backup menu item was clicked
-		{
-			if (Backup_Is_Checked) {
-				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED); //turn it off
-			}
-			else {
-				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);//turn it on
-			}
-			Backup_Is_Checked = !Backup_Is_Checked;
-			printf("BACKUP=%s\n", Backup_Is_Checked ? "true" : "false");
-			break;
-		}
-		case COMBO_BOX:
-			if (HIWORD(wParam) == CBN_SELCHANGE)
-				EnableOtherChar(SendMessageW(hOptions, CB_GETCURSEL, 0, 0) == COMMENT_TYPE::other);
-				//switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
-				//case 0:case 1:case 2:
-				//	EnableOtherChar(false);//disable buttons
-				//	break;
-				//case 3:
-				//	EnableOtherChar(true);//enable buttons
-				//	break;
-				//}
-			break;
-
-		case REMOVE:
-		{
-			FILE_FORMAT format = GetCurrentTabExtraInfo().fileFormat;
-			switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
-			case COMMENT_TYPE::brackets:
-				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'[', L']');
-				break;
-			case COMMENT_TYPE::parenthesis:
-				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'(', L')');
-				break;
-			case COMMENT_TYPE::braces:
-				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'{', L'}');
-				break;
-			case COMMENT_TYPE::other:
-				CustomCommentRemoval(GetCurrentTabExtraInfo().hText, format);
-				break;
-			}
-			break;
-		}
-		case SAVE_FILE:
-		case ID_SAVE:
-		{
-			//if (IsAcceptedFile()) {
-			if (Backup_Is_Checked) DoBackup();
-
-			int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
-
-			wstring text(text_length, L'\0');
-			GetWindowTextW(hFile, &text[0], text_length);
-
-			TEXT_INFO text_data = GetCurrentTabExtraInfo();
-
-			if (text[0] != L'\0')
-				DoSave(text_data.hText, text);
-			//TODO(fran): error handling
-
-			//}
-			break;
-		}
-		case SAVE_AS_FILE:
-		case ID_SAVE_AS:
-		{
-			//TODO(fran): DoSaveAs allows for saving of file when no tab is created and sets all the controls but doesnt create an empty tab,
-			//should we create the tab or not allow to save?
-			DoSaveAs(GetCurrentTabExtraInfo().hText); //No DoBackup() for Save As since the idea is the user saves to a new file obviously
-
+			ShowWindow(state->wnd, SW_MINIMIZE);
+			return 0;
 		} break;
-		case LANGUAGE_MANAGER::LANGUAGE::ENGLISH://INFO: this relates to the menu item, TODO(fran): a way to check a range of numbers, from first lang to last
-		case LANGUAGE_MANAGER::LANGUAGE::SPANISH:
+		case UNCAPNC_MAXIMIZE:
 		{
-			//NOTE: maybe I can force menu item remeasuring by SetMenu, basically sending it the current menu
-			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wParam));
-#if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
-			HMENU old_menu = GetMenu(hWnd);
-			SetMenu(hWnd, NULL);
-			DestroyMenu(old_menu); //NOTE: I could also use RemoveMenu which doesnt destroy it's submenus and reattach them to a new "main" menu and correct parenting (itemData param)
-			AddMenus(hWnd); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
-#else //the undocumented way, aka the way it should have always been
-			//WIP
-#endif
+			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
+
+			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
+			else ShowWindow(state->wnd, SW_MAXIMIZE); //TODO(fran): maximize covers the whole screen, I dont want that, I want to live the navbar visible. For this to be done automatically by windows we need the WS_MAXIMIZEBOX style, which decides to draw a maximize box when pressed, if we can hide that we are all set
+			return 0;
 		} break;
-		default: return DefWindowProc(hWnd, message, wParam, lParam);
+		case UNCAPNC_CLOSE:
+		{
+			DestroyWindow(state->wnd);
+			return 0;
+		} break;
+		default: return SendMessage(state->client, msg, wparam, lparam);
 		}
 	} break;
-	//TODO(fran): continue with this undocumented search, it doesnt look very good, I could only get the hwnd when opening the languages sub menu
-	//https://www.google.com/search?q=FindWindow(NULL,+%22%2332768%22)%3B&rlz=1C1GIWA_enAR589AR589&sxsrf=ALeKk03pPU3gTyENAggyeDZgCHuNKyustA:1600226751225&ei=v4VhX6WFDZCz5OUPwJ2y6A8&start=10&sa=N&ved=2ahUKEwjl4MOY3ezrAhWQGbkGHcCODP0Q8NMDegQIDhBA&biw=1645&bih=1646
-	//https://www.codeproject.com/Articles/2080/Transparent-Menu
-	//https://microsoft.public.win32.programmer.ui.narkive.com/jQJBmxzp/open-submenu-programmatically#post5
-	//https://comp.os.ms-windows.programmer.win32.narkive.com/RhPGGM4C/forcing-menu-item-to-refresh
-	//case WM_INITMENU:
-	//case WM_INITMENUPOPUP:
-	//{
-	//	HWND hMenuWnd = FindWindow(TEXT("#32768"), NULL);
-	//	if (IsWindow(hMenuWnd)) {
-	//		PostMessage(hMenuWnd, 0x1e2, 0, 0); //doesnt seem to work
-	//		PostMessage(hMenuWnd, 0x1e5, 0, 0); //works
-	//	}
-	//} break;
-	case WM_SIZE:
-		ResizeWindows(hWnd);
-		break;
-	case WM_NOTIFY: 
-	{
-		NMHDR* msg_info = (NMHDR*)lParam;
-		switch (msg_info->code) {
-		//Handling tab changes, since there is no specific message to manage this from inside the tab control, THANKS WINDOWS
-		//+
-		case TCN_SELCHANGING: //TODO(fran): now we are outside the tab control we should use the other parameters to check we are actually changing 
-								//the control we want
-		{
-			SaveAndDisableCurrentTab(msg_info->hwndFrom);
-			break;
-		}
-		case TCN_SELCHANGE:
-		{
-			int index = (int)SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
-			if (index != -1) {
-				CUSTOM_TCITEM new_item;
-				new_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
-				//WCHAR buf[20] = { 0 };
-				//prev_item.tab_info.pszText = buf;
-				//prev_item.tab_info.cchTextMax = 20;
-				BOOL ret = (BOOL)SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
-				if (ret) {
-					EnableTab(new_item.extra_info);
-				}
-			}
-			break;
-		}
-		//+
-		default:
-			return DefWindowProc(hWnd, message, wParam, lParam);
-		}
-		return DefWindowProc(hWnd, message, wParam, lParam);
-	}
-	//case WM_SYSCOMMAND:
-	//	if (wParam == SC_MINIMIZE)
-	//	{
-	//		//MinimizeWndToTray(hWnd);
-
-	//		// Return 0 to tell DefDlgProc that we handled the message, and set
-	//		// DWL_MSGRESULT to 0 to say that we handled WM_SYSCOMMAND
-	//		//SetWindowLong(hWnd, DWL_MSGRESULT, 0);
-
-	//		RECT rcFrom, rcTo;
-	//		GetWindowRect(hWnd, &rcFrom);
-	//		GetTrayWndRect(&rcTo);
-	//		MyAnimate(hWnd, { rcFrom.left,rcFrom.top }, { rcTo.left,rcTo.top }, 200);
-
-	//		return 0;
-	//	}
-	//	return DefWindowProc(hWnd, message, wParam, lParam);
 	case WM_DESTROY:
-		CreateInfoFile(hWnd);
 		PostQuitMessage(0);
 		break;
+	case WM_GETMINMAXINFO:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_STYLECHANGING:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_STYLECHANGED:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_PARENTNOTIFY://Different notifs about your childs
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_WINDOWPOSCHANGING:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_SHOWWINDOW:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_ACTIVATEAPP:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_ACTIVATE:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_IME_SETCONTEXT:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_IME_NOTIFY:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_GETOBJECT:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_SETFOCUS:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_NCPAINT:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_ERASEBKGND:
+	{
+		return 1; //So we dont erase the menu bar
+		//return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_MOVE:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_GETTEXT:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_GETICON:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_DWMNCRENDERINGCHANGED:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
 	default:
-		return DefWindowProc(hWnd, message, wParam, lParam);
+	case 49558: //TaskbarButtonCreated, where that comes from or what that does I have no clue
+	{
+		TCHAR arr[256];
+		int res = GetClipboardFormatName(49558, arr, 256); //IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages, these are: "String messages for use by applications."
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	}
+#ifdef _DEBUG
+		Assert(0);
+#else 
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+#endif
 	}
 	return 0;
+}
+
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
+{
+	UNREFERENCED_PARAMETER(hPrevInstance);
+	UNREFERENCED_PARAMETER(lpCmdLine);
+
+	urender::init(); defer{ urender::uninit(); };
+
+	//Initialization of common controls
+	INITCOMMONCONTROLSEX icc;
+
+	icc.dwSize = sizeof(icc);
+	icc.dwICC = ICC_STANDARD_CLASSES;
+
+	BOOL comm_res = InitCommonControlsEx(&icc);
+	Assert(comm_res);
+
+#ifdef _DEBUG
+	AllocConsole();
+	freopen("CONIN$", "r", stdin);
+	freopen("CONOUT$", "w", stdout);
+	freopen("CONOUT$", "w", stderr);
+#endif
+
+	CheckInfoFile();
+
+	LANGUAGE_MANAGER::Instance().SetHInstance(hInstance);
+	LANGUAGE_MANAGER::Instance().ChangeLanguage(startup_locale);
+
+	unCap_colors.ControlBk = CreateSolidBrush(RGB(40, 41, 35)); //TODO(fran): all this should come from the save file, maybe also font
+	unCap_colors.ControlBkPush = CreateSolidBrush(RGB(0, 110, 200));
+	unCap_colors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
+	unCap_colors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
+	unCap_colors.ControlTxt_Inactive = CreateSolidBrush(RGB(208, 208, 202));
+	unCap_colors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
+	//Thanks to Windows' broken Static Control text color when disabled
+	unCap_colors.InitialFinalCharDisabled = CreateSolidBrush(RGB(128, 128, 128));
+	unCap_colors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
+	unCap_colors.ScrollbarMouseOver = CreateSolidBrush(RGB(188, 188, 182));
+	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(50, 51, 45));
+	unCap_colors.Img = CreateSolidBrush(RGB(228, 228, 222));
+	unCap_colors.CaptionBk = CreateSolidBrush(RGB(20, 21, 15));
+	unCap_colors.CaptionBk_Inactive = CreateSolidBrush(RGB(60, 61, 65));
+	defer{ for (HBRUSH& b : unCap_colors.brushes) if (b) { DeleteBrush(b); b = NULL; } };
+
+	//Setting offsets for what will define the "client" area of a tab control
+	TabOffset.leftOffset = 3;
+	TabOffset.rightOffset = TabOffset.leftOffset;
+	TabOffset.bottomOffset = TabOffset.leftOffset;
+	TabOffset.topOffset = 24;
+
+	CreateFonts();
+
+	init_wndclass_unCap_uncap_nc(hInstance);
+
+	init_wndclass_unCap_scrollbar(hInstance);
+
+	init_wndclass_unCap_button(hInstance);
+
+	//TODO(fran): I think the problem I get that someone else is drawing my nc area is because I ask for OVERLAPPED_WINDOW when I create the window, so it takes care of doing that, which I dont want, REMOVE IT
+	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, unCap_wndclass_uncap_nc, appName, WS_THICKFRAME | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
+
+	if (!hMain) return FALSE;
+
+	ShowWindow(hMain, nCmdShow);
+	UpdateWindow(hMain);
+
+	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_SRTFIXWIN32));
+
+	MSG msg;
+
+	while (GetMessage(&msg, nullptr, 0, 0))
+	{
+		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+		{
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		
+		//if (!IsDialogMessage(hwnd, &msg))
+		//{
+		//	TranslateMessage(&msg);
+		//	DispatchMessage(&msg);
+		//}
+
+	}
+
+	return (int)msg.wParam;
 }

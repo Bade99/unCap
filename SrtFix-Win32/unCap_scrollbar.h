@@ -1,5 +1,6 @@
 #pragma once
 #include <Windows.h>
+#include "unCap_global.h"
 #include "unCap_helpers.h"
 
 //NOTE: this scrollbar is only for edit controls (for now), and only vertical
@@ -99,26 +100,9 @@ static RECT SCROLL_calc_scrollbar(ScrollProcState* state) {
 	return sb_rc;
 }
 
-static bool test_point_rc(POINT p, RECT r) {
-	bool hit = false;
-	if (p.y >= r.top &&//top
-		p.y < r.bottom &&//bottom
-		p.x >= r.left &&//left
-		p.x < r.right)//right
-	{
-		hit = true;
-	}
-	return hit;
-}
-
-static bool sameRc(RECT r1, RECT r2) {
-	bool res = r1.bottom == r2.bottom && r1.left == r2.left && r1.right == r2.right && r1.top == r2.top;
-	return res;
-}
-
 static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	/*INFO:
-		-they decide position and size on their own based on their parent and whether they are horizontal or vertical
+		-the scrollbars decide position and size on their own based on their parent and whether they are horizontal or vertical
 	*/
 	static int scrollbar_thickness = max(GetSystemMetrics(SM_CXVSCROLL) / 2, 5);
 
@@ -195,7 +179,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				ScreenToClient(state->wnd, &mouse);
 				RECT client_rc; GetClientRect(state->wnd, &client_rc);
 				RECT sb_rc = SCROLL_calc_scrollbar(state);
-				if (test_point_rc(mouse, client_rc) && !test_point_rc(mouse, sb_rc)) {
+				if (test_pt_rc(mouse, client_rc) && !test_pt_rc(mouse, sb_rc)) {
 					//Mouse is in bk area
 					if (mouse.y < sb_rc.top) //mouse hit above the bar
 						SendMessage(state->parent, WM_VSCROLL, MAKELONG(SB_PAGEUP, 0), (LPARAM)state->wnd);
@@ -245,7 +229,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		GetCursorPos(&mouse);
 		ScreenToClient(state->wnd, &mouse);
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
-		if (test_point_rc(mouse, sb_rc)) {//Mouse is inside the bar
+		if (test_pt_rc(mouse, sb_rc)) {//Mouse is inside the bar
 			state->onMouseOverSb = true;
 		}
 		else {//Mouse is outside the bar
@@ -269,7 +253,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		bool prev_OnMouseTrackingSb = state->OnMouseTrackingSb;
 
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
-		if (test_point_rc(mouse, sb_rc)) {//Mouse is inside the bar
+		if (test_pt_rc(mouse, sb_rc)) {//Mouse is inside the bar
 			state->onMouseOverSb = true;
 		}
 		else {//Mouse is outside the bar
@@ -372,8 +356,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_NCPAINT:
 	{
 		//Paint non client area, we shouldnt have any
-		HDC hdc = GetDCEx(hwnd, (HRGN)wparam, DCX_WINDOW | DCX_INTERSECTRGN);
-		//TODO(fran): windows' provided code is, from what I remember, wrong, the first time this gives a null hdc, maybe it's cause the region is empty since we shouldnt have any non client area, I dont know
+		HDC hdc = GetDCEx(hwnd, (HRGN)wparam, DCX_WINDOW | DCX_USESTYLE);
 		ReleaseDC(hwnd, hdc);
 		return 0; //we process this message, for now
 	} break;

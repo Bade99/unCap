@@ -153,13 +153,16 @@
     <ClInclude Include="LANGUAGE_MANAGER.h" />
     <ClInclude Include="Open_Save_FileHandler.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="SrtFix-Win32.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="text_encoding_detect.h" />
+    <ClInclude Include="unCap_button.h" />
     <ClInclude Include="unCap_global.h" />
     <ClInclude Include="unCap_helpers.h" />
     <ClInclude Include="unCap_math.h" />
+    <ClInclude Include="unCap_Platform.h" />
+    <ClInclude Include="unCap_Renderer.h" />
     <ClInclude Include="unCap_scrollbar.h" />
+    <ClInclude Include="unCap_Vector.h" />
     <ClInclude Include="utf8.h" />
     <ClInclude Include="windows_msg_mapper.h" />
   </ItemGroup>
@@ -173,6 +176,7 @@
     <ResourceCompile Include="SrtFix-Win32.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="Close16.bmp" />
     <Image Include="combo.ico" />
     <Image Include="cross.ico" />
     <Image Include="Cross16.bmp" />
@@ -180,6 +184,8 @@
     <Image Include="icon1.ico" />
     <Image Include="icon2.ico" />
     <Image Include="icon3.ico" />
+    <Image Include="Max16.bmp" />
+    <Image Include="Min16.bmp" />
     <Image Include="RightArrow16.bmp" />
     <Image Include="SrtFixE.ico" />
     <Image Include="SrtFixESmall.ico" />

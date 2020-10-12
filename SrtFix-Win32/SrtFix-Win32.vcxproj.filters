@@ -21,9 +21,6 @@
     <ClInclude Include="resource.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="SrtFix-Win32.h">
-      <Filter>Archivos de encabezado</Filter>
-    </ClInclude>
     <ClInclude Include="Open_Save_FileHandler.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
@@ -49,6 +46,18 @@
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
     <ClInclude Include="windows_msg_mapper.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_button.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_Renderer.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_Vector.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_Platform.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
   </ItemGroup>
@@ -103,6 +112,15 @@
       <Filter>Archivos de recursos</Filter>
     </Image>
     <Image Include="RightArrow16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="Max16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="Min16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="Close16.bmp">
       <Filter>Archivos de recursos</Filter>
     </Image>
   </ItemGroup>
