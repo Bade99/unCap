@@ -141,112 +141,6 @@ mask_bilinear_sample sample_bilinear_mask(img* mask, i32 x, i32 y) {
 	return sample;
 }
 
-//NOTE: the caller is in charge of handling the hbitmap, including deletion
-//NOTE: we add an extra limitation, no offsets, we scale the entire bitmap, at least for now to make it simpler to write
-HBITMAP scale_mask(HBITMAP mask_bmp, int destW, int destH) {
-
-	BITMAP masknfo; GetObject(mask_bmp, sizeof(masknfo), &masknfo); Assert(masknfo.bmBitsPixel == 1);
-	img mask;
-	mask.width = masknfo.bmWidth;
-	mask.height = masknfo.bmHeight;
-	mask.bits_per_pixel = 1;
-	mask.pitch = masknfo.bmWidthBytes;
-	int mask_sz = mask.height*mask.pitch;
-	mask.mem = malloc(mask_sz); defer{ free(mask.mem); };
-
-	int getbits = GetBitmapBits(mask_bmp, mask_sz, mask.mem);
-	Assert(getbits == mask_sz);
-
-	img scaled_mask;
-	scaled_mask.width = destW;
-	scaled_mask.height = destH;
-	scaled_mask.bits_per_pixel = 1;
-	scaled_mask.pitch = round2up((i32)roundf(((f32)scaled_mask.width * (1.f/8.f/*bytes per pixel*/))));//NOTE: windows expects word aligned bmps
-	int scaled_mask_sz = scaled_mask.height*scaled_mask.pitch;
-	scaled_mask.mem = (u8*)malloc(scaled_mask_sz); defer{ free(scaled_mask.mem); };
-
-
-	v2 origin{ 0,0 };
-	v2 x_axis{ (f32)scaled_mask.width,0 };
-	v2 y_axis{ 0,(f32)scaled_mask.height };
-
-	i32 width_max  = scaled_mask.width - 1;
-	i32 height_max = scaled_mask.height - 1;
-
-	i32 x_min = scaled_mask.width;
-	i32 x_max = 0;
-	i32 y_min = scaled_mask.height;
-	i32 y_max = 0;
-
-	v2 points[4] = { origin,origin + x_axis,origin + y_axis,origin + x_axis + y_axis };
-	for (v2 p : points) {
-		i32 floorx = (i32)floorf(p.x);
-		i32 ceilx = (i32)ceilf(p.x);
-		i32 floory = (i32)floorf(p.y);
-		i32 ceily = (i32)ceilf(p.y);
-
-		if (x_min > floorx)x_min = floorx;
-		if (y_min > floory)y_min = floory;
-		if (x_max < ceilx)x_max = ceilx;
-		if (y_max < ceily)y_max = ceily;
-	}
-
-	if (x_min < 0)x_min = 0;
-	if (y_min < 0)y_min = 0;
-	if (x_max > scaled_mask.width) x_max = scaled_mask.width;
-	if (y_max > scaled_mask.height)y_max = scaled_mask.height;
-
-	u8* row = (u8*)scaled_mask.mem /*+(x_min *(i32)((f32)scaled_mask.bits_per_pixel/8.f))*/ + y_min * scaled_mask.pitch;
-
-	for (int y = y_min; y < y_max; y++) {//n bits high
-		u8* pixel = row;
-		u8 index = 7;
-		u8 pixels_to_write = 0;
-		for (int x = x_min; x < x_max; x++) {//n bits wide
-
-			f32 u = (f32)x / (f32)(scaled_mask.width-1);
-			f32 v = (f32)y / (f32)(scaled_mask.height-1);
-
-			f32 t_x = u * (f32)(mask.width - 1);
-			f32 t_y = v * (f32)(mask.height - 1);
-
-			i32 i_x = (i32)t_x;
-			i32 i_y = (i32)t_y;
-
-			f32 f_x = t_x - (f32)i_x;
-			f32 f_y = t_y - (f32)i_y;
-
-			Assert(i_x >= 0 && i_x < mask.width);
-			Assert(i_y >= 0 && i_y < mask.height);
-
-			//Bilinear filtering
-			mask_bilinear_sample sample = sample_bilinear_mask(&mask, i_x, i_y);
-			v4 f_sample;
-			//TODO(fran): lerp and f_x f_y
-			for (int i = 0; i < 4;i++) {
-				f_sample.comp[i] = (sample.sample[i] ? 1.f : 0.f);
-			}
-
-			u8 texel = (u8)roundf(lerp(lerp(f_sample.x, f_x, f_sample.y), f_y, lerp(f_sample.z, f_x, f_sample.w)));
-
-			pixels_to_write |= (texel << index);
-
-			index--;
-			if (index == (u8)-1 || (x+1)==x_max) {
-				index = 7;
-				//pixels_to_write = ~pixels_to_write;
-				*pixel++ = pixels_to_write;
-				pixels_to_write = 0;
-			}
-		}
-		row += scaled_mask.pitch;
-	}
-
-	//Create bitmap
-	HBITMAP new_mask = CreateBitmap(scaled_mask.width, scaled_mask.height, 1, scaled_mask.bits_per_pixel, scaled_mask.mem);
-	//TODO(fran): do I need to set the palette?
-	return new_mask;
-}
 namespace urender {
 	static ULONG_PTR gdiplusToken;//Horrible HACK, that gdi+ shouldnt need in the first place but the programmers had no idea what they were doing
 
@@ -263,6 +157,113 @@ namespace urender {
 		//Uninitialize GDI+
 		Gdiplus::GdiplusShutdown(gdiplusToken);
 #endif
+	}
+
+	//NOTE: the caller is in charge of handling the hbitmap, including deletion
+//NOTE: we add an extra limitation, no offsets, we scale the entire bitmap, at least for now to make it simpler to write
+	HBITMAP scale_mask(HBITMAP mask_bmp, int destW, int destH) {
+
+		BITMAP masknfo; GetObject(mask_bmp, sizeof(masknfo), &masknfo); Assert(masknfo.bmBitsPixel == 1);
+		img mask;
+		mask.width = masknfo.bmWidth;
+		mask.height = masknfo.bmHeight;
+		mask.bits_per_pixel = 1;
+		mask.pitch = masknfo.bmWidthBytes;
+		int mask_sz = mask.height*mask.pitch;
+		mask.mem = malloc(mask_sz); defer{ free(mask.mem); };
+
+		int getbits = GetBitmapBits(mask_bmp, mask_sz, mask.mem);
+		Assert(getbits == mask_sz);
+
+		img scaled_mask;
+		scaled_mask.width = destW;
+		scaled_mask.height = destH;
+		scaled_mask.bits_per_pixel = 1;
+		scaled_mask.pitch = round2up((i32)roundf(((f32)scaled_mask.width * (1.f / 8.f/*bytes per pixel*/))));//NOTE: windows expects word aligned bmps
+		int scaled_mask_sz = scaled_mask.height*scaled_mask.pitch;
+		scaled_mask.mem = (u8*)malloc(scaled_mask_sz); defer{ free(scaled_mask.mem); };
+
+
+		v2 origin{ 0,0 };
+		v2 x_axis{ (f32)scaled_mask.width,0 };
+		v2 y_axis{ 0,(f32)scaled_mask.height };
+
+		i32 width_max = scaled_mask.width - 1;
+		i32 height_max = scaled_mask.height - 1;
+
+		i32 x_min = scaled_mask.width;
+		i32 x_max = 0;
+		i32 y_min = scaled_mask.height;
+		i32 y_max = 0;
+
+		v2 points[4] = { origin,origin + x_axis,origin + y_axis,origin + x_axis + y_axis };
+		for (v2 p : points) {
+			i32 floorx = (i32)floorf(p.x);
+			i32 ceilx = (i32)ceilf(p.x);
+			i32 floory = (i32)floorf(p.y);
+			i32 ceily = (i32)ceilf(p.y);
+
+			if (x_min > floorx)x_min = floorx;
+			if (y_min > floory)y_min = floory;
+			if (x_max < ceilx)x_max = ceilx;
+			if (y_max < ceily)y_max = ceily;
+		}
+
+		if (x_min < 0)x_min = 0;
+		if (y_min < 0)y_min = 0;
+		if (x_max > scaled_mask.width) x_max = scaled_mask.width;
+		if (y_max > scaled_mask.height)y_max = scaled_mask.height;
+
+		u8* row = (u8*)scaled_mask.mem /*+(x_min *(i32)((f32)scaled_mask.bits_per_pixel/8.f))*/ + y_min * scaled_mask.pitch;
+
+		for (int y = y_min; y < y_max; y++) {//n bits high
+			u8* pixel = row;
+			u8 index = 7;
+			u8 pixels_to_write = 0;
+			for (int x = x_min; x < x_max; x++) {//n bits wide
+
+				f32 u = (f32)x / (f32)(scaled_mask.width - 1);
+				f32 v = (f32)y / (f32)(scaled_mask.height - 1);
+
+				f32 t_x = u * (f32)(mask.width - 1);
+				f32 t_y = v * (f32)(mask.height - 1);
+
+				i32 i_x = (i32)t_x;
+				i32 i_y = (i32)t_y;
+
+				f32 f_x = t_x - (f32)i_x;
+				f32 f_y = t_y - (f32)i_y;
+
+				Assert(i_x >= 0 && i_x < mask.width);
+				Assert(i_y >= 0 && i_y < mask.height);
+
+				//Bilinear filtering
+				mask_bilinear_sample sample = sample_bilinear_mask(&mask, i_x, i_y);
+				v4 f_sample;
+				//TODO(fran): lerp and f_x f_y
+				for (int i = 0; i < 4; i++) {
+					f_sample.comp[i] = (sample.sample[i] ? 1.f : 0.f);
+				}
+
+				u8 texel = (u8)roundf(lerp(lerp(f_sample.x, f_x, f_sample.y), f_y, lerp(f_sample.z, f_x, f_sample.w)));
+
+				pixels_to_write |= (texel << index);
+
+				index--;
+				if (index == (u8)-1 || (x + 1) == x_max) {
+					index = 7;
+					//pixels_to_write = ~pixels_to_write;
+					*pixel++ = pixels_to_write;
+					pixels_to_write = 0;
+				}
+			}
+			row += scaled_mask.pitch;
+		}
+
+		//Create bitmap
+		HBITMAP new_mask = CreateBitmap(scaled_mask.width, scaled_mask.height, 1, scaled_mask.bits_per_pixel, scaled_mask.mem);
+		//TODO(fran): do I need to set the palette?
+		return new_mask;
 	}
 
 	void draw_mask(HDC dest, int xDest, int yDest, int wDest, int hDest, HBITMAP mask, int xSrc, int ySrc, int wSrc, int hSrc, HBRUSH colorbr) {

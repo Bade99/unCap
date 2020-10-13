@@ -123,5 +123,29 @@
     <Image Include="Close16.bmp">
       <Filter>Archivos de recursos</Filter>
     </Image>
+    <Image Include="..\Icons\unCap.ico">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\Dropdown16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\Close16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\Earth16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\Max16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\Min16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\RightArrow16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
+    <Image Include="..\Icons\Tick16.bmp">
+      <Filter>Archivos de recursos</Filter>
+    </Image>
   </ItemGroup>
 </Project>

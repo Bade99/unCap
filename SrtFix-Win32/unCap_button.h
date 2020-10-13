@@ -28,7 +28,7 @@ struct ButtonProcState { //NOTE: must be initialized to zero
 
 	HFONT font;
 
-	HBRUSH border_br, bk_br, fore_br, bkpush_br, bkmouseover_br;
+	HBRUSH br_border, br_bk, br_fore, br_bkpush, br_bkmouseover;
 
 	HICON icon;
 	HBITMAP bmp;
@@ -62,11 +62,11 @@ ButtonProcState* UNCAPBTN_get_state(HWND hwnd) {
 //NOTE: any NULL HBRUSH remains unchanged
 void UNCAPBTN_set_brushes(HWND uncap_btn, BOOL repaint, HBRUSH border_br, HBRUSH bk_br, HBRUSH fore_br, HBRUSH bkpush_br, HBRUSH bkmouseover_br) {
 	ButtonProcState* state = UNCAPBTN_get_state(uncap_btn);
-	if(border_br)state->border_br = border_br;
-	if(bk_br)state->bk_br = bk_br;
-	if(fore_br)state->fore_br = fore_br;
-	if(bkpush_br)state->bkpush_br = bkpush_br;
-	if(bkmouseover_br)state->bkmouseover_br = bkmouseover_br;
+	if(border_br)state->br_border = border_br;
+	if(bk_br)state->br_bk = bk_br;
+	if(fore_br)state->br_fore = fore_br;
+	if(bkpush_br)state->br_bkpush = bkpush_br;
+	if(bkmouseover_br)state->br_bkmouseover = bkmouseover_br;
 	if(repaint)InvalidateRect(state->wnd, NULL, TRUE);
 }
 
@@ -316,20 +316,20 @@ static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		//TODO(fran): Check that we are going to paint something new
 		HBRUSH oldbr,bkbr;
 		if (state->onMouseOver && state->onLMouseClick) {
-			bkbr = state->bkpush_br;
+			bkbr = state->br_bkpush;
 		}
 		else if (state->onMouseOver || state->OnMouseTracking) {
-			bkbr = state->bkmouseover_br;
+			bkbr = state->br_bkmouseover;
 		}
 		else {
-			bkbr = state->bk_br;
+			bkbr = state->br_bk;
 		}
 		SetBkColor(dc, ColorFromBrush(bkbr));
 		oldbr = SelectBrush(dc, bkbr);
 
 		//TODO(clipping)
 		int borderSize = 1;
-		HBRUSH borderbr = state->border_br;
+		HBRUSH borderbr = state->br_border;
 		HPEN pen = CreatePen(PS_SOLID, borderSize, ColorFromBrush(borderbr)); //border
 
 		HPEN oldpen = (HPEN)SelectObject(dc, pen);
@@ -364,7 +364,7 @@ static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				int bmp_width = bmp_height;
 				int bmp_align_height = (RECTHEIGHT(rc) - bmp_height) / 2;
 				int bmp_align_width = (RECTWIDTH(rc) - bmp_width) / 2;
-				urender::draw_mask(dc, bmp_align_width, bmp_align_height, bmp_width, bmp_height, state->bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, unCap_colors.Img);//TODO(fran): parametric color
+				urender::draw_mask(dc, bmp_align_width, bmp_align_height, bmp_width, bmp_height, state->bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, state->br_fore);
 			}
 		}
 		else { //Here will go buttons that only have text
@@ -372,7 +372,7 @@ static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (font) {//if font == NULL then it is using system font(default I assume)
 				(HFONT)SelectObject(dc, (HGDIOBJ)font);
 			}
-			SetTextColor(dc, ColorFromBrush(state->fore_br));
+			SetTextColor(dc, ColorFromBrush(state->br_fore));
 			WCHAR Text[40];
 			int len = (int)SendMessage(state->wnd, WM_GETTEXT, ARRAYSIZE(Text), (LPARAM)Text);
 

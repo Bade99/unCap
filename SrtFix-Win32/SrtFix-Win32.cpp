@@ -878,9 +878,9 @@ void AddMenus(HWND hwnd) {
 	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::SPANISH, (LPCWSTR)hFileMenuLang);
 	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, const_cast<TCHAR*>(TEXT("Español")));
 
-	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(TICK)); //TODO(fran): preload the bitmaps or destroy them when we destroy the menu
-	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CLOSE));
-	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(EARTH));
+	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CHECKMARK)); //TODO(fran): preload the bitmaps or destroy them when we destroy the menu
+	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));
+	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_EARTH));
 
 	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
 
@@ -1287,6 +1287,192 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 	return 0;
 }
 
+struct ComboProcState {
+	HWND wnd;
+	HBITMAP dropdown; //TODO(fran): decide who deletes this
+};
+
+#define CB_SETDROPDOWNIMG (WM_USER+1) //Only accepts monochrome bitmaps (.bmp), wparam=HBITMAP ; lparam=0
+#define CB_GETDROPDOWNIMG (WM_USER+2) //wparam=0 ; lparam=0 ; returns HBITMAP
+
+LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+	static BOOL MouseOverCombo = FALSE;
+	static HWND CurrentMouseOverCombo;
+
+	//TODO(fran): there's a small bug, when opening the list box sometimes the text for the previously selected item changes without the user pressing anything
+
+	//INFO: we require GetWindowLongPtr at "position" GWLP_USERDATA to be left for us to use
+	//NOTE: Im pretty sure that "position" 0 is already in use
+	ComboProcState* state = (ComboProcState*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+	if (!state) {
+		ComboProcState* st = (ComboProcState*)calloc(1, sizeof(ComboProcState));
+		st->wnd = hwnd;
+		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)st);
+		state = st;
+	}
+
+	switch (msg)
+	{
+	case WM_NCDESTROY: //TODO(fran): better way to cleanup our state, we could have problems with state being referenced after WM_NCDESTROY and RemoveSubclass taking us out without being able to free our state, we need a way to find out when we are being removed
+	{
+		if (state) free(state);
+		return DefSubclassProc(hwnd, msg, wparam, lParam);
+	}
+	case CB_GETDROPDOWNIMG:
+	{
+		return (LRESULT)state->dropdown;
+	} break;
+	case CB_SETDROPDOWNIMG:
+	{
+		state->dropdown = (HBITMAP)wparam;
+		return 0;
+	} break;
+	case CB_SETCURSEL:
+	{
+		EnableOtherChar(wparam == COMMENT_TYPE::other); //TODO(fran): parent should receive this msg and execute this
+		InvalidateRect(hwnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
+		return DefSubclassProc(hwnd, msg, wparam, lParam);
+	}
+	case WM_MOUSEHOVER:
+	{
+		//force button to repaint and specify hover or not
+		if (MouseOverCombo && CurrentMouseOverCombo == hwnd) break;
+		MouseOverCombo = true;
+		CurrentMouseOverCombo = hwnd;
+		InvalidateRect(hwnd, 0, 1);
+		return DefSubclassProc(hwnd, msg, wparam, lParam);
+	}
+	case WM_MOUSELEAVE:
+	{
+		MouseOverCombo = false;
+		CurrentMouseOverCombo = NULL;
+		InvalidateRect(hwnd, 0, 1);
+		return DefSubclassProc(hwnd, msg, wparam, lParam);
+	}
+	case WM_MOUSEMOVE:
+	{
+		//TODO(fran): We are tracking the mouse every single time it moves, kind of suspect solution
+		TRACKMOUSEEVENT tme;
+		tme.cbSize = sizeof(TRACKMOUSEEVENT);
+		tme.dwFlags = TME_HOVER | TME_LEAVE;
+		tme.dwHoverTime = 1;
+		tme.hwndTrack = hwnd;
+
+		TrackMouseEvent(&tme);
+		return DefSubclassProc(hwnd, msg, wparam, lParam);
+	}
+	//case CBN_DROPDOWN://lets us now that the list is about to be show, therefore the user clicked us
+	case WM_PAINT:
+	{
+		DWORD style = (DWORD)GetWindowLongPtr(hwnd, GWL_STYLE);
+		if (!(style & CBS_DROPDOWNLIST))
+			break;
+
+		RECT rc; GetClientRect(hwnd, &rc);
+
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hwnd, &ps);
+
+		BOOL ButtonState = (BOOL)SendMessageW(hwnd, CB_GETDROPPEDSTATE, 0, 0);
+		if (ButtonState) {
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
+			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
+		}
+		else if (MouseOverCombo && CurrentMouseOverCombo == hwnd) {
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
+			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
+		}
+		else {
+			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBk));
+			FillRect(hdc, &rc, unCap_colors.ControlBk);
+		}
+
+		RECT client_rec;
+		GetClientRect(hwnd, &client_rec);
+
+		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
+
+		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
+		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
+
+		SelectObject(hdc, (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0));
+		//SetBkColor(hdc, bkcolor);
+		SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
+
+		//Border
+		Rectangle(hdc, 0, 0, rc.right, rc.bottom);
+
+		SelectObject(hdc, oldpen);
+		DeleteObject(pen);
+
+		/*
+		if (GetFocus() == hwnd)
+		{
+			//INFO: with this we know when the control has been pressed
+			RECT temp = rc;
+			InflateRect(&temp, -2, -2);
+			DrawFocusRect(hdc, &temp);
+		}
+		*/
+		int DISTANCE_TO_SIDE = 5;
+
+		int index = (int)SendMessage(hwnd, CB_GETCURSEL, 0, 0);
+		if (index >= 0)
+		{
+			int buflen = (int)SendMessage(hwnd, CB_GETLBTEXTLEN, index, 0);
+			TCHAR *buf = new TCHAR[(buflen + 1)];
+			SendMessage(hwnd, CB_GETLBTEXT, index, (LPARAM)buf);
+			RECT txt_rc = rc;
+			txt_rc.left += DISTANCE_TO_SIDE;
+			DrawText(hdc, buf, -1, &txt_rc, DT_EDITCONTROL | DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+			delete[]buf;
+		}
+
+
+		//HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+		//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
+		//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
+		//HICON combo_dropdown_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(COMBO_ICON), IMAGE_ICON, icon_size.cx, icon_size.cy, LR_SHARED);
+
+		//if (combo_dropdown_icon) {
+		//	DrawIconEx(hdc, r.right - r.left - icon_size.cx - DISTANCE_TO_SIDE, ((r.bottom - r.top) - icon_size.cy) / 2,
+		//		combo_dropdown_icon, icon_size.cx, icon_size.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
+		//	DestroyIcon(combo_dropdown_icon);
+		//}
+		if (state->dropdown) {
+			HBITMAP bmp = state->dropdown;
+			BITMAP bitmap; GetObject(bmp, sizeof(bitmap), &bitmap);
+			if (bitmap.bmBitsPixel == 1) {
+
+				int max_sz = roundNdown(bitmap.bmWidth, (int)((float)RECTHEIGHT(rc)*.6f)); //HACK: instead use png + gdi+ + color matrices
+				if (!max_sz)max_sz = bitmap.bmWidth; //More HACKs
+
+				int bmp_height = max_sz;
+				int bmp_width = bmp_height;
+				int bmp_align_width = RECTWIDTH(rc) - bmp_width - DISTANCE_TO_SIDE;
+				int bmp_align_height = (RECTHEIGHT(rc) - bmp_height) / 2;
+				urender::draw_mask(hdc, bmp_align_width, bmp_align_height, bmp_width, bmp_height, bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, unCap_colors.Img);//TODO(fran): parametric color
+			}
+		}
+
+		
+		SelectObject(hdc, oldbrush);
+
+		EndPaint(hwnd, &ps);
+		return 0;
+	} break;
+
+	//case WM_NCDESTROY:
+	//{
+	//	RemoveWindowSubclass(hwnd, this->ComboProc, uIdSubclass);
+	//	break;
+	//}
+
+	}
+
+	return DefSubclassProc(hwnd, msg, wparam, lParam);
+}
+
 void AddControls(HWND hwnd, HINSTANCE hInstance) {
 	hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
 			| ES_AUTOHSCROLL | SS_CENTERIMAGE
@@ -1308,8 +1494,11 @@ void AddControls(HWND hwnd, HINSTANCE hInstance) {
 	ACT(hOptions, COMMENT_TYPE::parenthesis, LANG_CONTROL_CHAROPTIONS_PARENTHESIS);
 	ACT(hOptions, COMMENT_TYPE::braces, LANG_CONTROL_CHAROPTIONS_BRACES);
 	ACT(hOptions, COMMENT_TYPE::other, LANG_CONTROL_CHAROPTIONS_OTHER);
-	SendMessageW(hOptions, CB_SETCURSEL, 0, 0);
+	SendMessage(hOptions, CB_SETCURSEL, 0, 0);
 	SetWindowSubclass(hOptions, ComboProc, 0, 0);
+	HBITMAP dropdown = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_DROPDOWN));
+	SendMessage(hOptions, CB_SETDROPDOWNIMG, (WPARAM)dropdown, 0);
+	
 	//WCHAR explain_combobox[] = L"Also separates the lines";
 	//CreateToolTip(COMBO_BOX, hwnd, explain_combobox);
 
@@ -1888,146 +2077,6 @@ LRESULT CALLBACK ShowMessageProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lPar
 	return 0;
 }
 
-LRESULT CALLBACK ComboProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
-	static BOOL MouseOverCombo = FALSE;
-	static HWND CurrentMouseOverCombo;
-
-	switch (Msg)
-	{
-	case CB_SETCURSEL:
-	{
-		EnableOtherChar(wParam == COMMENT_TYPE::other);
-		InvalidateRect(hwnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
-	}
-	case WM_MOUSEHOVER:
-	{
-		//force button to repaint and specify hover or not
-		if (MouseOverCombo && CurrentMouseOverCombo == hwnd) break;
-		MouseOverCombo = true;
-		CurrentMouseOverCombo = hwnd;
-		InvalidateRect(hwnd, 0, 1);
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
-	}
-	case WM_MOUSELEAVE:
-	{
-		MouseOverCombo = false;
-		CurrentMouseOverCombo = NULL;
-		InvalidateRect(hwnd, 0, 1);
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
-	}
-	case WM_MOUSEMOVE:
-	{
-		//TODO(fran): We are tracking the mouse every single time it moves, kind of suspect solution
-		TRACKMOUSEEVENT tme;
-		tme.cbSize = sizeof(TRACKMOUSEEVENT);
-		tme.dwFlags = TME_HOVER | TME_LEAVE;
-		tme.dwHoverTime = 1;
-		tme.hwndTrack = hwnd;
-
-		TrackMouseEvent(&tme);
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
-	}
-	//case CBN_DROPDOWN://lets us now that the list is about to be show, therefore the user clicked us
-	case WM_PAINT:
-	{
-		DWORD style = (DWORD)GetWindowLongPtr(hwnd, GWL_STYLE);
-		if (!(style & CBS_DROPDOWNLIST))
-			break;
-
-		RECT rc;
-		GetClientRect(hwnd, &rc);
-
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hwnd, &ps);
-
-		BOOL ButtonState = (BOOL)SendMessageW(hwnd, CB_GETDROPPEDSTATE, 0, 0);
-		if (ButtonState) {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
-			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
-		}
-		else if (MouseOverCombo && CurrentMouseOverCombo == hwnd) {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
-			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
-		}
-		else {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBk));
-			FillRect(hdc, &rc, unCap_colors.ControlBk);
-		}
-
-		RECT client_rec;
-		GetClientRect(hwnd, &client_rec);
-
-		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
-
-		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
-		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
-
-		SelectObject(hdc, (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0));
-		//SetBkColor(hdc, bkcolor);
-		SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
-
-		//Border
-		Rectangle(hdc, 0, 0, rc.right, rc.bottom);
-
-		/*
-		if (GetFocus() == hwnd)
-		{
-			//INFO: with this we know when the control has been pressed
-			RECT temp = rc;
-			InflateRect(&temp, -2, -2);
-			DrawFocusRect(hdc, &temp);
-		}
-		*/
-		int DISTANCE_TO_SIDE = 5;
-
-		int index = (int)SendMessage(hwnd, CB_GETCURSEL, 0, 0);
-		if (index >= 0)
-		{
-			int buflen = (int)SendMessage(hwnd, CB_GETLBTEXTLEN, index, 0);
-			TCHAR *buf = new TCHAR[(buflen + 1)];
-			SendMessage(hwnd, CB_GETLBTEXT, index, (LPARAM)buf);
-			rc.left += DISTANCE_TO_SIDE;
-			DrawText(hdc, buf, -1, &rc, DT_EDITCONTROL | DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-			delete[]buf;
-		}
-		RECT r;
-		SIZE icon_size;
-		GetClientRect(hwnd, &r);
-		icon_size.cy = (LONG)((float)(r.bottom - r.top)*.6f);
-		icon_size.cx = icon_size.cy;
-
-		HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
-		//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
-		//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
-		HICON combo_dropdown_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(COMBO_ICON), IMAGE_ICON, icon_size.cx, icon_size.cy, LR_SHARED);
-
-		if (combo_dropdown_icon) {
-			DrawIconEx(hdc, r.right - r.left - icon_size.cx - DISTANCE_TO_SIDE, ((r.bottom - r.top) - icon_size.cy) / 2,
-				combo_dropdown_icon, icon_size.cx, icon_size.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
-			DestroyIcon(combo_dropdown_icon);
-		}
-
-		SelectObject(hdc, oldpen);
-		SelectObject(hdc, oldbrush);
-		//DeleteObject(brush);
-		DeleteObject(pen);
-
-		EndPaint(hwnd, &ps);
-		return 0;
-	}
-
-	//case WM_NCDESTROY:
-	//{
-	//	RemoveWindowSubclass(hwnd, this->ComboProc, uIdSubclass);
-	//	break;
-	//}
-
-	}
-
-	return DefSubclassProc(hwnd, Msg, wParam, lParam);
-}
-
 v2 GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/dpi-and-device-independent-pixels
 {
 	HDC hdc = GetDC(hwnd);
@@ -2090,19 +2139,62 @@ void DrawMenuArrow(HDC destDC, RECT& r)
 	DeleteDC(arrowDC);
 }
 
-void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
-	int imgW = RECTWIDTH(r);
-	int imgH = RECTHEIGHT(r);
+void DrawMenuImg(HDC destDC,HBITMAP mask, RECT& r)
+{
+	//NOTE: this is set up to work with masks that have black as the color and white as transparency, otherwise you'll need to flip your colors, for example BitBlt(arrowDC, 0, 0, arrowW, arrowH, arrowDC, 0, 0, DSTINVERT)
 
-	HBRUSH imgBr = unCap_colors.Img;
-	HBRUSH oldBr = SelectBrush(destDC, imgBr);
+	//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
+	//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
 
-	//TODO(fran): I have no idea why I need to pass the "srcDC", no information from it is needed, and the function explicitly says it should be NULL, but if I do it returns false aka error (some error, cause it also doesnt tell you what it is)
-	//NOTE: info on creating your own raster ops https://docs.microsoft.com/en-us/windows/win32/gdi/ternary-raster-operations?redirectedfrom=MSDN
-	//Thanks https://stackoverflow.com/questions/778666/raster-operator-to-use-for-maskblt
-	BOOL res = MaskBlt(destDC, r.left, r.top, imgW, imgH, destDC, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY)); 
-	SelectBrush(destDC, oldBr);
+	//Create the DCs and Bitmaps we will need
+	HDC arrowDC = CreateCompatibleDC(destDC);
+	HDC fillDC = CreateCompatibleDC(destDC);
+	int arrowW = RECTWIDTH(r);
+	int arrowH = RECTHEIGHT(r);
+	HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
+	HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
+
+
+	HBITMAP scaled_mask = urender::scale_mask(mask, arrowW, arrowH);
+	HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(arrowDC, scaled_mask);
+	BitBlt(arrowDC, 0, 0, arrowW, arrowH, arrowDC, 0, 0, DSTINVERT);
+
+	//Set the arrow color
+	HBRUSH arrowBrush = unCap_colors.Img;
+
+	//Set the offscreen arrow rect
+	RECT tmpArrowR = rectWH(0, 0, arrowW, arrowH);
+
+	//Fill the fill bitmap with the arrow color
+	FillRect(fillDC, &tmpArrowR, arrowBrush);
+
+	//Blit the items in a masking fashion
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, arrowDC, 0, 0, SRCAND);
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
+
+	//Clean up
+	SelectObject(fillDC, oldFillBitmap);
+	DeleteObject(fillBitmap);
+	SelectObject(arrowDC, oldArrowBitmap);
+	DeleteObject(scaled_mask);
+	DeleteDC(fillDC);
+	DeleteDC(arrowDC);
 }
+
+//void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
+//	int imgW = RECTWIDTH(r);
+//	int imgH = RECTHEIGHT(r);
+//
+//	HBRUSH imgBr = unCap_colors.Img;
+//	HBRUSH oldBr = SelectBrush(destDC, imgBr);
+//
+//	//TODO(fran): I have no idea why I need to pass the "srcDC", no information from it is needed, and the function explicitly says it should be NULL, but if I do it returns false aka error (some error, cause it also doesnt tell you what it is)
+//	//NOTE: info on creating your own raster ops https://docs.microsoft.com/en-us/windows/win32/gdi/ternary-raster-operations?redirectedfrom=MSDN
+//	//Thanks https://stackoverflow.com/questions/778666/raster-operator-to-use-for-maskblt
+//	BOOL res = MaskBlt(destDC, r.left, r.top, imgW, imgH, destDC, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY)); 
+//	SelectBrush(destDC, oldBr);
+//}
 
 struct unCapClProcState {
 	HWND wnd;
@@ -2189,9 +2281,9 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 				//Draw close button 
 
-				POINT button_topleft;
-				button_topleft.x = item->rcItem.right - TabCloseButtonInfo.rightPadding - TabCloseButtonInfo.icon.cx;
-				button_topleft.y = item->rcItem.top + (RECTHEIGHT(item->rcItem) - TabCloseButtonInfo.icon.cy) / 2;
+				//POINT button_topleft;
+				//button_topleft.x = item->rcItem.right - TabCloseButtonInfo.rightPadding - TabCloseButtonInfo.icon.cx;
+				//button_topleft.y = item->rcItem.top + (RECTHEIGHT(item->rcItem) - TabCloseButtonInfo.icon.cy) / 2;
 
 				//RECT r;
 				//r.left = button_topleft.x;
@@ -2200,17 +2292,32 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				//r.bottom = r.top + TabCloseButtonInfo.icon.cy;
 				//FillRect(item->hDC, &r, unCap_colors.ControlTxt);
 
-				HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
+				//HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
 				//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
 				//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
-				HICON close_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(CROSS_ICON), IMAGE_ICON, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, LR_SHARED);
+				//HICON close_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(CROSS_ICON), IMAGE_ICON, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, LR_SHARED);
 
-				if (close_icon) {
-					DrawIconEx(item->hDC, button_topleft.x, button_topleft.y,
-						close_icon, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
-					DestroyIcon(close_icon);
+				//if (close_icon) {
+				//	DrawIconEx(item->hDC, button_topleft.x, button_topleft.y,
+				//		close_icon, TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
+				//	DestroyIcon(close_icon);
+				//}
+
+				static HBITMAP HACK_close = NULL;
+				if(!HACK_close) HACK_close = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));
+				HBITMAP bmp = HACK_close;
+				BITMAP bitmap; GetObject(bmp, sizeof(bitmap), &bitmap);
+				if (bitmap.bmBitsPixel == 1) {
+					
+					int max_sz = roundNdown(bitmap.bmWidth, min(TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy)); //HACK: instead use png + gdi+ + color matrices
+					if (!max_sz)max_sz = bitmap.bmWidth; //More HACKs
+
+					int bmp_height = max_sz;
+					int bmp_width = bmp_height;
+					int bmp_align_width = item->rcItem.right - TabCloseButtonInfo.rightPadding - bmp_width;
+					int bmp_align_height = item->rcItem.top + (RECTHEIGHT(item->rcItem) - bmp_height) / 2;
+					urender::draw_mask(item->hDC, bmp_align_width, bmp_align_height, bmp_width, bmp_height, bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, unCap_colors.Img);//TODO(fran): parametric color
 				}
-
 				//TODO?(fran): add a plus sign for the last tab and when pressed launch choosefile? or no plus sign at all since we dont really need it
 
 				break;
@@ -2265,7 +2372,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	}
 	case WM_CREATE:
 	{
-		AddControls(state->wnd, (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE));
+		AddControls(state->wnd, (HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
 		AddMenus(state->nc_parent); //TODO(fran): menu rendering //TODO(fran): nc_parent has to re-send all the menu msgs to me, the client, via the standard WM_COMMAND way it gets them
 
 		return 0;
@@ -2466,12 +2573,12 @@ ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = sizeof(unCapNcProcState*);
 	wcex.hInstance = inst;
-	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(IDI_SRTFIXWIN32));
+	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = unCap_colors.ControlBk;
 	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
 	wcex.lpszClassName = unCap_wndclass_uncap_nc;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
 
 	ATOM class_atom = RegisterClassExW(&wcex);
 	Assert(class_atom);
@@ -2690,9 +2797,9 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		state->btn_close = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_close_rc.left, btn_close_rc.top, RECTWIDTH(btn_close_rc), RECTHEIGHT(btn_close_rc), state->wnd,(HMENU)UNCAPNC_CLOSE, 0, 0);
 		UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
 
-		HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(CLOSE));//TODO(fran): let the user set this guys, store them in state
-		HBITMAP bMax = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(MAX));
-		HBITMAP bMin = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(MIN));
+		HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));//TODO(fran): let the user set this guys, store them in state
+		HBITMAP bMax = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_MAX));
+		HBITMAP bMin = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_MIN));
 		SendMessage(state->btn_close, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bCross);
 		SendMessage(state->btn_max, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bMax);
 		SendMessage(state->btn_min, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bMin);
@@ -2876,6 +2983,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 //also check https://social.msdn.microsoft.com/Forums/windows/en-US/a407591a-4b1e-4adc-ab0b-3c8b3aec3153/the-evil-wmncpaint?forum=windowsuidevelopment I took the implementation from there, but there's also two others I can try
 
 	case WM_MEASUREITEM: //NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
+		//TODO(fran): should this and wm_drawitem go in uncapcl?
 	{
 		//wparam has duplicate info from item
 		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lparam;
@@ -2940,7 +3048,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		}
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_DRAWITEM:
+	case WM_DRAWITEM: //TODO(fran): goes in uncapcl
 	{
 		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lparam;
 		switch (wparam) {//wparam specifies the identifier of the control that needs painting
@@ -3066,21 +3174,26 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
 							//BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
 
-							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
-							int img_max_y = RECTHEIGHT(item->rcItem);
-							int img_sz = min(img_max_x, img_max_y);
-							//StretchBlt(item->hDC,
-							//	item->rcItem.left + (img_max_x+x_pad - img_sz)/2, item->rcItem.top + (img_max_y - img_sz)/2, img_sz, img_sz,
-							//	bmp_dc,
-							//	0, 0, bitmap.bmWidth, bitmap.bmHeight,
-							//	NOTSRCCOPY
-							//);
-							RECT mask_rc = rectWH(item->rcItem.left + (img_max_x + x_pad - img_sz) / 2, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz,img_sz);
-							DrawMenuImg(item->hDC, mask_rc, hbmp); //TODO(fran): stretch the mask bmp
+							if (bitmap.bmBitsPixel == 1) {
 
-							//TODO(fran): clipping, centering, transparency & render in the text color (take some value as transparent and the rest use just for intensity)
-							//SelectObject(bmp_dc, oldBitmap);
-							//DeleteDC(bmp_dc);
+								int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
+								int img_max_y = RECTHEIGHT(item->rcItem);
+								int img_sz = roundNdown(bitmap.bmWidth,min(img_max_x, img_max_y));//HACK: instead use png + gdi+ + color matrices
+								if (!img_sz)img_sz = bitmap.bmWidth; //More HACKs
+								int bmp_height = img_sz;
+								int bmp_width = bmp_height;
+								int bmp_align_width = item->rcItem.left + (img_max_x + x_pad - bmp_width) / 2;
+								int bmp_align_height = item->rcItem.top + (img_max_y - bmp_height) / 2;
+
+								//NOTE: for some insane and nonsensical reason we cant use MaskBlt here, so no urender::draw_mask
+								RECT TEST{ bmp_align_width, bmp_align_height, bmp_align_width + bmp_width, bmp_align_height + bmp_height };
+								DrawMenuImg(item->hDC,hbmp, TEST);
+
+								//OffsetClipRgn(item->hDC, -20, 0);
+								printf("MENU ICON DRAWN\n");
+
+								//TODO(fran): clipping
+							}
 						}
 					}
 
@@ -3153,7 +3266,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 							//);
 
 							RECT arrow_rc = rectWH(item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz);
-							DrawMenuArrow(item->hDC, arrow_rc);
+							DrawMenuArrow(item->hDC, arrow_rc); //TODO(fran): use my own UNCAP_BMP_RIGHTARROW
 
 							//SelectObject(bmp_dc, oldBitmap);
 							//DeleteDC(bmp_dc);

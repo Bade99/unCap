@@ -176,6 +176,14 @@
     <ResourceCompile Include="SrtFix-Win32.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="..\Icons\Close16.bmp" />
+    <Image Include="..\Icons\Dropdown16.bmp" />
+    <Image Include="..\Icons\Earth16.bmp" />
+    <Image Include="..\Icons\Max16.bmp" />
+    <Image Include="..\Icons\Min16.bmp" />
+    <Image Include="..\Icons\RightArrow16.bmp" />
+    <Image Include="..\Icons\Tick16.bmp" />
+    <Image Include="..\Icons\unCap.ico" />
     <Image Include="Close16.bmp" />
     <Image Include="combo.ico" />
     <Image Include="cross.ico" />
