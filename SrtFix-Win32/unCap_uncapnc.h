@@ -12,8 +12,9 @@
 constexpr TCHAR unCap_wndclass_uncap_nc[] = TEXT("unCap_wndclass_uncap_nc"); //Non client uncap
 
 struct unCapNcProcState {
-	HWND wnd;//TODO(fran): might be good to store client and wnd rect, find the one place where we get this two. Then we wont have the code littered with those two calls
+	HWND wnd;
 	HWND client;
+	//TODO(fran): might be good to store client and wnd rect, find the one place where we get this two. Then we wont have the code littered with those two calls
 
 	HWND btn_min, btn_max, btn_close;
 
@@ -41,7 +42,7 @@ ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
 	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = unCap_colors.ControlBk;//TODO(fran): parametric, also is there a way to change this later?
-	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
+	wcex.lpszMenuName = 0;
 	wcex.lpszClassName = unCap_wndclass_uncap_nc;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
 
@@ -58,8 +59,6 @@ unCapNcProcState* UNCAPNC_get_state(HWND uncapnc) {
 void UNCAPNC_set_state(HWND uncapnc, unCapNcProcState* state) {
 	SetWindowLongPtr(uncapnc, 0, (LONG_PTR)state);
 }
-
-//INFO: WM_NCACTIVATE also does painting, again making no sense, but we can use it to know when to change drawing from active to inactive
 
 void UNCAPNC_calc_caption(unCapNcProcState* state) {
 	GetClientRect(state->wnd, &state->rc_caption);
@@ -114,7 +113,8 @@ HMENU UNCAPNC_get_menu(HWND uncapnc) {
 	return state->menu;
 }
 
-//TODO(fran):the menu bar is terrible, it doesnt care to update for nothing, so we are gonna implement it ourselves
+//NOTE:windows' menu bar is terrible, it doesnt care to update for nothing
+
 //The user should call this instead of SetMenu, and UNCAPNC_get_menu instead of GetMenu
 void UNCAPNC_set_menu(HWND uncapnc, HMENU menu) { //TODO(fran): set to NULL should clear the menu
 	unCapNcProcState* state = UNCAPNC_get_state(uncapnc);
@@ -128,51 +128,26 @@ void UNCAPNC_set_menu(HWND uncapnc, HMENU menu) { //TODO(fran): set to NULL shou
 		mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
 		SetMenuInfo(menu, &mi);
 
-		//Ask to update client area to accommodate for menu
-		//RECT newcl = UNCAPNC_calc_client_rc(state); //TODO(fran): maybe I should start using this like windows wants me to
-		//RECT newcl; GetClientRect(state->wnd, &newcl);
-		//WORD w = (WORD)RECTWIDTH(newcl), h = (WORD)RECTHEIGHT(newcl);
-		//SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(w, h));
 	}
 	else {
 		//TODO(fran): implement menu removal in case we already have something on state->menu
 		state->menu = NULL;
-		//Ask to update client area to accommodate for menu removal
-		//RECT newcl = UNCAPNC_calc_client_rc(state); //TODO(fran): maybe I should start using this like windows wants me to
-		//RECT newcl; GetClientRect(state->wnd, &newcl);
-		//WORD w = (WORD)RECTWIDTH(newcl), h = (WORD)RECTHEIGHT(newcl);
-		//SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(w, h));
 	}
 	RECT wndrc; GetWindowRect(state->wnd, &wndrc);
-	MoveWindow(state->wnd, wndrc.left, wndrc.top, RECTWIDTH(wndrc), RECTHEIGHT(wndrc), FALSE);
+	//Update to accommodate for menu change
+	MoveWindow(state->wnd, wndrc.left, wndrc.top, RECTWIDTH(wndrc), RECTHEIGHT(wndrc), FALSE);//NOTE: for some reason specifying TRUE for the last param doesnt force repainting
 	RedrawWindow(state->wnd, NULL, NULL, RDW_INVALIDATE);
 
-	//BOOL res = SetMenu(state->wnd, menu); //TODO(fran): we're gonna have to set our state before calling SetMenu since this guy calls everything and gets to UNCAPNC_is_on_menu_bar, which needs the updated state. Do it transactionally "do-undo" if SetMenu fails
-	/*if (res) {
-		RedrawWindow(state->wnd, NULL, NULL, RDW_INVALIDATE);
-	}
-	else {
-		state->menu = oldMenu;
-
-		MENUINFO restoremi{ sizeof(restoremi) };
-		restoremi.fMask = MIM_BACKGROUND; 
-		restoremi.hbrBack = oldBr;
-		SetMenuInfo(menu, &restoremi);
-
-		WORD oldw = (WORD)RECTWIDTH(oldcl), oldh = (WORD)RECTHEIGHT(oldcl);
-		SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(oldw, oldh));
-	}*/
-	//return res;
 }
 
 //NOTE: this function request for a UINT since the top 32 bits of an HMENU are not used, if you have an HMENU simply cast down (UINT)hmenu
-bool UNCAPNC_is_on_menu_bar(unCapNcProcState* state, UINT menuitem) { //NOTE: on SetMenu this gets reached only once, and in that case it is for a submenu like it should always be
+bool UNCAPNC_is_on_menu_bar(unCapNcProcState* state, UINT menuitem) { 
 	int cnt = GetMenuItemCount(state->menu);
 	bool res = false;
 	for (int i = 0; i < cnt; i++) {
 		HMENU submenu = GetSubMenu(state->menu, i);
-		//if (menuitem == (UINT)submenu) {//TODO(fran): im confused, it seems we get state->menu (which was the main menu) to be equal to a submenu
-		if (menuitem == (UINT)submenu || menuitem == (UINT)state->menu) {//therefore we need to add this extra || check
+		
+		if (menuitem == (UINT)submenu || menuitem == (UINT)state->menu) {
 			res = true;
 			break;
 		}
@@ -180,14 +155,13 @@ bool UNCAPNC_is_on_menu_bar(unCapNcProcState* state, UINT menuitem) { //NOTE: on
 	return res;
 }
 
-//TODO(fran): add & at the beginning of menu names, that's how you trigger them by pressing Alt+key https://stackoverflow.com/questions/38338426/meaning-of-ampersand-in-rc-files
+//TODO(fran): add & at the beginning of menu string names, that's how you trigger them by pressing Alt+key https://stackoverflow.com/questions/38338426/meaning-of-ampersand-in-rc-files
 //TODO(fran): it'd also be interesting to see how it goes if we do SetMenu on the client
 //TODO(fran): UNDO support for comment removal
 //TODO(fran): DPI awareness
+//TODO(fran): it'd be nice to have a way to implement good subclassing, eg letting the user assign clip regions where they can draw and we dont, things like that, more communication
 LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	//TODO(fran): beware of the menu bar, it decided to draw itself for some reason once I moved the window
-	//TODO(fran): it'd be nice to have a way to implement good subclassing, eg letting the user assign clip regions where they can draw and we dont, things like that, more communication
 #define UNCAPNC_MINIMIZE 100 //sent through WM_COMMAND
 #define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
 #define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
@@ -212,41 +186,9 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	} break;
 	case WM_UAHINITMENU: //After a SetMenu: lParam=some system generated HMENU with your HMENU stored in the ""unused"" member ; wParam=0
 							//NOTE: this system HMENU uses the first byte from the top 32bits, no other HMENU does that
-						 //When clicking on a submenu:
 	{
-		/*static int c = 1;
-		printf("%d: WM_UAHINITMENU\n",c++);*/
-		//TODO(fran): since this msg gets called multiple times and not only for the main menu it is not reliable, we should add an intermediary call for the user, and we call SetMenu ourselves, same for other menu procedures
-
 		//NOTE: for some reason, after SetMenu, this msg gets sent more than once after different events, but always with the same params. This does not depend on the number of menus/submenus it has, but it seems like SetMenu checks that your HMENU has at least one submenu, otherwise this msg doesnt get sent
-#if 0
-		//HMENU menu = (HMENU)lparam;
-
-		//{
-		//	MENUINFO mi{ sizeof(mi) };mi.fMask = MIM_BACKGROUND; mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
-		//	BOOL res = SetMenuInfo(hMenu, &mi); Assert(res);
-		//}
-
-		//TODO(fran): why on the first time we create a menu its borders are only 1 pixel but the next times they grow to like 3 ???? looks awful
-
-		//if (menu->unused == (int)hMenu) { //TODO(fran): UNCAPNC_set_menu
-		//	MENUINFO mi{ sizeof(mi) };
-		//	mi.fMask = MIM_BACKGROUND;
-		//	//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
-
-		//	mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
-
-		//	SetMenuInfo(hMenu, &mi);
-		//}
-		//Assert(wparam == 0);
-		//state->has_menu = true;
-
-
-		//This does nothing, but the menu handler must be using this for updating
-		//RECT newcl = UNCAPNC_calc_client_rc(state); //TODO(fran): maybe I should start using this like windows wants me to
-		//WORD w = (WORD)RECTWIDTH(newcl), h = (WORD)RECTHEIGHT(newcl);
-		//SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(w, h));
-#endif
+		//NOTE: from tests I can say semi confidently that the menubar uses WM_SIZE for updating, at least sometimes
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_WINDOWPOSCHANGED: //TODO(fran): we can use this guy to replace WM_SIZE and WM_MOVE by not calling defwindowproc
@@ -295,9 +237,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			}
 		}
 
-		//DrawMenuBar(state->wnd); //TODO(fran): do my own draw menu bar, I dont need this guy, I just need it's mouse input handling and the like
 		if (RECT menurc = UNCAPNC_calc_menu_rc(state); state->menu && rcs_overlap(menurc,ps.rcPaint)) {
-			//printf("PAINT MENU\n");
 			
 			MENUINFO mi{ sizeof(mi) };
 			mi.fMask = MIM_BACKGROUND;
@@ -314,7 +254,6 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			//Paint background
 			FillRect(dc, &menurc, bkbr);
 
-			//Paint menubar items
 			RECT menuitemrc = menurc;
 			int menu_xpad = 4;
 			menuitemrc.left += menu_xpad;
@@ -369,13 +308,11 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				state->menubar_items[i] = { menuitemrc.left,menuitemrc.top,menuitemrc.left+txtw,menuitemrc.bottom };
 
 				menuitemrc.left += txtw;
-				//wprintf(L"%s\n",menu_str);
 			}
 			SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion); //Restore old region
 
-			//TODO(fran): add 1px white border between menu and client?
 			RECT menuborder = menurc; menuborder.top = menuborder.bottom - 1;
-			FillRect(dc, &menuborder, txtbr);
+			FillRect(dc, &menuborder, txtbr);//TODO(fran):parametric, not everyone might like this
 		}
 		EndPaint(state->wnd, &ps);
 
@@ -385,7 +322,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 
 		CREATESTRUCT* createnfo = (CREATESTRUCT*)lparam;
-		SetWindowText(state->wnd, createnfo->lpszName); //TODO(fran): for some weird reason I have to manually call setwindowtext
+		SetWindowText(state->wnd, createnfo->lpszName); //NOTE: for handmade classes you have to manually call setwindowtext
 
 		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state);
 		state->btn_min = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), state->wnd, (HMENU)UNCAPNC_MINIMIZE, 0, 0);
@@ -447,14 +384,9 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			/*else if (test_pt_rc(mouse, close_btn)) res = HTCLOSE; //TODO(fran): request this buttons for their rc
 			else if (test_pt_rc(mouse, max_btn)) res = HTMAXBUTTON;
 			else if (test_pt_rc(mouse, min_btn)) res = HTMINBUTTON;*/
-			else if (test_pt_rc(mouse, rc_menu)) res = HTSYSMENU;//HTMENU also works, but it seems a little slower on clicking for some reason, IMPORTANT INFO: this is crucial for the menu to detect clicks, otherwise no mouse input goes to it
+			else if (test_pt_rc(mouse, rc_menu)) res = HTSYSMENU;//HTMENU also works, but it seems a little slower on clicking for some reason //IMPORTANT: this is crucial for the default menu to detect clicks, otherwise no mouse input goes to it
 			else if (test_pt_rc(mouse, state->rc_caption)) res = HTCAPTION;
 
-			//if (res == HTSYSMENU) {
-			//	HMENU submenu = GetSubMenu(hMenu, 0); Assert(submenu);
-			//	ClientToScreen(state->wnd, &mouse);
-			//	TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, mouse.x, mouse.y, 0, state->wnd, 0);
-			//}
 		}
 
 		//printf("%s\n", hittestToString(res));
@@ -510,7 +442,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			calcrc->right -= margins.cxRightWidth;
 			calcrc->bottom -= margins.cyBottomHeight;
 		}
-		return 0; //For wparam==TRUE this means we will reuse the old client area's painting and just align it with the top-left corner of the new client area pos
+		return 0; //For wparam==TRUE returning 0 means to reuse the old client area's painting and just align it with the top-left corner of the new client area pos
 	} break;
 	case WM_SIZE:
 	{
@@ -1138,8 +1070,13 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case WM_KEYUP://Non system key released
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
 	case 49558: //TaskbarButtonCreated, where that comes from or what that does I have no clue
 	case 49566: //TaskbarButtonCreated, where that comes from or what that does I have no clue
+	case 49895:
 	{
 		TCHAR arr[256];
 		int res = GetClipboardFormatName(msg, arr, 256); //IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages, these are: "String messages for use by applications."
