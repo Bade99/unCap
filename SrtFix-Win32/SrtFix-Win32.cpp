@@ -2025,7 +2025,6 @@ ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
 	return class_atom;
 }
 
-HMENU HACK_toplevelmenu = NULL; //TODO(fran)
 #include "unCap_uncapnc.h" //TODO(fran): move up once we have uncapcl in a separate .h
 void AddMenus(HWND hwnd) {
 	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
@@ -2037,7 +2036,6 @@ void AddMenus(HWND hwnd) {
 	hFileMenu = CreateMenu();
 	hFileMenuLang = CreateMenu();
 	AppendMenuW(hMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenu, (LPCWSTR)hMenu);
-	HACK_toplevelmenu = hFileMenu;
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
 
 	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, (LPCWSTR)hFileMenu); //NOTE: when MF_OWNERDRAW is used the 4th param is itemData

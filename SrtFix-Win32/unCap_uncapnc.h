@@ -109,49 +109,6 @@ RECT UNCAPNC_calc_btn_close_rc(unCapNcProcState* state) {
 	return rc;
 }
 
-//NOTE: the user should use this instead of windows' SetMenu, it has exactly the same functionality but facilitates the setup
-//return TRUE=success
-//BOOL UNCAPNC_set_menu(HWND uncapnc, HMENU menu) { //TODO(fran): set to NULL should clear the menu
-//	unCapNcProcState* state = UNCAPNC_get_state(uncapnc);
-//
-//	HMENU oldMenu = state->menu;
-//	MENUINFO oldmi{ sizeof(oldmi) }; oldmi.fMask = MIM_BACKGROUND; GetMenuInfo(menu, &oldmi);
-//	HBRUSH oldBr = oldmi.hbrBack;
-//	RECT oldcl; GetClientRect(state->wnd, &oldcl);
-//
-//	state->menu = menu;
-//	
-//	MENUINFO mi{ sizeof(mi) };
-//	mi.fMask = MIM_BACKGROUND;
-//	//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
-//	mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
-//	SetMenuInfo(menu, &mi);
-//
-//	//Ask to update client area to accommodate for menu
-//	//RECT newcl = UNCAPNC_calc_client_rc(state); //TODO(fran): maybe I should start using this like windows wants me to
-//	RECT newcl; GetClientRect(state->wnd, &newcl);
-//	WORD w = (WORD)RECTWIDTH(newcl), h = (WORD)RECTHEIGHT(newcl);
-//	SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(w, h));
-//
-//
-//	BOOL res = SetMenu(state->wnd, menu); //TODO(fran): we're gonna have to set our state before calling SetMenu since this guy calls everything and gets to UNCAPNC_is_on_menu_bar, which needs the updated state. Do it transactionally "do-undo" if SetMenu fails
-//	if (res) {
-//		RedrawWindow(state->wnd, NULL, NULL, RDW_INVALIDATE);
-//	}
-//	else {
-//		state->menu = oldMenu;
-//
-//		MENUINFO restoremi{ sizeof(restoremi) };
-//		restoremi.fMask = MIM_BACKGROUND; 
-//		restoremi.hbrBack = oldBr;
-//		SetMenuInfo(menu, &restoremi);
-//
-//		WORD oldw = (WORD)RECTWIDTH(oldcl), oldh = (WORD)RECTHEIGHT(oldcl);
-//		SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(oldw, oldh));
-//	}
-//	return res;
-//}
-
 HMENU UNCAPNC_get_menu(HWND uncapnc) {
 	unCapNcProcState* state = UNCAPNC_get_state(uncapnc);
 	return state->menu;
@@ -166,7 +123,7 @@ void UNCAPNC_set_menu(HWND uncapnc, HMENU menu) { //TODO(fran): set to NULL shou
 		state->menu = menu;
 
 		MENUINFO mi{ sizeof(mi) };
-		mi.fMask = MIM_BACKGROUND;
+		mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS; //NOTE: important to also use "apply to submenus", cause the nc area is bigger than 1px and it will look very claustrophobic
 		//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
 		mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
 		SetMenuInfo(menu, &mi);
@@ -235,7 +192,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 #define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
 #define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
 
-	printf(msgToString(msg)); printf("\n");
+	//printf(msgToString(msg)); printf("\n");
 	unCapNcProcState* state = UNCAPNC_get_state(hwnd);
 
 	switch (msg)
@@ -306,14 +263,14 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 			FillRect(dc, &state->rc_caption, state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive);
 
-				SelectFont(dc, GetStockFont(DEFAULT_GUI_FONT));
-				TCHAR title[256]; int sz = GetWindowText(state->wnd, title, ARRAYSIZE(title));
-				TEXTMETRIC tm; GetTextMetrics(dc, &tm);
+			SelectFont(dc, GetStockFont(DEFAULT_GUI_FONT));
+			TCHAR title[256]; int sz = GetWindowText(state->wnd, title, ARRAYSIZE(title));
+			TEXTMETRIC tm; GetTextMetrics(dc, &tm);
 
 
-				HICON icon = (HICON)GetClassLongPtr(state->wnd, GCLP_HICONSM);
-				int icon_height = (int)((float)tm.tmHeight*1.5f);
-				int icon_width = icon_height;
+			HICON icon = (HICON)GetClassLongPtr(state->wnd, GCLP_HICONSM);
+			int icon_height = (int)((float)tm.tmHeight*1.5f);
+			int icon_width = icon_height;
 			int icon_align_height = (RECTHEIGHT(state->rc_caption) - icon_height) / 2;
 			int icon_align_width = icon_align_height;
 			MYICON_INFO iconnfo = MyGetIconInfo(icon);
@@ -399,9 +356,8 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				GetMenuItemInfo(state->menu, i, TRUE, &mtxti);
 				menu_str[menu_str_character_cnt-2] = TEXT(' ');//ending space
 
-				//UINT old_align = SetTextAlign(dc, TA_LEFT); defer{ if(old_align != GDI_ERROR) SetTextAlign(dc, old_align); };//NOTE: TabbedTextOut doesnt care for alignment
-				//TODO(fran): VTA_CENTER for kanji and the like
 				// Calculate vertical and horizontal position for the string so that it will be centered
+				//NOTE: TabbedTextOut doesnt care for alignment (SetTextAlign)
 				TEXTMETRIC mtm; GetTextMetrics(dc, &mtm);
 				//int yPos = menuitemrc.top + (RECTHEIGHT(menuitemrc) - mtm.tmHeight) / 2;
 				int yPos = (menuitemrc.bottom + menuitemrc.top - mtm.tmHeight) / 2;
@@ -418,7 +374,8 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion); //Restore old region
 
 			//TODO(fran): add 1px white border between menu and client?
-
+			RECT menuborder = menurc; menuborder.top = menuborder.bottom - 1;
+			FillRect(dc, &menuborder, txtbr);
 		}
 		EndPaint(state->wnd, &ps);
 
@@ -1096,7 +1053,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				if (test_pt_rc(mouse, state->menubar_items[i])) {
 					HMENU submenu = GetSubMenu(state->menu, i);
 					if (submenu) {
-						POINT menupt{ state->menubar_items[i].left,state->menubar_items[i].bottom }; ClientToScreen(state->wnd, &menupt);
+						POINT menupt{ state->menubar_items[i].left,state->menubar_items[i].bottom-1 }; ClientToScreen(state->wnd, &menupt);
 						TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION,menupt.x,menupt.y,0,state->wnd,0);
 						//TODO(fran): here we could pass our client wnd as the owner of the menu
 						//TODO(fran): TPM_RETURNCMD could be interesting
