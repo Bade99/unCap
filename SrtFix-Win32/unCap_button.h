@@ -14,7 +14,7 @@
 
 constexpr TCHAR unCap_wndclass_button[] = TEXT("unCap_wndclass_button");
 
-LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
 struct ButtonProcState { //NOTE: must be initialized to zero
 	HWND wnd;
@@ -265,13 +265,13 @@ static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_NCCREATE: { //1st msg received
-		ButtonProcState* state = (ButtonProcState*)calloc(1, sizeof(ButtonProcState));
-		Assert(state);
-		SetWindowLongPtr(hwnd, 0, (LONG_PTR)state);
+		ButtonProcState* st = (ButtonProcState*)calloc(1, sizeof(ButtonProcState));
+		Assert(st);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)st);
 		CREATESTRUCT* creation_nfo = (CREATESTRUCT*)lparam;
-		state->parent = creation_nfo->hwndParent;
-		state->wnd = hwnd;
-		state->msg_to_send = (UINT)creation_nfo->hMenu;
+		st->parent = creation_nfo->hwndParent;
+		st->wnd = hwnd;
+		st->msg_to_send = (UINT)creation_nfo->hMenu;
 		return TRUE; //continue creation, this msg seems kind of more of a user setup place, strange considering there's also WM_CREATE
 	} break;
 	case WM_NCCALCSIZE: { //2nd msg received https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize

@@ -60,6 +60,12 @@
     <ClInclude Include="unCap_Platform.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
+    <ClInclude Include="unCap_uncapnc.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="windows_undoc.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="SrtFix-Win32.cpp">
@@ -81,46 +87,10 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="SrtFixE.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="SrtFixESmall.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="Tick16.bmp">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
     <Image Include="Cross16.bmp">
       <Filter>Archivos de recursos</Filter>
     </Image>
     <Image Include="Earth16.bmp">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="icon1.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="combo.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="icon2.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="icon3.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="cross.ico">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="RightArrow16.bmp">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="Max16.bmp">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="Min16.bmp">
-      <Filter>Archivos de recursos</Filter>
-    </Image>
-    <Image Include="Close16.bmp">
       <Filter>Archivos de recursos</Filter>
     </Image>
     <Image Include="..\Icons\unCap.ico">

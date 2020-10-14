@@ -1,7 +1,7 @@
 #pragma once
+#include <Windows.h>
 #include "unCap_helpers.h"
 #include "unCap_math.h"
-#include <Windows.h>
 
 #define UNCAP_GDIPLUS /*For lazy bilinear filtered drawing*/
 
@@ -109,6 +109,27 @@ HRESULT WriteBitmap(HBITMAP bitmap, const wchar_t* pathname = L"C:/Users/Brenda-
 HRESULT WriteBitmap(HBITMAP bitmap, const wchar_t* pathname = L"");
 #endif
 
+int FillRectAlpha(HDC dc, RECT* r, HBRUSH br, unsigned char alpha) {
+	COLORREF color = ColorFromBrush(br);
+	color |= (alpha << 24);
+
+	BITMAPINFO nfo;
+	nfo.bmiHeader.biSize = sizeof(nfo.bmiHeader);
+	nfo.bmiHeader.biWidth = 1;
+	nfo.bmiHeader.biHeight = -1;
+	nfo.bmiHeader.biPlanes = 1;
+	nfo.bmiHeader.biBitCount = 32;
+	nfo.bmiHeader.biCompression = BI_RGB;
+	nfo.bmiHeader.biSizeImage = 0;
+	nfo.bmiHeader.biXPelsPerMeter = 0;
+	nfo.bmiHeader.biYPelsPerMeter = 0;
+	nfo.bmiHeader.biClrUsed = 0;
+	nfo.bmiHeader.biClrImportant = 0;
+
+	int res = StretchDIBits(dc, r->left, r->top, RECTWIDTH((*r)), RECTHEIGHT((*r)), 0, 0, 1, 1, &color, &nfo, DIB_RGB_COLORS, SRCCOPY);
+	return res;
+}
+
 struct img {
 	i32 width;
 	i32 height;
@@ -159,7 +180,7 @@ namespace urender {
 #endif
 	}
 
-	//NOTE: the caller is in charge of handling the hbitmap, including deletion
+//NOTE: the caller is in charge of handling the hbitmap, including deletion
 //NOTE: we add an extra limitation, no offsets, we scale the entire bitmap, at least for now to make it simpler to write
 	HBITMAP scale_mask(HBITMAP mask_bmp, int destW, int destH) {
 
@@ -326,9 +347,10 @@ namespace urender {
 
 		BOOL maskres = MaskBlt(dest, xDest, yDest, wDest, hDest, dest, 0, 0, bmp1, 0, 0, MAKEROP4(0x00AA0029, PATCOPY));
 #else
-		mask = (wDest!=wSrc || hDest!=hSrc) ? scale_mask(mask, wDest, hDest) : mask;
+		HBITMAP scaled_mask = (wDest!=wSrc || hDest!=hSrc) ? scale_mask(mask, wDest, hDest) : mask; //NOTE: beware of applying any modification to scaled_mask, you could be modifying the original mask
 		HBRUSH oldbr = (HBRUSH)SelectObject(dest, colorbr); defer{ SelectObject(dest, (HGDIOBJ)oldbr); };
-		BOOL maskres = MaskBlt(dest, xDest, yDest, wDest, hDest, dest, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY));
+		BOOL maskres = MaskBlt(dest, xDest, yDest, wDest, hDest, dest, 0, 0, scaled_mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY));
+		if (scaled_mask != mask)DeleteObject(scaled_mask);
 #endif
 		Assert(maskres);
 	}
@@ -343,4 +365,105 @@ namespace urender {
 			xSrc, ySrc, wSrc, hSrc,
 			Gdiplus::Unit::UnitPixel);//TODO(fran): get the current unit from the device
 	}
+
+	//NOTE: specific procedure for drawing images on windows' menus, other drawing functions may fail on different situations
+	//NOTE: this is set up to work with masks that have black as the color and white as transparency, otherwise you'll need to flip your colors, for example BitBlt(arrowDC, 0, 0, arrowW, arrowH, arrowDC, 0, 0, DSTINVERT)
+	void draw_menu_mask(HDC destDC, int xDest, int yDest, int wDest, int hDest, HBITMAP mask, int xSrc, int ySrc, int wSrc, int hSrc, HBRUSH colorbr)
+	{
+		{BITMAP bmpnfo; GetObject(mask, sizeof(bmpnfo), &bmpnfo); Assert(bmpnfo.bmBitsPixel == 1); }
+
+		//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
+		//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
+
+		//Create the DCs and Bitmaps we will need
+		HDC maskDC = CreateCompatibleDC(destDC);
+		HDC fillDC = CreateCompatibleDC(destDC);
+		HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, wDest, hDest);
+		HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
+
+
+		HBITMAP scaled_mask = urender::scale_mask(mask, wDest, hDest);
+		HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(maskDC, scaled_mask);
+		BitBlt(maskDC, 0, 0, wDest, hDest, maskDC, 0, 0, DSTINVERT);
+
+		//Set the arrow color
+		HBRUSH arrowBrush = colorbr;
+
+		//Set the offscreen arrow rect
+		RECT tmpArrowR = rectWH(0, 0, wDest, hDest);
+
+		//Fill the fill bitmap with the arrow color
+		FillRect(fillDC, &tmpArrowR, arrowBrush);
+
+		//Blit the items in a masking fashion
+		BitBlt(destDC, xDest, yDest, wDest, hDest, fillDC, 0, 0, SRCINVERT);
+		BitBlt(destDC, xDest, yDest, wDest, hDest, maskDC, 0, 0, SRCAND);
+		BitBlt(destDC, xDest, yDest, wDest, hDest, fillDC, 0, 0, SRCINVERT);
+
+		//Clean up
+		SelectObject(fillDC, oldFillBitmap);
+		DeleteObject(fillBitmap);
+		SelectObject(maskDC, oldArrowBitmap);
+		DeleteObject(scaled_mask);
+		DeleteDC(fillDC);
+		DeleteDC(maskDC);
+	}
 }
+
+/*
+void DrawMenuArrow(HDC destDC, RECT& r)
+{
+	//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
+	//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
+
+	//Create the DCs and Bitmaps we will need
+	HDC arrowDC = CreateCompatibleDC(destDC);
+	HDC fillDC = CreateCompatibleDC(destDC);
+	int arrowW = RECTWIDTH(r);
+	int arrowH = RECTHEIGHT(r);
+	HBITMAP arrowBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
+	HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(arrowDC, arrowBitmap);
+	HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
+	HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
+
+	//Set the offscreen arrow rect
+	RECT tmpArrowR = rectWH(0, 0, arrowW, arrowH);
+
+	//Draw the frame control arrow (The OS draws this as a black on white bitmap mask)
+	DrawFrameControl(arrowDC, &tmpArrowR, DFC_MENU, DFCS_MENUARROW);
+
+	//Set the arrow color
+	HBRUSH arrowBrush = unCap_colors.Img;
+
+	//Fill the fill bitmap with the arrow color
+	FillRect(fillDC, &tmpArrowR, arrowBrush);
+
+	//Blit the items in a masking fashion
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, arrowDC, 0, 0, SRCAND);
+	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
+
+	//Clean up
+	SelectObject(fillDC, oldFillBitmap);
+	DeleteObject(fillBitmap);
+	SelectObject(arrowDC, oldArrowBitmap);
+	DeleteObject(arrowBitmap);
+	DeleteDC(fillDC);
+	DeleteDC(arrowDC);
+}
+*/
+/*
+void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
+	int imgW = RECTWIDTH(r);
+	int imgH = RECTHEIGHT(r);
+
+	HBRUSH imgBr = unCap_colors.Img;
+	HBRUSH oldBr = SelectBrush(destDC, imgBr);
+
+	//TODO(fran): I have no idea why I need to pass the "srcDC", no information from it is needed, and the function explicitly says it should be NULL, but if I do it returns false aka error (some error, cause it also doesnt tell you what it is)
+	//NOTE: info on creating your own raster ops https://docs.microsoft.com/en-us/windows/win32/gdi/ternary-raster-operations?redirectedfrom=MSDN
+	//Thanks https://stackoverflow.com/questions/778666/raster-operator-to-use-for-maskblt
+	BOOL res = MaskBlt(destDC, r.left, r.top, imgW, imgH, destDC, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY)); 
+	SelectBrush(destDC, oldBr);
+}
+*/

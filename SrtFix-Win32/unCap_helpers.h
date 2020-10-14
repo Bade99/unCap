@@ -36,15 +36,20 @@ RECT rectWH(LONG left, LONG top, LONG width, LONG height) {
 }
 
 static bool test_pt_rc(POINT p, RECT r) {
-	bool hit = false;
+	bool res = false;
 	if (p.y >= r.top &&//top
 		p.y < r.bottom &&//bottom
 		p.x >= r.left &&//left
 		p.x < r.right)//right
 	{
-		hit = true;
+		res = true;
 	}
-	return hit;
+	return res;
+}
+
+static bool rcs_overlap(RECT r1, RECT r2) {
+	bool res = (r1.left < r2.right && r1.right > r2.left && r1.top < r2.bottom && r1.bottom > r2.top);
+	return res;
 }
 
 static bool sameRc(RECT r1, RECT r2) {

@@ -9,6 +9,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
+//C++17 deprecation
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING 
+
 #include "windows_msg_mapper.h"
 
 #define WIN32_LEAN_AND_MEAN 
@@ -130,7 +133,6 @@ struct CLOSEBUTTON {
 };
 
 //----------------------GLOBALS----------------------:
-TCHAR unCap_wndclass_uncap_nc[] = TEXT("unCap_wndclass_uncap_nc"); //Non client uncap
 TCHAR unCap_wndclass_uncap_cl[] = TEXT("unCap_wndclass_uncap_cl"); //Client uncap
 
 TCHAR appName[] = TEXT("unCap"); //Program name, to be displayed on the title of windows
@@ -154,9 +156,6 @@ HWND hRemoveCommentWith;
 HWND TextContainer;//The tab control where the text editors are "contained"
 HWND hMessage;//Show timed messages
 
-HFONT hGeneralFont;//Main font
-HFONT hMenuFont;//Menus font
-
 HMENU hPopupMenu;
 
 bool Backup_Is_Checked = false; //info file check, do backup or not
@@ -164,6 +163,7 @@ bool Backup_Is_Checked = false; //info file check, do backup or not
 LANGUAGE_MANAGER::LANGUAGE startup_locale = LANGUAGE_MANAGER::LANGUAGE::ENGLISH; //defaults to english
 
 UNCAP_COLORS unCap_colors;
+UNCAP_FONTS unCap_fonts;
 
 #define RC_LEFT 0
 #define RC_TOP 1
@@ -348,7 +348,6 @@ HRESULT				DoSaveAs(HWND);
 void				CatchDrop(WPARAM);
 void				CreateInfoFile(HWND);
 void				CheckInfoFile();
-void				CreateFonts();
 void				AcceptedFile(wstring);
 ENCODING			GetTextEncoding(wstring);
 
@@ -381,37 +380,6 @@ wstring GetFontFaceName() {
 		if(std::any_of(fontnames.begin(), fontnames.end(), [f=requested_fontname[i]](wstring s) {return !s.compare(f); })) return requested_fontname[i];
 	
 	return L"";
-}
-
-void CreateFonts()
-{
-	LOGFONTW lf;
-
-	memset(&lf, 0, sizeof(lf));
-	lf.lfQuality = CLEARTYPE_QUALITY;
-	lf.lfHeight = -15;
-	
-	//INFO: by default if I dont set faceName it uses "Modern", looks good but it lacks some charsets
-	wcsncpy_s(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
-
-	if (hGeneralFont != NULL) {
-		DeleteObject(hGeneralFont);
-		hGeneralFont = NULL;
-	}
-	hGeneralFont = CreateFontIndirectW(&lf);
-	if (hGeneralFont == NULL)
-		MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
-
-	if (hMenuFont != NULL) {
-		DeleteObject(hMenuFont);
-		hMenuFont = NULL;
-	}
-	lf.lfHeight = (LONG)((float)GetSystemMetrics(SM_CYMENU)*.85f);
-	hMenuFont = CreateFontIndirectW(&lf);
-	if (hMenuFont == NULL)
-	{
-		MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
-	}
 }
 
 /// <summary>
@@ -833,73 +801,8 @@ BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, TCHAR* str) {
 	menu_setter.cbSize = sizeof(menu_setter);
 	menu_setter.fMask = MIIM_STRING;
 	menu_setter.dwTypeData = str;
-	BOOL res = SetMenuItemInfoW(hmenu, item, FALSE, &menu_setter);
+	BOOL res = SetMenuItemInfoW(hmenu, item, fByPositon, &menu_setter);
 	return res;
-}
-
-HMENU HACK_toplevelmenu = NULL; //TODO(fran)
-
-void AddMenus(HWND hwnd) {
-	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
-	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hwnd);
-
-	//INFO: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
-
-	hMenu = CreateMenu();
-	hFileMenu = CreateMenu();
-	hFileMenuLang = CreateMenu();
-	AppendMenuW(hMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenu, (LPCWSTR)hMenu);
-	HACK_toplevelmenu = hFileMenu;
-	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
-	
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, (LPCWSTR)hFileMenu); //NOTE: when MF_OWNERDRAW is used the 4th param is itemData
-	AMT(hFileMenu, OPEN_FILE, LANG_MENU_OPEN);
-
-	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, SEPARATOR1, (LPCWSTR)hFileMenu);
-
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_FILE, (LPCWSTR)hFileMenu);
-	AMT(hFileMenu, SAVE_FILE, LANG_MENU_SAVE);
-
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_AS_FILE, (LPCWSTR)hFileMenu);
-	AMT(hFileMenu, SAVE_AS_FILE, LANG_MENU_SAVEAS);
-
-	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, BACKUP_FILE, (LPCWSTR)hFileMenu);
-	AMT(hFileMenu, BACKUP_FILE, LANG_MENU_BACKUP);
-
-	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, SEPARATOR2, (LPCWSTR)hFileMenu);
-
-	AppendMenuW(hFileMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenuLang, (LPCWSTR)hFileMenu);
-	AMT(hFileMenu, (UINT_PTR)hFileMenuLang, LANG_MENU_LANGUAGE);
-	//TODO(fran): SetMenuItemInfo only accepts UINT, not the UINT_PTR of MF_POPUP, plz dont tell me I have to redo all of it a different way (LANGUAGE_MANAGER just does it normally not caring for the extra 32 bits)
-	
-	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::ENGLISH , (LPCWSTR)hFileMenuLang);
-	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, 0, const_cast<TCHAR*>(TEXT("English")));
-
-	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::SPANISH, (LPCWSTR)hFileMenuLang);
-	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, const_cast<TCHAR*>(TEXT("Español")));
-
-	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CHECKMARK)); //TODO(fran): preload the bitmaps or destroy them when we destroy the menu
-	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));
-	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_EARTH));
-
-	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
-
-	SetMenuItemBitmaps(hFileMenu, BACKUP_FILE, MF_BYCOMMAND,bCross,bTick);//1ºunchecked,2ºchecked
-	if(Backup_Is_Checked) CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
-	else CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED);
-
-	SetMenuItemBitmaps(hFileMenu, (UINT)hFileMenuLang, MF_BYCOMMAND, bEarth, bEarth);
-	//https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmenustate
-	//https://docs.microsoft.com/es-es/windows/desktop/menurc/using-menus#using-custom-check-mark-bitmaps
-	//https://www.daniweb.com/programming/software-development/threads/490612/win32-can-i-change-the-hbitmap-structure-for-be-transparent
-	
-	//TODO(fran): some automatic way to add this to all langs?
-	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, MF_BYCOMMAND, NULL, bTick);
-	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, MF_BYCOMMAND, NULL, bTick);
-
-	CheckMenuItem(hFileMenuLang, LANGUAGE_MANAGER::Instance().GetCurrentLanguage(), MF_BYCOMMAND | MF_CHECKED);
-	
-	SetMenu(hwnd, hMenu);
 }
 
 //Method for managing edit control special features (ie dropped files,...)
@@ -1048,7 +951,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 		,TabControl //IMPORTANT INFO TODO(fran): this is not right, the parent should be the individual tab not the whole control, not sure though if that control will show our edit control
 		, NULL, NULL, NULL); 
 
-	SendMessageW(TextControl, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessageW(TextControl, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
 
 	SendMessageW(TextControl, EM_SETLIMITTEXT, (WPARAM)MAX_TEXT_LENGTH, NULL); //Change default text limit of 32767 to a bigger value
 
@@ -1544,16 +1447,16 @@ void AddControls(HWND hwnd, HINSTANCE hInstance) {
 	TabCloseButtonInfo.icon.cy = TabCloseButtonInfo.icon.cx;
 	TabCloseButtonInfo.rightPadding = (tabHeight-TabCloseButtonInfo.icon.cx)/2;
 
-	SendMessage(hFile, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hRemoveCommentWith, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hOptions, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hInitialText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hInitialChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hFinalText, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hFinalChar, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hRemove, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(TextContainer, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
-	SendMessage(hMessage, WM_SETFONT, (WPARAM)hGeneralFont, TRUE);
+	SendMessage(hFile, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE); //TODO(fran): for loop with union struct
+	SendMessage(hRemoveCommentWith, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hOptions, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hInitialText, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hInitialChar, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hFinalText, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hFinalChar, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hRemove, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(TextContainer, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(hMessage, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
 }
 
 bool HACK_EnableOtherChar = false;
@@ -2098,104 +2001,6 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE new_lang) {
 	CheckMenuItem(hFileMenu, new_lang, MF_BYCOMMAND | MF_CHECKED);
 }
 
-void DrawMenuArrow(HDC destDC, RECT& r)
-{
-	//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
-	//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
-
-	//Create the DCs and Bitmaps we will need
-	HDC arrowDC = CreateCompatibleDC(destDC);
-	HDC fillDC = CreateCompatibleDC(destDC);
-	int arrowW = RECTWIDTH(r);
-	int arrowH = RECTHEIGHT(r);
-	HBITMAP arrowBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
-	HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(arrowDC, arrowBitmap);
-	HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
-	HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
-
-	//Set the offscreen arrow rect
-	RECT tmpArrowR = rectWH(0, 0, arrowW, arrowH);
-
-	//Draw the frame control arrow (The OS draws this as a black on white bitmap mask)
-	DrawFrameControl(arrowDC, &tmpArrowR, DFC_MENU, DFCS_MENUARROW);
-
-	//Set the arrow color
-	HBRUSH arrowBrush = unCap_colors.Img;
-
-	//Fill the fill bitmap with the arrow color
-	FillRect(fillDC, &tmpArrowR, arrowBrush);
-
-	//Blit the items in a masking fashion
-	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
-	BitBlt(destDC, r.left, r.top, arrowW, arrowH, arrowDC, 0, 0, SRCAND);
-	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
-
-	//Clean up
-	SelectObject(fillDC, oldFillBitmap);
-	DeleteObject(fillBitmap);
-	SelectObject(arrowDC, oldArrowBitmap);
-	DeleteObject(arrowBitmap);
-	DeleteDC(fillDC);
-	DeleteDC(arrowDC);
-}
-
-void DrawMenuImg(HDC destDC,HBITMAP mask, RECT& r)
-{
-	//NOTE: this is set up to work with masks that have black as the color and white as transparency, otherwise you'll need to flip your colors, for example BitBlt(arrowDC, 0, 0, arrowW, arrowH, arrowDC, 0, 0, DSTINVERT)
-
-	//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
-	//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
-
-	//Create the DCs and Bitmaps we will need
-	HDC arrowDC = CreateCompatibleDC(destDC);
-	HDC fillDC = CreateCompatibleDC(destDC);
-	int arrowW = RECTWIDTH(r);
-	int arrowH = RECTHEIGHT(r);
-	HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, arrowW, arrowH);
-	HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
-
-
-	HBITMAP scaled_mask = urender::scale_mask(mask, arrowW, arrowH);
-	HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(arrowDC, scaled_mask);
-	BitBlt(arrowDC, 0, 0, arrowW, arrowH, arrowDC, 0, 0, DSTINVERT);
-
-	//Set the arrow color
-	HBRUSH arrowBrush = unCap_colors.Img;
-
-	//Set the offscreen arrow rect
-	RECT tmpArrowR = rectWH(0, 0, arrowW, arrowH);
-
-	//Fill the fill bitmap with the arrow color
-	FillRect(fillDC, &tmpArrowR, arrowBrush);
-
-	//Blit the items in a masking fashion
-	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
-	BitBlt(destDC, r.left, r.top, arrowW, arrowH, arrowDC, 0, 0, SRCAND);
-	BitBlt(destDC, r.left, r.top, arrowW, arrowH, fillDC, 0, 0, SRCINVERT);
-
-	//Clean up
-	SelectObject(fillDC, oldFillBitmap);
-	DeleteObject(fillBitmap);
-	SelectObject(arrowDC, oldArrowBitmap);
-	DeleteObject(scaled_mask);
-	DeleteDC(fillDC);
-	DeleteDC(arrowDC);
-}
-
-//void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
-//	int imgW = RECTWIDTH(r);
-//	int imgH = RECTHEIGHT(r);
-//
-//	HBRUSH imgBr = unCap_colors.Img;
-//	HBRUSH oldBr = SelectBrush(destDC, imgBr);
-//
-//	//TODO(fran): I have no idea why I need to pass the "srcDC", no information from it is needed, and the function explicitly says it should be NULL, but if I do it returns false aka error (some error, cause it also doesnt tell you what it is)
-//	//NOTE: info on creating your own raster ops https://docs.microsoft.com/en-us/windows/win32/gdi/ternary-raster-operations?redirectedfrom=MSDN
-//	//Thanks https://stackoverflow.com/questions/778666/raster-operator-to-use-for-maskblt
-//	BOOL res = MaskBlt(destDC, r.left, r.top, imgW, imgH, destDC, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY)); 
-//	SelectBrush(destDC, oldBr);
-//}
-
 struct unCapClProcState {
 	HWND wnd;
 	HWND nc_parent;
@@ -2220,6 +2025,70 @@ ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
 	return class_atom;
 }
 
+HMENU HACK_toplevelmenu = NULL; //TODO(fran)
+#include "unCap_uncapnc.h" //TODO(fran): move up once we have uncapcl in a separate .h
+void AddMenus(HWND hwnd) {
+	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
+	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hwnd);
+
+	//INFO: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
+
+	hMenu = CreateMenu();
+	hFileMenu = CreateMenu();
+	hFileMenuLang = CreateMenu();
+	AppendMenuW(hMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenu, (LPCWSTR)hMenu);
+	HACK_toplevelmenu = hFileMenu;
+	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
+
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, OPEN_FILE, (LPCWSTR)hFileMenu); //NOTE: when MF_OWNERDRAW is used the 4th param is itemData
+	AMT(hFileMenu, OPEN_FILE, LANG_MENU_OPEN);
+
+	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, SEPARATOR1, (LPCWSTR)hFileMenu);
+
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_FILE, (LPCWSTR)hFileMenu);
+	AMT(hFileMenu, SAVE_FILE, LANG_MENU_SAVE);
+
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, SAVE_AS_FILE, (LPCWSTR)hFileMenu);
+	AMT(hFileMenu, SAVE_AS_FILE, LANG_MENU_SAVEAS);
+
+	AppendMenuW(hFileMenu, MF_STRING | MF_OWNERDRAW, BACKUP_FILE, (LPCWSTR)hFileMenu);
+	AMT(hFileMenu, BACKUP_FILE, LANG_MENU_BACKUP);
+
+	AppendMenuW(hFileMenu, MF_SEPARATOR | MF_OWNERDRAW, SEPARATOR2, (LPCWSTR)hFileMenu);
+
+	AppendMenuW(hFileMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenuLang, (LPCWSTR)hFileMenu);
+	AMT(hFileMenu, (UINT_PTR)hFileMenuLang, LANG_MENU_LANGUAGE);
+	//TODO(fran): SetMenuItemInfo only accepts UINT, not the UINT_PTR of MF_POPUP, plz dont tell me I have to redo all of it a different way (LANGUAGE_MANAGER just does it normally not caring for the extra 32 bits)
+
+	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, (LPCWSTR)hFileMenuLang);
+	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, 0, const_cast<TCHAR*>(TEXT("English")));
+
+	AppendMenuW(hFileMenuLang, MF_STRING | MF_OWNERDRAW, LANGUAGE_MANAGER::LANGUAGE::SPANISH, (LPCWSTR)hFileMenuLang);
+	SetMenuItemString(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, 0, const_cast<TCHAR*>(TEXT("Español")));
+
+	HBITMAP bTick = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CHECKMARK)); //TODO(fran): preload the bitmaps or destroy them when we destroy the menu
+	HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));
+	HBITMAP bEarth = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_EARTH));
+
+	//TODO(fran): fix old bitmap code that uses wrong sizes and no transparency
+
+	SetMenuItemBitmaps(hFileMenu, BACKUP_FILE, MF_BYCOMMAND, bCross, bTick);//1ºunchecked,2ºchecked
+	if (Backup_Is_Checked) CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);
+	else CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED);
+
+	SetMenuItemBitmaps(hFileMenu, (UINT)hFileMenuLang, MF_BYCOMMAND, bEarth, bEarth);
+	//https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getmenustate
+	//https://docs.microsoft.com/es-es/windows/desktop/menurc/using-menus#using-custom-check-mark-bitmaps
+	//https://www.daniweb.com/programming/software-development/threads/490612/win32-can-i-change-the-hbitmap-structure-for-be-transparent
+
+	//TODO(fran): some automatic way to add this to all langs?
+	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::ENGLISH, MF_BYCOMMAND, NULL, bTick);
+	SetMenuItemBitmaps(hFileMenuLang, LANGUAGE_MANAGER::LANGUAGE::SPANISH, MF_BYCOMMAND, NULL, bTick);
+
+	CheckMenuItem(hFileMenuLang, LANGUAGE_MANAGER::Instance().GetCurrentLanguage(), MF_BYCOMMAND | MF_CHECKED);
+
+	UNCAPNC_set_menu(hwnd, hMenu);
+}
 
 LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	unCapClProcState * state = (unCapClProcState *)GetWindowLongPtr(hwnd, 0);
@@ -2394,11 +2263,11 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	case WM_NCCREATE:
 	{
 		CREATESTRUCT* create_nfo = (CREATESTRUCT*)lparam;
-		unCapClProcState* state = (unCapClProcState*)calloc(1, sizeof(unCapClProcState));
-		Assert(state);
-		SetWindowLongPtr(hwnd, 0, (LONG_PTR)state);
-		state->wnd = hwnd;
-		state->nc_parent = create_nfo->hwndParent;
+		unCapClProcState* st = (unCapClProcState*)calloc(1, sizeof(unCapClProcState));
+		Assert(st);
+		SetWindowLongPtr(hwnd, 0, (LONG_PTR)st);
+		st->wnd = hwnd;
+		st->nc_parent = create_nfo->hwndParent;
 		return TRUE;
 	} break;
 	case WM_NOTIFY:
@@ -2513,9 +2382,9 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			MenuChangeLang((LANGUAGE_MANAGER::LANGUAGE)LOWORD(wparam));
 #if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
 			HMENU old_menu = GetMenu(state->nc_parent);
-			SetMenu(state->nc_parent, NULL);
-			DestroyMenu(old_menu); //NOTE: I could also use RemoveMenu which doesnt destroy it's submenus and reattach them to a new "main" menu and correct parenting (itemData param)
+			//SetMenu(state->nc_parent, NULL);
 			AddMenus(state->nc_parent); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
+			DestroyMenu(old_menu); //NOTE: I could also use RemoveMenu which doesnt destroy it's submenus and reattach them to a new "main" menu and correct parenting (itemData param)
 #else //the undocumented way, aka the way it should have always been
 			//WIP
 #endif
@@ -2538,817 +2407,23 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		default: return DefWindowProc(hwnd, msg, wparam, lparam);
 		}
 	} break;
-	//case WM_ERASEBKGND:
-	//{
-	//	return 1;
-	//} break;
-	default:
-//#ifdef _DEBUG //TODO(fran): uncomment
-//		Assert(0);
-//#else 
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-//#endif
-	}
-	return 0;
-}
-
-struct unCapNcProcState {
-	HWND wnd;//TODO(fran): might be good to store client and wnd rect, find the one place where we get this two. Then we wont have the code littered with those two calls
-	HWND client;
-
-	HWND btn_min, btn_max, btn_close;
-
-	RECT rc_caption;
-	SIZE caption_btn;
-	bool active;
-	bool has_menu;
-};
-
-ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
-	WNDCLASSEXW wcex;
-
-	wcex.cbSize = sizeof(WNDCLASSEX);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc = UncapNcProc;
-	wcex.cbClsExtra = 0;
-	wcex.cbWndExtra = sizeof(unCapNcProcState*);
-	wcex.hInstance = inst;
-	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
-	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = unCap_colors.ControlBk;
-	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
-	wcex.lpszClassName = unCap_wndclass_uncap_nc;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
-
-	ATOM class_atom = RegisterClassExW(&wcex);
-	Assert(class_atom);
-	return class_atom;
-}
-
-int FillRectAlpha(HDC dc, RECT* r, HBRUSH br, unsigned char alpha) {
-	COLORREF color = ColorFromBrush(br);
-	color |= (alpha << 24);
-
-	BITMAPINFO nfo;
-	nfo.bmiHeader.biSize = sizeof(nfo.bmiHeader);
-	nfo.bmiHeader.biWidth = 1;
-	nfo.bmiHeader.biHeight = -1;
-	nfo.bmiHeader.biPlanes = 1;
-	nfo.bmiHeader.biBitCount = 32;
-	nfo.bmiHeader.biCompression = BI_RGB;
-	nfo.bmiHeader.biSizeImage = 0;
-	nfo.bmiHeader.biXPelsPerMeter = 0;
-	nfo.bmiHeader.biYPelsPerMeter = 0;
-	nfo.bmiHeader.biClrUsed = 0;
-	nfo.bmiHeader.biClrImportant = 0;
-
-	int res = StretchDIBits(dc, r->left, r->top, RECTWIDTH((*r)), RECTHEIGHT((*r)), 0, 0, 1, 1, &color, &nfo, DIB_RGB_COLORS, SRCCOPY);
-	return res;
-}
-
-//INFO: WM_NCACTIVATE also does painting, again making no sense, but we can use it to know when to change drawing from active to inactive
-
-void UNCAPNC_calc_caption(unCapNcProcState* state) {
-	GetClientRect(state->wnd, &state->rc_caption);
-
-	RECT testrc{ 0,0,100,100 }; RECT ncrc = testrc;
-	AdjustWindowRect(&ncrc, WS_OVERLAPPEDWINDOW, FALSE);//no menu
-
-	state->rc_caption.bottom = distance(testrc.top, ncrc.top);
-
-	state->caption_btn.cy = RECTHEIGHT(state->rc_caption); state->caption_btn.cx = state->caption_btn.cy * 16 / 9;;
-}
-
-RECT UNCAPNC_calc_menu_rc(unCapNcProcState* state) {
-	RECT rc{0};
-	if (state->has_menu) {
-		RECT r; GetClientRect(state->wnd, &r);
-		rc.left = r.left;
-		rc.top = RECTHEIGHT(state->rc_caption);
-		rc.right = r.right;
-		rc.bottom = rc.top + GetSystemMetrics(SM_CYMENU);
-	}
-	return rc;
-}
-
-RECT UNCAPNC_calc_client_rc(unCapNcProcState* state) {
-	RECT r; GetClientRect(state->wnd, &r);
-	RECT menu_rc = UNCAPNC_calc_menu_rc(state);
-	RECT rc{ r.left, RECTHEIGHT(state->rc_caption) + RECTHEIGHT(menu_rc), r.right, r.bottom };
-	return rc;
-}
-
-RECT UNCAPNC_calc_btn_min_rc(unCapNcProcState* state) {
-	RECT r; GetClientRect(state->wnd, &r);
-	RECT rc{ r.right - 3 * state->caption_btn.cx, r.top, r.right - 2 * state->caption_btn.cx, r.top + state->caption_btn.cy };
-	return rc;
-}
-
-RECT UNCAPNC_calc_btn_max_rc(unCapNcProcState* state) {
-	RECT r; GetClientRect(state->wnd, &r);
-	RECT rc{ r.right - 2 * state->caption_btn.cx, r.top, r.right - 1 * state->caption_btn.cx, r.top + state->caption_btn.cy };
-	return rc;
-}
-
-RECT UNCAPNC_calc_btn_close_rc(unCapNcProcState* state) {
-	RECT r; GetClientRect(state->wnd, &r);
-	RECT rc{ r.right - 1 * state->caption_btn.cx, r.top, r.right - 0 * state->caption_btn.cx, r.top + state->caption_btn.cy };
-	return rc;
-}
-
-#define WM_UAHDESTROYWINDOW 0x90
-#define WM_UAHDRAWMENU 0x91
-#define WM_UAHDRAWMENUITEM 0x92
-#define WM_UAHINITMENU 0x93
-#define WM_UAHMEASUREMENUITEM 0x94
-#define WM_UAHNCPAINTMENUPOPUP 0x95
-#define WM_UAHUPDATE 0x96
-
-//TODO(fran): UNDO support for comment removal
-//TODO(fran): DPI awareness
-LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
-{
-	//TODO(fran): beware of the menu bar, it decided to draw itself for some reason once I moved the window
-	//TODO(fran): it'd be nice to have a way to implement good subclassing, eg letting the user assign clip regions where they can draw and we dont, things like that, more communication
-#define UNCAPNC_MINIMIZE 100 //sent through WM_COMMAND
-#define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
-#define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
-
-	//printf(msgToString(msg)); printf("\n");
-	unCapNcProcState* state = (unCapNcProcState*)GetWindowLongPtr(hwnd, 0);
-
-	switch (msg)
-	{
-	case WM_UAHDESTROYWINDOW: //Only called when the window is being destroyed, wparam=lparam=0
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_UAHDRAWMENU: //Non here were ever called
-	case WM_UAHDRAWMENUITEM:
-	case WM_UAHMEASUREMENUITEM:
-	case WM_UAHNCPAINTMENUPOPUP:
-	case WM_UAHUPDATE:
-	{
-		Assert(0);
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_UAHINITMENU: //After a SetMenu: lParam=some system generated HMENU with your HMENU stored in the ""unused"" member ; wParam=0
-							//NOTE: this system HMENU uses the first byte from the top 32bits, no other HMENU does that
-						 //When clicking on a submenu:
-	{
-		/*static int c = 1;
-		printf("%d: WM_UAHINITMENU\n",c++);*/
-		//TODO(fran): since this msg gets called multiple times and not only for the main menu it is not reliable, we should add an intermediary call for the user, and we call SetMenu ourselves, same for other menu procedures
-
-		//NOTE: for some reason, after SetMenu, this msg gets sent more than once after different events, but always with the same params. This does not depend on the number of menus/submenus it has, but it seems like SetMenu checks that your HMENU has at least one submenu, otherwise this msg doesnt get sent
-		HMENU menu = (HMENU)lparam;
-
-		//{
-		//	MENUINFO mi{ sizeof(mi) };mi.fMask = MIM_BACKGROUND; mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
-		//	BOOL res = SetMenuInfo(hMenu, &mi); Assert(res);
-		//}
-
-		//TODO(fran): why on the first time we create a menu its borders are only 1 pixel but the next times they grow to like 3 ???? looks awful
-
-		if (menu->unused == (int)hMenu) {
-			MENUINFO mi { sizeof(mi) };
-			mi.fMask = MIM_BACKGROUND;
-			//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
-			
-			mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
-
-			SetMenuInfo(hMenu, &mi);
-		}
-		Assert(wparam == 0);
-		state->has_menu = true;
-
-
-		//Ask to update client area to accommodate for menu
-		RECT newcl = UNCAPNC_calc_client_rc(state); //TODO(fran): maybe I should start using this like windows wants me to
-		WORD w = RECTWIDTH(newcl), h = RECTHEIGHT(newcl);
-		SendMessage(state->wnd, WM_SIZE, SIZE_RESTORED, MAKELONG(w,h));
-		
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_WINDOWPOSCHANGED: //TODO(fran): we can use this guy to replace WM_SIZE and WM_MOVE by not calling defwindowproc
-	{
-		UNCAPNC_calc_caption(state);
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		HDC dc = BeginPaint(state->wnd, &ps);
-
-		FillRect(dc, &state->rc_caption, state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive);
-
-		SelectFont(dc, GetStockFont(DEFAULT_GUI_FONT));
-		TCHAR title[256]; int sz = GetWindowText(state->wnd, title, ARRAYSIZE(title));
-		TEXTMETRIC tm; GetTextMetrics(dc, &tm);
-
-
-		HICON icon = (HICON)GetClassLongPtr(state->wnd, GCLP_HICONSM);
-		int icon_height = (int)((float)tm.tmHeight*1.5f);
-		int icon_width = icon_height;
-		int icon_align_height = (RECTHEIGHT(state->rc_caption) - icon_height) / 2;
-		int icon_align_width = icon_align_height;
-		MYICON_INFO iconnfo = MyGetIconInfo(icon);
-		urender::draw_icon(dc, icon_align_height, icon_align_width, icon_width, icon_height, icon, 0, 0, iconnfo.nWidth, iconnfo.nHeight);
-
-		int yPos = (state->rc_caption.bottom + state->rc_caption.top - tm.tmHeight) / 2;
-		HBRUSH txtbr = state->active ? unCap_colors.ControlTxt : unCap_colors.ControlTxt_Inactive;
-		SetTextColor(dc, ColorFromBrush(txtbr)); SetBkMode(dc, TRANSPARENT);
-
-
-		TextOut(dc, icon_align_width * 2 + icon_width, yPos, title, sz);
-
-		if (state->active) {
-			UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
-			UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
-			UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
-		}
-		else {
-			UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
-			UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
-			UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
-		}
-		DrawMenuBar(state->wnd); //TODO(fran): we need to update the menu more often, specifically when the mouse goes over some submenu in the menu bar
-
-		EndPaint(state->wnd, &ps);
-
-
-		return 0;
-	} break;
-	case WM_CREATE:
-	{
-
-		CREATESTRUCT* createnfo = (CREATESTRUCT*)lparam; 
-		SetWindowText(state->wnd, createnfo->lpszName); //TODO(fran): for some weird reason I have to manually call setwindowtext
-
-		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state);
-		state->btn_min = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), state->wnd, (HMENU)UNCAPNC_MINIMIZE, 0, 0);
-		UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
-
-		RECT btn_max_rc = UNCAPNC_calc_btn_max_rc(state);
-		state->btn_max = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_max_rc.left, btn_max_rc.top, RECTWIDTH(btn_max_rc), RECTHEIGHT(btn_max_rc), state->wnd, (HMENU)UNCAPNC_MAXIMIZE, 0, 0);
-		UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
-
-		RECT btn_close_rc = UNCAPNC_calc_btn_close_rc(state);
-		state->btn_close = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_close_rc.left, btn_close_rc.top, RECTWIDTH(btn_close_rc), RECTHEIGHT(btn_close_rc), state->wnd,(HMENU)UNCAPNC_CLOSE, 0, 0);
-		UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
-
-		HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));//TODO(fran): let the user set this guys, store them in state
-		HBITMAP bMax = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_MAX));
-		HBITMAP bMin = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_MIN));
-		SendMessage(state->btn_close, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bCross);
-		SendMessage(state->btn_max, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bMax);
-		SendMessage(state->btn_min, BM_SETIMAGE, IMAGE_BITMAP, (LPARAM)bMin);
-
-		//TODO(fran): create the icons, one idea is to ask windows to paint them in some dc, and then I can store the HBITMAP and re-use it all I want
-
-		ATOM class_res = init_wndclass_unCap_uncap_cl((HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
-		Assert(class_res);
-		RECT rc = UNCAPNC_calc_client_rc(state);
-		state->client = CreateWindow(unCap_wndclass_uncap_cl, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, 0);
-
-		return 0;
-	} break;
-	case WM_NCLBUTTONDBLCLK:
-	{
-		LRESULT hittest = (LRESULT)wparam;
-		if (hittest == HTCAPTION) {
-			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
-
-			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
-			else ShowWindow(state->wnd, SW_MAXIMIZE);
-		}
-		return 0;
-	} break;
-	case WM_NCHITTEST:
-	{
-		
-		LRESULT res = DefWindowProc(hwnd, msg, wparam, lparam);
-		if (res == HTCLIENT) {
-			int top_margin = 8;
-			int top_side_margin = 16;
-			POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) }; ScreenToClient(hwnd, &mouse);
-			RECT rc; GetClientRect(hwnd, &rc);
-			RECT rc_top; rc_top.top = rc.top; rc_top.left = rc.left + top_side_margin; rc_top.bottom = rc_top.top + top_margin; rc_top.right = rc.right - top_side_margin;
-			RECT rc_topleft; rc_topleft.top = rc.top; rc_topleft.left = rc.left; rc_topleft.bottom = rc_topleft.top + top_margin; rc_topleft.right = rc_topleft.left + top_side_margin;
-			RECT rc_topright; rc_topright.top = rc.top; rc_topright.left = rc.right - top_side_margin; rc_topright.bottom = rc_topright.top + top_margin; rc_topright.right = rc.right;
-
-			RECT rc_menu = UNCAPNC_calc_menu_rc(state);
-
-			if		(test_pt_rc(mouse, rc_top)) res = HTTOP;
-			else if (test_pt_rc(mouse, rc_topleft)) res = HTTOPLEFT;
-			else if (test_pt_rc(mouse, rc_topright)) res = HTTOPRIGHT;
-			/*else if (test_pt_rc(mouse, close_btn)) res = HTCLOSE; //TODO(fran): request this buttons for their rc
-			else if (test_pt_rc(mouse, max_btn)) res = HTMAXBUTTON;
-			else if (test_pt_rc(mouse, min_btn)) res = HTMINBUTTON;*/
-			else if (test_pt_rc(mouse, state->rc_caption)) res = HTCAPTION;
-			else if (test_pt_rc(mouse, rc_menu)) res = HTSYSMENU;//HTMENU also works, but it seems a little slower on clicking for some reason, IMPORTANT INFO: this is crucial for the menu to detect clicks, otherwise no mouse input goes to it
-
-			//if (res == HTSYSMENU) {
-			//	HMENU submenu = GetSubMenu(hMenu, 0); Assert(submenu);
-			//	ClientToScreen(state->wnd, &mouse);
-			//	TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, mouse.x, mouse.y, 0, state->wnd, 0);
-			//}
-		}
-
-
-		//printf("%s\n", hittestToString(res));
-		return res;
-	} break;
 	case WM_NCCALCSIZE:
 	{
-		RECT testrc{ 0,0,100,100 };
-		RECT ncrc = testrc;
-		AdjustWindowRect(&ncrc, WS_OVERLAPPEDWINDOW, FALSE); //TODO(fran): somehow link this params with UNCAPNC_calc_caption
-
-		UNCAPNC_calc_caption(state);//TODO(fran): find out which is the one and only magical msg where this can be put in
-
-		struct MY_MARGINS
-		{
-			int cxLeftWidth;      
-			int cxRightWidth;     
-			int cyTopHeight;      
-			int cyBottomHeight;   
-		} margins;
-
-		margins.cxLeftWidth = distance(testrc.left, ncrc.left);
-		margins.cxRightWidth = distance(testrc.right, ncrc.right);
-		margins.cyBottomHeight = distance(testrc.bottom, ncrc.bottom);
-		margins.cyTopHeight = 0;
-
-		if ((BOOL)wparam == TRUE) {
-			//IMPORTANT: absolutely _everything_ is in screen coords
-			NCCALCSIZE_PARAMS* calcsz = (NCCALCSIZE_PARAMS*)lparam; //input and ouput respectively is and has to be in screen coords
-			RECT new_wnd_coords_proposed = calcsz->rgrc[0];
-			calcsz->rgrc[1];//old wnd coords
-			calcsz->rgrc[2];//old client coords
-
-			//new client coords
-			calcsz->rgrc[0].left += margins.cxLeftWidth;
-			calcsz->rgrc[0].top += margins.cyTopHeight;
-			calcsz->rgrc[0].right -= margins.cxRightWidth;
-			calcsz->rgrc[0].bottom -= margins.cyBottomHeight;
-
-			//valid dest coords
-			calcsz->rgrc[1] = new_wnd_coords_proposed;
-
-			//valid source coords
-			calcsz->rgrc[1] = calcsz->rgrc[0];
-		}
-		else {
-			RECT* calcrc = (RECT*)lparam; //input and ouput respectively is and has to be in screen coords
-			RECT new_wnd_coords_proposed = *calcrc;
-
-			//new client coords
-			calcrc->left += margins.cxLeftWidth;
-			calcrc->top += margins.cyTopHeight;
-			calcrc->right -= margins.cxRightWidth;
-			calcrc->bottom -= margins.cyBottomHeight;
-		}
-		return 0; //For wparam==TRUE this means we will reuse the old client area's painting and just align it with the top-left corner of the new client area pos
-	} break;
-	case WM_SIZE:
-	{
-		//TODO(fran):resize buttons
-		RECT rc = UNCAPNC_calc_client_rc(state); MoveWindow(state->client, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), TRUE);
-
-		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state); MoveWindow(state->btn_min, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), TRUE);//TODO(fran): I dont really need to ask for repaint do I?
-		RECT btn_max_rc = UNCAPNC_calc_btn_max_rc(state); MoveWindow(state->btn_max, btn_max_rc.left, btn_max_rc.top, RECTWIDTH(btn_max_rc), RECTHEIGHT(btn_max_rc), TRUE);
-		RECT btn_close_rc = UNCAPNC_calc_btn_close_rc(state); MoveWindow(state->btn_close, btn_close_rc.left, btn_close_rc.top, RECTWIDTH(btn_close_rc), RECTHEIGHT(btn_close_rc), TRUE);
-
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_SETTEXT:
-	{
-		//This function is insane, it actually does painting on it's own without telling nobody, so we need a way to kill that
-		//I think there are a couple approaches that work, I took this one which works since windows 95 (from what the article says)
-		//Many thanks for yet another hack http://www.catch22.net/tuts/win32/custom-titlebar
-		LONG_PTR  dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
-		// turn off WS_VISIBLE
-		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle & ~WS_VISIBLE);
-
-		// perform the default action, minus painting
-		LRESULT ret = DefWindowProc(hwnd, msg, wparam, lparam);
-
-		// turn on WS_VISIBLE
-		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle);
-
-		// perform custom painting, aka dont and do what should be done, repaint, it's really not that expensive for our case, we barely call WM_SETTEXT, and it can be optimized out later
-		RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE);
-
-		return ret;
-	} break;
-	case WM_NCDESTROY:
-	{
-		if (state) {
-			free(state);
-			state = nullptr;
-		}
-	} break;
-	case WM_NCCREATE: 
-	{
-		CREATESTRUCT* create_nfo = (CREATESTRUCT*)lparam;
-		//TODO(fran): check for minimize and maximize button requirements
-		unCapNcProcState* state = (unCapNcProcState*)calloc(1, sizeof(unCapNcProcState));
-		Assert(state);
-		SetWindowLongPtr(hwnd, 0, (LONG_PTR)state);
-		state->wnd = hwnd;
-		return TRUE;
-	} break;
-	case WM_NCACTIVATE:
-	{
-		//So basically this guy is another WM_NCPAINT, just do exactly the same, but also here we have the option to paint slightly different if we are deactivated, so the user can see the change
-		BOOL active = (BOOL)wparam; //Indicates active or inactive state for a title bar or icon that needs to be changed
-		state->active = active;
-		HRGN opt_upd_rgn = (HRGN)lparam; // handle to optional update region for the nonclient area. If set to -1, do nothing
-
-		if (state->has_menu) {
-			MENUINFO mi{ sizeof(mi) };
-			mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS; //TODO(fran): MIM_APPLYTOSUBMENUS is garbage, it only goes one level down, just terrible, make my own
-			//TODO(fran): MIM_MAXHEIGHT and other fMask params that we should set
-
-			mi.hbrBack = state->active ? unCap_colors.CaptionBk : unCap_colors.CaptionBk_Inactive;
-
-			SetMenuInfo(hMenu, &mi);
-		}
-
-		RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE); //TODO(fran): we should draw here, so we can show a different color for deactivated
-		return TRUE; //NOTE: it says we can return FALSE to "prevent the change"
-	} break;
-//NOTE: WM_NCPAINT: check https://chromium.googlesource.com/chromium/chromium/+/5db69ae220c803e9c1675219b5cc5766ea3bb698/chrome/views/window.cc they block drawing so windows doesnt draw on top of them, cause the non client area is also painted in other msgs like settext
-//also check https://social.msdn.microsoft.com/Forums/windows/en-US/a407591a-4b1e-4adc-ab0b-3c8b3aec3153/the-evil-wmncpaint?forum=windowsuidevelopment I took the implementation from there, but there's also two others I can try
-
-	case WM_MEASUREITEM: //NOTE: this is so stupid, this guy doesnt send hwndItem like WM_DRAWITEM does, so you have no way of knowing which type of menu you get, gotta do it manually
-		//TODO(fran): should this and wm_drawitem go in uncapcl?
-	{
-		//wparam has duplicate info from item
-		MEASUREITEMSTRUCT* item = (MEASUREITEMSTRUCT*)lparam;
-		if (item->CtlType == ODT_MENU && item->itemData) { //menu with parent HMENU
-			//item->CtlID is not used
-			
-			//Determine which type of menu we're to measure
-			MENUITEMINFO menu_type;
-			menu_type.cbSize = sizeof(menu_type);
-			menu_type.fMask = MIIM_FTYPE;
-			GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_type);
-			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be
-			switch (menu_type.fType) {
-			case MFT_STRING:
-			{
-				//TODO(fran): check if it has a submenu, in which case, if it opens it to the side, we should leave a little more space for an arrow bmp (though there seems to be some extra space added already)
-
-				//Determine text space:
-				MENUITEMINFO menu_nfo; menu_nfo.cbSize = sizeof(menu_nfo);
-				menu_nfo.fMask = MIIM_STRING;
-				menu_nfo.dwTypeData = NULL;
-				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
-				UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
-				menu_nfo.cch = menu_str_character_cnt;
-				TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
-				menu_nfo.dwTypeData = menu_str;
-				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
-
-				HDC dc = GetDC(hwnd); //Of course they had to ask for a dc, and not give the option to just provide the font, which is the only thing this function needs
-				HFONT hfntPrev = (HFONT)SelectObject(dc, hMenuFont);
-				int old_mapmode = GetMapMode(dc);
-				SetMapMode(dc, MM_TEXT);
-				WORD text_width = LOWORD(GetTabbedTextExtent(dc, menu_str, menu_str_character_cnt - 1,0,NULL)); //TODO(fran): make common function for this and the one that does rendering, also look at how tabs work
-				WORD space_width = LOWORD(GetTabbedTextExtent(dc, TEXT(" "), 1, 0, NULL)); //a space at the beginning
-				SetMapMode(dc, old_mapmode);
-
-				SelectObject(dc, hfntPrev);
-				ReleaseDC(hwnd, dc);
-				free(menu_str);
-				//
-				
-				if (item->itemID == ((UINT)HACK_toplevelmenu & 0xFFFFFFFF)) { //Check if we are a "top level" menu
-					item->itemWidth = text_width + space_width * 2;
-				}
-				else {
-					item->itemWidth = GetSystemMetrics(SM_CXMENUCHECK) + text_width + space_width; /*Extra space for left bitmap*/; //TODO(fran): we'll probably add a 1 space separation between bmp and txt
-				
-				}
-				item->itemHeight = GetSystemMetrics(SM_CYMENU); //Height of menu
-
-				
-				return TRUE;
-			} break;
-			case MF_SEPARATOR:
-			{
-				item->itemHeight = 3;
-				item->itemWidth = 1;
-				return TRUE;
-			} break;
-			default: return DefWindowProc(hwnd, msg, wparam, lparam);
-			}
-		}
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_DRAWITEM: //TODO(fran): goes in uncapcl
-	{
-		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lparam;
-		switch (wparam) {//wparam specifies the identifier of the control that needs painting
-		case 0: //menu
-		{ //TODO(fran): handle WM_MEASUREITEM so we can make the menu bigger
-			Assert(item->CtlType == ODT_MENU); //TODO(fran): I could use this instead of wparam
-			/*NOTES
-			- item->CtlID isnt used for menus
-			- item->itemID menu item identifier
-			- item->itemAction required drawing action //TODO(fran): use this 
-			- item->hwndItem handle to the menu that contains the item, aka HMENU
-			*/
-
-			//NOTE: do not use itemData here, go straight for item->hwndItem
-			
-			//Determine which type of menu we're to draw
-			MENUITEMINFO menu_type;
-			menu_type.cbSize = sizeof(menu_type);
-			menu_type.fMask = MIIM_FTYPE | MIIM_SUBMENU;
-			GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_type);
-			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be
-
-			switch (menu_type.fType) {
-				//NOTE: MFT_BITMAP, MFT_SEPARATOR, and MFT_STRING cannot be combined with one another, so we know those are separate types
-			case MFT_STRING: //Text menu
-			{//NOTE: we render the bitmaps inverted, cause I find it easier to edit on external programs, this may change later, not a hard change
-				//TODO(fran): we should just do 1 channel bmps, easier to edit, we can precalculate all each time the color changes and that's it
-				COLORREF clrPrevText, clrPrevBkgnd;
-				HFONT hfntPrev;
-				int x, y;
-
-				// Set the appropriate foreground and background colors. 
-				HBRUSH txt_br, bk_br;
-				if (item->itemState & ODS_SELECTED || item->itemState & ODS_HOTLIGHT /*needed for "top level" menus*/) //TODO(fran): ODS_CHECKED ODS_FOCUS
-				{
-					txt_br = unCap_colors.ControlTxt;
-					bk_br = unCap_colors.ControlBkMouseOver;
-				}
-				else
-				{
-					txt_br = unCap_colors.ControlTxt;
-					Assert((int)item->hwndItem);
-					MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
-					//GetMenuInfo((HMENU)item->hwndItem, &mnfo); //We will not ask our "parent" hmenu since sometimes it decides it doesnt have the hbrush, we'll go straight to the menu bar
-					GetMenuInfo(hMenu, &mnfo);
-
-					bk_br = mnfo.hbrBack; //TODO: unfinished trash
-				}
-				clrPrevText = SetTextColor(item->hDC, ColorFromBrush(txt_br));//TODO(fran): separate menu brushes
-				clrPrevBkgnd = SetBkColor(item->hDC, ColorFromBrush(bk_br));
-				
-				if (item->itemAction & ODA_DRAWENTIRE || item->itemAction & ODA_SELECT) { //Draw background
-					FillRect(item->hDC, &item->rcItem, bk_br);
-					//printf("PAINTED BK: %#08X\n", ColorFromBrush(bk_br));
-				}
-				
-				// Select the font and draw the text. 
-				hfntPrev = (HFONT)SelectObject(item->hDC, hMenuFont);
-				
-				WORD x_pad = LOWORD(GetTabbedTextExtent(item->hDC, TEXT(" "), 1, 0, NULL)); //an extra 1 space before drawing text (for not top level menus)
-
-				if (item->hwndItem == (HWND)GetMenu(hwnd)) { //If we are a "top level" menu
-					
-					//we just want to draw the text, nothing more
-					//TODO(fran): clean this huge if-else, very bug prone with things being set/initialized in different parts
-
-					//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
-					MENUITEMINFO menu_nfo;
-					menu_nfo.cbSize = sizeof(menu_nfo);
-					menu_nfo.fMask = MIIM_STRING;
-					menu_nfo.dwTypeData = NULL;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
-					//Get actual text
-					UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
-					menu_nfo.cch = menu_str_character_cnt;
-					TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
-					menu_nfo.dwTypeData = menu_str;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
-
-					//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
-					//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
-					HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(item->hDC, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
-
-					// Set new region, do drawing
-					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
-					UINT old_align = GetTextAlign(item->hDC);
-					SetTextAlign(item->hDC, TA_CENTER); //TODO(fran): VTA_CENTER for kanji and the like
-					// Calculate vertical and horizontal position for the string so that it will be centered
-					TEXTMETRIC tm; GetTextMetrics(item->hDC, &tm);
-					int yPos = (item->rcItem.bottom + item->rcItem.top - tm.tmHeight) / 2;
-					int xPos = item->rcItem.left + (item->rcItem.right - item->rcItem.left) / 2;
-					TextOut(item->hDC, xPos, yPos, menu_str, menu_str_character_cnt - 1);
-					//wprintf(L"%s\n",menu_str);
-					free(menu_str);
-					SetTextAlign(item->hDC, old_align);
-					
-					SelectClipRgn(item->hDC, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion); //Restore old region
-				}
-				else {
-
-					//Render img on the left //TODO(fran): there seems to be a bug somewhere, the img isnt shown till the user moves the mouse on top of the item, maybe Im not checking some state
-					{
-						MENUITEMINFO menu_img;
-						menu_img.cbSize = sizeof(menu_img);
-						menu_img.fMask = MIIM_CHECKMARKS | MIIM_STATE;
-						GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_img);
-						HBITMAP hbmp = NULL;
-						if (menu_img.fState & MFS_CHECKED) { //If it is checked you can be sure you are going to draw some bmp
-							if (!menu_img.hbmpChecked) {
-								//TODO(fran): assign default checked bmp
-							}
-							hbmp = menu_img.hbmpChecked;
-						}
-						else if (menu_img.fState == MFS_UNCHECKED || menu_img.fState == MFS_HILITE) {//Really Windows? you really needed to set the value to 0? //TODO(fran): maybe it's better to just use else, maybe that's windows' logic for doing this
-							if (menu_img.hbmpUnchecked) {
-								hbmp = menu_img.hbmpUnchecked;
-							}
-							//If there's no bitmap we dont draw
-						}
-						if (hbmp) {
-							//HDC bmp_dc = CreateCompatibleDC(item->hDC);
-							//HGDIOBJ oldBitmap = SelectObject(bmp_dc, hbmp);
-							BITMAP bitmap; GetObject(hbmp, sizeof(bitmap), &bitmap);
-							//BitBlt(item->hDC, item->rcItem.left, item->rcItem.top, bitmap.bmWidth, bitmap.bmHeight, bmp_dc, 0, 0, NOTSRCCOPY);
-
-							if (bitmap.bmBitsPixel == 1) {
-
-								int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
-								int img_max_y = RECTHEIGHT(item->rcItem);
-								int img_sz = roundNdown(bitmap.bmWidth,min(img_max_x, img_max_y));//HACK: instead use png + gdi+ + color matrices
-								if (!img_sz)img_sz = bitmap.bmWidth; //More HACKs
-								int bmp_height = img_sz;
-								int bmp_width = bmp_height;
-								int bmp_align_width = item->rcItem.left + (img_max_x + x_pad - bmp_width) / 2;
-								int bmp_align_height = item->rcItem.top + (img_max_y - bmp_height) / 2;
-
-								//NOTE: for some insane and nonsensical reason we cant use MaskBlt here, so no urender::draw_mask
-								RECT TEST{ bmp_align_width, bmp_align_height, bmp_align_width + bmp_width, bmp_align_height + bmp_height };
-								DrawMenuImg(item->hDC,hbmp, TEST);
-
-								//OffsetClipRgn(item->hDC, -20, 0);
-								printf("MENU ICON DRAWN\n");
-
-								//TODO(fran): clipping
-							}
-						}
-					}
-
-					// Determine where to draw, leave space for a check mark and the extra 1 space
-					x = item->rcItem.left;
-					y = item->rcItem.top;
-					x += GetSystemMetrics(SM_CXMENUCHECK) + x_pad;
-
-					//Get text lenght //TODO(fran): use language_mgr method, we dont need to fight with all this garbage
-					MENUITEMINFO menu_nfo;
-					menu_nfo.cbSize = sizeof(menu_nfo);
-					menu_nfo.fMask = MIIM_STRING;
-					menu_nfo.dwTypeData = NULL;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
-					//Get actual text
-					UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
-					menu_nfo.cch = menu_str_character_cnt;
-					TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
-					menu_nfo.dwTypeData = menu_str;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
-
-					//Thanks https://stackoverflow.com/questions/3478180/correct-usage-of-getcliprgn
-					//WINDOWS THIS MAKES NO SENSE!!!!!!!!!
-					HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0);
-					if (GetClipRgn(item->hDC, restoreRegion) != 1)
-					{
-						DeleteObject(restoreRegion);
-						restoreRegion = NULL;
-					}
-
-					// Set new region, do drawing
-					IntersectClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);//This is also stupid, did they have something against RECT ???????
-					//TODO(fran): tabs start spacing from the initial x coord, which is completely wrong, we're probably gonna need to do a for loop or just convert the string from tabs to spaces
-					TabbedTextOut(item->hDC, x, y, menu_str, menu_str_character_cnt - 1, 0, NULL, x);
-					//wprintf(L"%s\n", menu_str);
-					free(menu_str);
-					//TODO(fran): find a better function, this guy doesnt care  about alignment, only TextOut and ExtTextOut do, but, of course, both cant handle tabs //NOTE: the normal rendering seems to have very long tab spacing so maybe it uses TabbedTextOut with 0 and NULL as the tab params
-
-					SelectClipRgn(item->hDC, restoreRegion);
-					if (restoreRegion != NULL)
-					{
-						DeleteObject(restoreRegion);
-					}
-
-					if (menu_type.hSubMenu) { //Draw the submenu arrow
-
-						//int img_sz = RECTHEIGHT(item->rcItem);
-						//HBITMAP arrow = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(RIGHT_ARROW), IMAGE_BITMAP, img_sz, img_sz, LR_SHARED); //NOTE: because of LR_SHARED we dont need to free the resource ourselves
-						//if (arrow) {
-							//HDC bmp_dc = CreateCompatibleDC(item->hDC);
-							//HGDIOBJ oldBitmap = SelectObject(bmp_dc, arrow);
-
-							//BITMAP bitmap; GetObject(arrow, sizeof(bitmap), &bitmap);
-							//TODO(fran): transparency & render in the text color (take some value as transparent and the rest use just for intensity)
-
-							int img_max_x = GetSystemMetrics(SM_CXMENUCHECK);
-							int img_max_y = RECTHEIGHT(item->rcItem);
-							int img_sz = min(img_max_x, img_max_y); 
-
-							//NOTE: think I found a semi solution, maintain the new value even or odd depending on the sz of the img, odd -> odd, even -> even
-							//if ((bitmap.bmHeight % 2) == 0) { if ((img_sz % 2) != 0)img_sz--; } 
-							//else { if ((img_sz % 2) == 0)img_sz--; } 
-
-							//TODO(fran): all of these Blt functions are terrible, I really need to move to my own drawing or directx/...
-							//StretchBlt(item->hDC,
-							//	item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz,
-							//	bmp_dc,
-							//	0, 0, bitmap.bmWidth, bitmap.bmHeight,
-							//	NOTSRCCOPY
-							//);
-
-							RECT arrow_rc = rectWH(item->rcItem.right - img_sz, item->rcItem.top + (img_max_y - img_sz) / 2, img_sz, img_sz);
-							DrawMenuArrow(item->hDC, arrow_rc); //TODO(fran): use my own UNCAP_BMP_RIGHTARROW
-
-							//SelectObject(bmp_dc, oldBitmap);
-							//DeleteDC(bmp_dc);
-
-							//Prevent windows from drawing what nobody asked it to draw
-							//Many thanks to David Sumich https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm 
-							ExcludeClipRect(item->hDC, item->rcItem.left, item->rcItem.top, item->rcItem.right, item->rcItem.bottom);
-						//}
-					}
-				}
-				// Restore the original font and colors. 
-				SelectObject(item->hDC, hfntPrev);
-				SetTextColor(item->hDC, clrPrevText);
-				SetBkColor(item->hDC, clrPrevBkgnd);
-			} break;
-			case MFT_SEPARATOR:
-			{
-				const int separator_x_padding = 3;
-				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
-				RECT separator_rc;
-				separator_rc.top = item->rcItem.top + RECTHEIGHT(item->rcItem)/2;
-				separator_rc.bottom = separator_rc.top + 1; //TODO(fran): fancier calc and position
-				separator_rc.left = item->rcItem.left + separator_x_padding;
-				separator_rc.right = item->rcItem.right - separator_x_padding;
-				FillRect(item->hDC, &separator_rc, unCap_colors.ControlTxt);
-				//TODO(fran): clipping
-			}
-			default: return DefWindowProc(hwnd, msg, wparam, lparam);
-			}
-			
-			return TRUE;
-		}
-		default: return DefWindowProc(hwnd, msg, wparam, lparam);
-		}
-		} break;
-		
-	case WM_COMMAND:
-	{
-		// Msgs from my controls
-		switch (LOWORD(wparam))
-		{
-		case UNCAPNC_MINIMIZE:
-		{
-			ShowWindow(state->wnd, SW_MINIMIZE);
-			return 0;
-		} break;
-		case UNCAPNC_MAXIMIZE:
-		{
-			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
-
-			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
-			else ShowWindow(state->wnd, SW_MAXIMIZE); //TODO(fran): maximize covers the whole screen, I dont want that, I want to live the navbar visible. For this to be done automatically by windows we need the WS_MAXIMIZEBOX style, which decides to draw a maximize box when pressed, if we can hide that we are all set
-			return 0;
-		} break;
-		case UNCAPNC_CLOSE:
-		{
-			DestroyWindow(state->wnd);
-			return 0;
-		} break;
-		default: return SendMessage(state->client, msg, wparam, lparam);
-		}
-	} break;
-	case WM_DESTROY:
-		PostQuitMessage(0);
-		break;
-	case WM_GETMINMAXINFO:
+	case WM_PARENTNOTIFY: //TODO(fran): I dont know if I can get anything from here
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_STYLECHANGING:
+	case WM_NOTIFYFORMAT:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_STYLECHANGED:
+	case WM_QUERYUISTATE: //Neat, I dont know who asks for this but it's interesting, you can tell whether you need to draw keyboards accels
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_PARENTNOTIFY://Different notifs about your childs
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_WINDOWPOSCHANGING:
+	case WM_MOVE:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
@@ -3356,27 +2431,11 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_ACTIVATEAPP:
+	case WM_WINDOWPOSCHANGING:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_ACTIVATE:
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_IME_SETCONTEXT:
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_IME_NOTIFY:
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_GETOBJECT:
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
-	case WM_SETFOCUS:
+	case WM_WINDOWPOSCHANGED:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
@@ -3386,32 +2445,66 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	} break;
 	case WM_ERASEBKGND:
 	{
-		return 1; //So we dont erase the menu bar
-		//return DefWindowProc(hwnd, msg, wparam, lparam);
+		return DefWindowProc(hwnd, msg, wparam, lparam);//TODO(fran): or return 1, idk
 	} break;
-	case WM_MOVE:
+	case WM_PAINT:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_GETTEXT:
+	case WM_NCHITTEST:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_GETICON:
+	case WM_SETCURSOR:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_DWMNCRENDERINGCHANGED:
+	case WM_MOUSEMOVE:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_MOUSEACTIVATE:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_LBUTTONDOWN:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_LBUTTONUP:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_RBUTTONDOWN:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_RBUTTONUP:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_CONTEXTMENU://Interesting
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_CTLCOLOREDIT://TODO(fran): hmm, strange that this guy got here
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_DESTROY:
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_DELETEITEM://sent to owner of combo/list box (for menus also) when it is destroyed or items are being removed. when you do SetMenu you also get this msg if you had a menu previously attached
+		//TODO(fran): we could try to use this to manage state destruction
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_GETTEXT://we should return NULL
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	default:
-	case 49558: //TaskbarButtonCreated, where that comes from or what that does I have no clue
-	{
-		TCHAR arr[256];
-		int res = GetClipboardFormatName(49558, arr, 256); //IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages, these are: "String messages for use by applications."
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	}
 #ifdef _DEBUG
 		Assert(0);
 #else 
@@ -3471,7 +2564,19 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	TabOffset.bottomOffset = TabOffset.leftOffset;
 	TabOffset.topOffset = 24;
 
-	CreateFonts();
+	LOGFONTW lf{0};
+	lf.lfQuality = CLEARTYPE_QUALITY;
+	lf.lfHeight = -15;//TODO(fran): parametric
+	//INFO: by default if I dont set faceName it uses "Modern", looks good but it lacks some charsets
+	wcsncpy_s(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
+	
+	unCap_fonts.General = CreateFontIndirectW(&lf);
+	if (!unCap_fonts.General) MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
+
+	lf.lfHeight = (LONG)((float)GetSystemMetrics(SM_CYMENU)*.85f);
+
+	unCap_fonts.Menu = CreateFontIndirectW(&lf);
+	if (!unCap_fonts.Menu) MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
 
 	init_wndclass_unCap_uncap_nc(hInstance);
 

@@ -21,3 +21,13 @@ union UNCAP_COLORS {
 };
 
 extern UNCAP_COLORS unCap_colors;
+
+union UNCAP_FONTS {
+	struct {
+		HFONT General;
+		HFONT Menu;
+	};
+	HFONT fonts[2];//REMEMBER to update
+};
+
+extern UNCAP_FONTS unCap_fonts;
