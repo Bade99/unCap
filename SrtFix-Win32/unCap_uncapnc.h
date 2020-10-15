@@ -9,6 +9,21 @@
 #include "resource.h" //TODO(fran): everything that we take from the resources must be parameterized
 #include "windows_undoc.h"
 
+// ------------------------ USAGE NOTES ------------------------ //
+// - If you need menus to resize, for example when you change languages
+//   you'll need to re-create the menu and set it up like new, I havent
+//   yet found a way to get windows' menu handler to want to recalculate
+//   menu sizes
+// - To be able to paint the menus ourselves we need them to be MF_OWNERDRAW,
+//   each menu item that has MF_OWNERDRAW must store the HMENU of its 
+//   parent into their itemData, hopefully this wont be needed some day
+// ------------------------------------------------------------- //
+
+// ------------------------ INTERNAL MSGS ------------------------ //
+#define UNCAPNC_MINIMIZE 100 //sent through WM_COMMAND
+#define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
+#define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
+
 constexpr TCHAR unCap_wndclass_uncap_nc[] = TEXT("unCap_wndclass_uncap_nc"); //Non client uncap
 
 struct unCapNcProcState {
@@ -18,15 +33,19 @@ struct unCapNcProcState {
 
 	HWND btn_min, btn_max, btn_close;
 
-	HMENU menu; //The menu that contains all the other menus, the ones that go in the menu bar, and the ones inside of each of those //every submenu asks this one for the bk brush
 
 	RECT rc_caption;
 	SIZE caption_btn;
 	bool active;
+
+	RECT rc_icon;
+
 	struct {//menu related
+		HMENU menu; //The menu that contains all the other menus, the ones that go in the menu bar, and the ones inside of each of those 
+					//IMPLEMENTATION: every submenu asks this one for the bk brush
 		RECT menubar_items[10];//coords are relative to wnd client
 		i32 menubar_itemcnt;
-		i32 menubar_mouseover_idx_from1;//NOTE: 0=no item is on mouseover, we'll start from 1 so in case you search by position you'll need to subtract 1
+		i32 menubar_mouseover_idx_from1;//IMPLEMENTATION: 0=no item is on mouseover, we'll start from 1 so in case you search by position you'll need to subtract 1
 	};
 };
 
@@ -41,7 +60,7 @@ ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
 	wcex.hInstance = inst;
 	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = unCap_colors.ControlBk;//TODO(fran): parametric, also is there a way to change this later?
+	wcex.hbrBackground = NULL;
 	wcex.lpszMenuName = 0;
 	wcex.lpszClassName = unCap_wndclass_uncap_nc;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
@@ -155,6 +174,35 @@ bool UNCAPNC_is_on_menu_bar(unCapNcProcState* state, UINT menuitem) {
 	return res;
 }
 
+//Mouse in screen coords
+void UNCAPNC_show_rclickmenu(unCapNcProcState* state, POINT mouse) {
+	HMENU m = CreateMenu();
+	HMENU subm = CreateMenu();//IMPORTANT: you need a MF_POPUP submenu for the menu wnd to be rendered properly, thanks https://www.codeproject.com/Questions/334598/Popup-Menu-Problem-is-not-working-properly
+	AppendMenuW(m, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)subm, (LPCWSTR)m);
+
+	//TODO(fran): UNCAPNC_RESTORE
+	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_MINIMIZE, (LPCWSTR)subm);
+	SetMenuItemString(subm, UNCAPNC_MINIMIZE, FALSE, TEXT("Minimize"));
+
+	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_MAXIMIZE, (LPCWSTR)subm);
+	SetMenuItemString(subm, UNCAPNC_MAXIMIZE, FALSE, TEXT("Maximize"));
+
+	AppendMenuW(subm, MF_SEPARATOR | MF_OWNERDRAW, 0, (LPCWSTR)subm);
+
+	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_CLOSE, (LPCWSTR)subm);
+	SetMenuItemString(subm, UNCAPNC_CLOSE, FALSE, TEXT("Close"));
+
+	MENUINFO mi{ sizeof(mi) };
+	mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
+	mi.hbrBack = unCap_colors.CaptionBk;
+	SetMenuInfo(m, &mi);
+
+	//NOTE: using tpm_returncmd would be a quick and simple cheat to get past msg collision problems and the like
+	//TrackPopupMenu(m, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, mouse.x, mouse.y, 0, state->wnd, 0);
+	TrackPopupMenuEx(subm, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, mouse.x, mouse.y, state->wnd, 0);
+	DestroyMenu(m);
+}
+
 //TODO(fran): add & at the beginning of menu string names, that's how you trigger them by pressing Alt+key https://stackoverflow.com/questions/38338426/meaning-of-ampersand-in-rc-files
 //TODO(fran): it'd also be interesting to see how it goes if we do SetMenu on the client
 //TODO(fran): UNDO support for comment removal
@@ -162,10 +210,6 @@ bool UNCAPNC_is_on_menu_bar(unCapNcProcState* state, UINT menuitem) {
 //TODO(fran): it'd be nice to have a way to implement good subclassing, eg letting the user assign clip regions where they can draw and we dont, things like that, more communication
 LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-#define UNCAPNC_MINIMIZE 100 //sent through WM_COMMAND
-#define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
-#define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
-
 	//printf(msgToString(msg)); printf("\n");
 	unCapNcProcState* state = UNCAPNC_get_state(hwnd);
 
@@ -175,13 +219,13 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_UAHDRAWMENU: //Non here were ever called
+	case WM_UAHDRAWMENU: //Sent for NON MF_OWNERDRAW menus
 	case WM_UAHDRAWMENUITEM:
 	case WM_UAHMEASUREMENUITEM:
 	case WM_UAHNCPAINTMENUPOPUP:
 	case WM_UAHUPDATE:
 	{
-		Assert(0);
+		printf(msgToString(msg)); printf("\n\n\n\n\n");
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_UAHINITMENU: //After a SetMenu: lParam=some system generated HMENU with your HMENU stored in the ""unused"" member ; wParam=0
@@ -215,6 +259,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			int icon_width = icon_height;
 			int icon_align_height = (RECTHEIGHT(state->rc_caption) - icon_height) / 2;
 			int icon_align_width = icon_align_height;
+			state->rc_icon = rectWH(icon_align_height, icon_align_width, icon_width, icon_height);
 			MYICON_INFO iconnfo = MyGetIconInfo(icon);
 			urender::draw_icon(dc, icon_align_height, icon_align_width, icon_width, icon_height, icon, 0, 0, iconnfo.nWidth, iconnfo.nHeight);
 
@@ -355,7 +400,16 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	case WM_NCLBUTTONDBLCLK:
 	{
 		LRESULT hittest = (LRESULT)wparam;
+
 		if (hittest == HTCAPTION) {
+			POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };
+			POINT cl_mouse = mouse; ScreenToClient(state->wnd, &cl_mouse);
+
+			if (test_pt_rc(cl_mouse, state->rc_icon)) { //TODO(fran): I cant get to here, menu shows straight away
+				PostMessage(state->wnd, WM_COMMAND, (WPARAM)MAKELONG(UNCAPNC_CLOSE, 0), (LPARAM)state->btn_close);//TODO(fran): should I use WM_CLOSE?
+				return 0;
+			}
+
 			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
 
 			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
@@ -527,7 +581,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			menu_type.cbSize = sizeof(menu_type);
 			menu_type.fMask = MIIM_FTYPE;
 			GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_type);
-			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be
+			menu_type.fType ^= MFT_OWNERDRAW; //remove ownerdraw since we know all guys should be //TODO(fran): I think we should still check for the flag being there
 			switch (menu_type.fType) {
 			case MFT_STRING:
 			{
@@ -543,6 +597,8 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				TCHAR* menu_str = (TCHAR*)malloc(menu_str_character_cnt * sizeof(TCHAR));
 				menu_nfo.dwTypeData = menu_str;
 				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
+
+				wprintf(L"%s\n", menu_str);
 
 				HDC dc = GetDC(hwnd); //Of course they had to ask for a dc, and not give the option to just provide the font, which is the only thing this function needs
 				HFONT hfntPrev = (HFONT)SelectObject(dc, unCap_fonts.Menu);//TODO(fran): parametric
@@ -569,6 +625,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				}
 				item->itemHeight = GetSystemMetrics(SM_CYMENU); //Height of menu
 
+				printf("width:%d ; height:%d\n", item->itemWidth, item->itemHeight);
 
 				return TRUE;
 			} break;
@@ -816,10 +873,12 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 	case WM_COMMAND:
 	{
+		//TODO(fran): reserved msg range for UNCAPNC
+
 		// Msgs from my controls
 		switch (LOWORD(wparam))
 		{
-		case UNCAPNC_MINIMIZE:
+		case UNCAPNC_MINIMIZE: //TODO(fran): move away from WM_COMMAND and start using WM_SYSCOMMAND, that probably means getting rid of the individual nc buttons and handling all myself like with the menubar
 		{
 			ShowWindow(state->wnd, SW_MINIMIZE);
 			return 0;
@@ -895,9 +954,9 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_ERASEBKGND:
+	case WM_ERASEBKGND://havent found a good use for this msg yet
 	{
-		return 1; //So we dont erase the menu bar
+		return 1;
 		//return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_MOVE:
@@ -978,11 +1037,12 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	} break;
 	case WM_NCLBUTTONDOWN:
 	{
-		POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) }; ScreenToClient(state->wnd, &mouse);
+		POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };
+		POINT cl_mouse = mouse; ScreenToClient(state->wnd, &cl_mouse);
 		if (wparam == HTMENU || wparam == HTSYSMENU) {//The menu was clicked, NOTE: for menus we dont wait for buttonup
 			for (int i = 0; i < state->menubar_itemcnt; i++) {
 				//TODO(fran): if the user selects the menu item, and then to try to close the submenu selects the menu item again it will re open the half a second ago closed menu, so you cant close it. It actually works correctly if the user presses and almost instantly presses again, if some time passes after the menu is show it doesnt work no more
-				if (test_pt_rc(mouse, state->menubar_items[i])) {
+				if (test_pt_rc(cl_mouse, state->menubar_items[i])) {
 					HMENU submenu = GetSubMenu(state->menu, i);
 					if (submenu) {
 						POINT menupt{ state->menubar_items[i].left,state->menubar_items[i].bottom-1 }; ClientToScreen(state->wnd, &menupt);
@@ -995,6 +1055,12 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				}
 			}
 			return 0;
+		}
+		else if (wparam == HTCAPTION) {
+			if (test_pt_rc(cl_mouse, state->rc_icon)) {
+				UNCAPNC_show_rclickmenu(state, mouse);
+				return 0;
+			}
 		}
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
@@ -1030,9 +1096,11 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_NCRBUTTONUP://TODO(fran): we can use this for spawning the menu for the nc (max,min,restore,close,...)
+	case WM_NCRBUTTONUP:
 	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
+		POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };
+		UNCAPNC_show_rclickmenu(state, mouse);
+		return 0;
 	} break;
 	case WM_ENTERMENULOOP://notif
 	{
@@ -1074,9 +1142,14 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case WM_QUERYOPEN://Sent when we are in icon form, aka minimized, and the user wants us restored //TODO(fran): we can use this
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case 49488: //TaskbarButtonCreated, seems like the same string changes ids
 	case 49558: //TaskbarButtonCreated, where that comes from or what that does I have no clue
 	case 49566: //TaskbarButtonCreated, where that comes from or what that does I have no clue
-	case 49895:
+	case 49895: //TaskbarButtonCreated
 	{
 		TCHAR arr[256];
 		int res = GetClipboardFormatName(msg, arr, 256); //IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages, these are: "String messages for use by applications."

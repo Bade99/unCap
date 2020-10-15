@@ -165,6 +165,8 @@ mask_bilinear_sample sample_bilinear_mask(img* mask, i32 x, i32 y) {
 namespace urender {
 	static ULONG_PTR gdiplusToken;//Horrible HACK, that gdi+ shouldnt need in the first place but the programmers had no idea what they were doing
 
+	//TODO(fran): use something with alpha (png?) for rendering masks https://stackoverflow.com/questions/1505586/gdi-using-drawimage-to-draw-a-transperancy-mask-of-the-source-image
+
 	void init() {
 #ifdef UNCAP_GDIPLUS
 		// Initialize GDI+
