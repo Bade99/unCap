@@ -26,13 +26,47 @@ template<typename F> Defer<F> operator+(defer_dummy, F&& f) { return makeDefer<F
 //usage: defer{block of code;}; //the last defer in a scope gets executed first (LIFO)
 #define defer auto _defer( __LINE__ ) = defer_dummy( ) + [ & ]( )
 
-RECT rectWH(LONG left, LONG top, LONG width, LONG height) {
+static RECT rectWH(LONG left, LONG top, LONG width, LONG height) {
 	RECT r;
 	r.left = left;
 	r.top = top;
 	r.right = r.left + width;
 	r.bottom = r.top + height;
 	return r;
+}
+
+static RECT rectNpxL(RECT r, int n) {
+	RECT res{ r.left,r.top,r.left + n,r.bottom };
+	return res;
+}
+static RECT rectNpxT(RECT r, int n) {
+	RECT res{ r.left,r.top,r.right,r.top + n };
+	return res;
+}
+static RECT rectNpxR(RECT r, int n) {
+	RECT res{ r.right - n,r.top,r.right,r.bottom };
+	return res;
+}
+static RECT rectNpxB(RECT r, int n) {
+	RECT res{ r.left ,r.bottom - n,r.right,r.bottom };
+	return res;
+}
+
+static RECT rect1pxL(RECT r) {
+	RECT res = rectNpxL(r, 1);
+	return res;
+}
+static RECT rect1pxT(RECT r) {
+	RECT res = rectNpxT(r, 1);
+	return res;
+}
+static RECT rect1pxR(RECT r) {
+	RECT res = rectNpxR(r, 1);
+	return res;
+}
+static RECT rect1pxB(RECT r) {
+	RECT res = rectNpxB(r, 1);
+	return res;
 }
 
 static bool test_pt_rc(POINT p, RECT r) {

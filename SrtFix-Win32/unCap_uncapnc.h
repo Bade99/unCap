@@ -24,6 +24,8 @@
 #define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
 #define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
 
+#define UNCAPNC_TIMER_MENUDELAY 0xf1 //A little delay before allowing the user to select a new menu, this prevents problems, eg the user trying to close the menu by selecting it again in the menu bar
+
 constexpr TCHAR unCap_wndclass_uncap_nc[] = TEXT("unCap_wndclass_uncap_nc"); //Non client uncap
 
 struct unCapNcProcState {
@@ -46,6 +48,7 @@ struct unCapNcProcState {
 		RECT menubar_items[10];//coords are relative to wnd client
 		i32 menubar_itemcnt;
 		i32 menubar_mouseover_idx_from1;//IMPLEMENTATION: 0=no item is on mouseover, we'll start from 1 so in case you search by position you'll need to subtract 1
+		bool menu_on_delay;//NOTE: the delay is only needed for left click accessed menus //TODO(fran): this is quite a bit of a cheap hack solution
 	};
 };
 
@@ -1035,31 +1038,55 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case WM_TIMER:
+	{
+		WPARAM timerID = wparam;
+		switch (timerID) {
+		case UNCAPNC_TIMER_MENUDELAY:
+		{
+			state->menu_on_delay = false;
+			KillTimer(state->wnd, timerID);
+			return 0;
+		} break;
+		default: return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
+	} break;
 	case WM_NCLBUTTONDOWN:
 	{
 		POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };
 		POINT cl_mouse = mouse; ScreenToClient(state->wnd, &cl_mouse);
 		if (wparam == HTMENU || wparam == HTSYSMENU) {//The menu was clicked, NOTE: for menus we dont wait for buttonup
-			for (int i = 0; i < state->menubar_itemcnt; i++) {
-				//TODO(fran): if the user selects the menu item, and then to try to close the submenu selects the menu item again it will re open the half a second ago closed menu, so you cant close it. It actually works correctly if the user presses and almost instantly presses again, if some time passes after the menu is show it doesnt work no more
-				if (test_pt_rc(cl_mouse, state->menubar_items[i])) {
-					HMENU submenu = GetSubMenu(state->menu, i);
-					if (submenu) {
-						POINT menupt{ state->menubar_items[i].left,state->menubar_items[i].bottom-1 }; ClientToScreen(state->wnd, &menupt);
-						TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION,menupt.x,menupt.y,0,state->wnd,0);
-						//TODO(fran): here we could pass our client wnd as the owner of the menu
-						//TODO(fran): TPM_RETURNCMD could be interesting
-						//TODO(fran): TPM_RECURSE ?
-						break;
+			if (!state->menu_on_delay) {
+				for (int i = 0; i < state->menubar_itemcnt; i++) {
+					//TODO(fran): if the user selects the menu item, and then to try to close the submenu selects the menu item again it will re open the half a second ago closed menu, so you cant close it. It actually works correctly if the user presses and almost instantly presses again, if some time passes after the menu is show it doesnt work no more
+					if (test_pt_rc(cl_mouse, state->menubar_items[i])) {
+						HMENU submenu = GetSubMenu(state->menu, i);
+						if (submenu) {
+							POINT menupt{ state->menubar_items[i].left,state->menubar_items[i].bottom - 1 }; ClientToScreen(state->wnd, &menupt);
+							TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, menupt.x, menupt.y, 0, state->wnd, 0);
+							//Set menu delay to stop possible reopening
+							state->menu_on_delay = true;
+							SetTimer(state->wnd, UNCAPNC_TIMER_MENUDELAY, 200, NULL);
+							//TODO(fran): here we could pass our client wnd as the owner of the menu
+							//TODO(fran): TPM_RETURNCMD could be interesting
+							//TODO(fran): TPM_RECURSE ?
+							break;
+						}
 					}
 				}
 			}
 			return 0;
 		}
 		else if (wparam == HTCAPTION) {
-			if (test_pt_rc(cl_mouse, state->rc_icon)) {
-				UNCAPNC_show_rclickmenu(state, mouse);
-				return 0;
+			if (!state->menu_on_delay) {
+				if (test_pt_rc(cl_mouse, state->rc_icon)) {
+					POINT mpos{ state->rc_icon.left,state->rc_icon.bottom }; ClientToScreen(state->wnd, &mpos);
+					UNCAPNC_show_rclickmenu(state, mpos);
+					//Set menu delay to stop possible reopening
+					state->menu_on_delay = true;
+					SetTimer(state->wnd, UNCAPNC_TIMER_MENUDELAY, 200, NULL);
+					return 0;
+				}
 			}
 		}
 		return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -1146,6 +1173,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case 49467:
 	case 49488: //TaskbarButtonCreated, seems like the same string changes ids
 	case 49558: //TaskbarButtonCreated, where that comes from or what that does I have no clue
 	case 49566: //TaskbarButtonCreated, where that comes from or what that does I have no clue

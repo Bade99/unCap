@@ -1081,10 +1081,103 @@ void CleanTabRelatedControls() {//TODO(fran): probably should ask for a blank TE
 	EnableTab(blank);
 }
 
-LRESULT CALLBACK TabProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+#define BORDERLEFT 0x01
+#define BORDERTOP 0x02
+#define BORDERRIGHT 0x04
+#define BORDERBOTTOM 0x08
+//NOTE: borders dont get centered, if you choose 5 it'll go 5 into the rc. TODO(fran): centered borders
+void FillRectBorder(HDC dc, RECT r, int thickness, HBRUSH br, u8 borders) {
+	RECT borderrc;
+	if (borders & BORDERLEFT)	{ borderrc = rectNpxL(r, thickness); FillRect(dc, &borderrc, br); }
+	if (borders & BORDERTOP)	{ borderrc = rectNpxT(r, thickness); FillRect(dc, &borderrc, br); }
+	if (borders & BORDERRIGHT)	{ borderrc = rectNpxR(r, thickness); FillRect(dc, &borderrc, br); }
+	if (borders & BORDERBOTTOM) { borderrc = rectNpxB(r, thickness); FillRect(dc, &borderrc, br); }
+}
+
+LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: if I ever feel like managing WM_PAINT: https://social.msdn.microsoft.com/Forums/expression/en-US/d25d08fb-acf1-489e-8e6c-55ac0f3d470d/tab-controls-in-win32-api?forum=windowsuidevelopment
-	switch (Msg) {
-		//TODO(fran): NCPAINT
+	printf(msgToString(msg)); printf("\n");
+	switch (msg) {
+#if 1
+	case WM_PAINT://TODO(fran): there's a mysterious pair of scroll buttons that appear when we open too many tabs, being rendered god knows where
+	{
+		PAINTSTRUCT ps;
+		HDC dc = BeginPaint(hwnd, &ps);
+		RECT tabrc; GetClientRect(hwnd, &tabrc);
+		HBRUSH borderbr = unCap_colors.Img;
+		int border_thickness = 1;
+
+		int itemcnt = TabCtrl_GetItemCount(hwnd);
+		int cursel = TabCtrl_GetCurSel(hwnd);
+
+		RECT itemsrc=tabrc;
+		int og_top = itemsrc.top;
+		HFONT tabfont = (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0);
+		HFONT oldfont = SelectFont(dc, tabfont); defer{ SelectFont(dc, oldfont); };
+		for (int i = 0; i < itemcnt; i++)
+		{
+			RECT itemrc; TabCtrl_GetItemRect(hwnd, i,&itemrc);
+			u8 borderflags = BORDERLEFT | BORDERTOP | BORDERRIGHT;
+			if (cursel != i) {
+				borderflags |= BORDERBOTTOM;
+				itemsrc.top = og_top + max(1, (LONG)((float)RECTHEIGHT(itemrc)*.1f));
+			}
+			else {
+				itemsrc.top = og_top;
+			}
+			itemsrc.right = itemrc.right;
+			itemsrc.bottom = itemrc.bottom;//TODO(fran): find out correct height (tcm_adjustrect?)
+			FillRectBorder(dc, itemsrc, border_thickness, borderbr, borderflags);
+
+			int tabcontrol_identifier = GetDlgCtrlID(hwnd);
+
+			DRAWITEMSTRUCT drawitem;
+			drawitem.CtlType = ODT_TAB;
+			drawitem.CtlID= tabcontrol_identifier;
+			drawitem.itemID = i;
+			drawitem.itemAction = ODA_DRAWENTIRE | ODA_SELECT;
+			drawitem.itemState = ODS_DEFAULT;//TODO(fran): ODS_HOTLIGHT , ODS_SELECTED if cursel==i
+			drawitem.hwndItem = hwnd;
+			drawitem.hDC = dc;
+			RECT drawitemrc = itemsrc;
+			InflateRect(&drawitemrc, -1, -1);
+			drawitem.rcItem = drawitemrc;
+			/*TODO(fran):
+			By default, the itemData member of DRAWITEMSTRUCT contains the value of the lParam member of the TCITEM structure.
+			However, if you change the amount of application-defined data per tab, itemData contains the address of the data instead.
+			You can change the amount of application-defined data per tab by using the TCM_SETITEMEXTRA message.
+			*/
+			//TCITEM itemnfo; itemnfo.mask = TCIF_PARAM;
+			//TabCtrl_GetItem(hwnd, i, &itemnfo); //NOTE: beware, I have a custom tcitem so this writes mem it shouldnt, we gotta check if it is custom or not somehow
+			//drawitem.itemData = itemnfo.lParam;
+			drawitem.itemData = 0;
+
+			//TODO(fran): I really feel like I should leave clipping to the user, it's very annoying being on the other side (I need to do clipping on the other side for it to look good when I shrink the tab size)
+			//Clip the drawing region
+			HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(dc, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
+			IntersectClipRect(dc, drawitem.rcItem.left, drawitem.rcItem.top, drawitem.rcItem.right, drawitem.rcItem.bottom);
+
+			SendMessage(GetParent(hwnd), WM_DRAWITEM, (WPARAM)tabcontrol_identifier, (LPARAM)&drawitem);
+
+			//Restore old region
+			SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion);
+
+			itemsrc.left = itemsrc.right;
+		}
+		itemsrc.right = tabrc.right;
+		u8 topflags = itemcnt ? BORDERBOTTOM : BORDERTOP;
+		FillRectBorder(dc, itemsrc, border_thickness, borderbr, topflags);
+		RECT rightrc = tabrc; rightrc.top = itemcnt ? itemsrc.bottom : itemsrc.top; FillRectBorder(dc, rightrc, border_thickness, borderbr, BORDERRIGHT);
+		RECT botleftrc = tabrc; botleftrc.top = itemcnt ? itemsrc.bottom : botleftrc.top;
+		FillRectBorder(dc, botleftrc, border_thickness, borderbr, BORDERLEFT | BORDERBOTTOM);
+
+		EndPaint(hwnd, &ps);
+	} break;
+#endif
+	case WM_NCPAINT://It seems like nothing is done on ncpaint
+	{
+		return 0;
+	} break;
 	case TCM_RESIZETABS:
 	{
 		int item_count = (int)SendMessage(hwnd, TCM_GETITEMCOUNT, 0, 0);
@@ -1128,7 +1221,7 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 			SetTextColor((HDC)wParam, ColorFromBrush(unCap_colors.ControlTxt));
 			return (LRESULT)unCap_colors.ControlBk;
 		}
-		else return DefSubclassProc(hwnd, Msg, wParam, lParam);
+		else return DefSubclassProc(hwnd, msg, wParam, lParam);
 	}
 	case WM_LBUTTONUP:
 	{
@@ -1157,7 +1250,7 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 		//Any hwnd should be destroyed
 		DestroyWindow(info.hText);
 
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, msg, wParam, lParam);
 	}
 	//case WM_PARENTNOTIFY:
 	//{
@@ -1182,10 +1275,10 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT
 			EnableTab(new_item.extra_info);
 		}
 
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, msg, wParam, lParam);
 	}
 	default:
-		return DefSubclassProc(hwnd, Msg, wParam, lParam);
+		return DefSubclassProc(hwnd, msg, wParam, lParam);
 	}
 	return 0;
 }
@@ -1364,7 +1457,10 @@ LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UI
 		EndPaint(hwnd, &ps);
 		return 0;
 	} break;
-
+	case WM_ERASEBKGND: 
+	{
+		return 1;
+	} break;
 	//case WM_NCDESTROY:
 	//{
 	//	RemoveWindowSubclass(hwnd, this->ComboProc, uIdSubclass);
@@ -2095,12 +2191,12 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	{
 		DRAWITEMSTRUCT* item = (DRAWITEMSTRUCT*)lparam;
 		switch (wparam) {//wParam specifies the identifier of the control that needs painting
-		case TABCONTROL:
+		case TABCONTROL: //TODO(fran): this whole thing shouldnt happen here, if I make a good tab control the user should be able to set up everything like they want and let me handle the stupidly long drawing routines
 		{
-			switch (item->itemAction) {//Determines what I have to do with the control
-			case ODA_DRAWENTIRE://Draw everything
-			case ODA_FOCUS://Control lost or gained focus, check itemState
-			case ODA_SELECT://Selection status changed, check itemState
+			if(item->itemAction & (ODA_DRAWENTIRE | ODA_FOCUS | ODA_SELECT)) {//Determines what I have to do with the control
+				//ODA_DRAWENTIRE:Draw everything
+				//ODA_FOCUS:Control lost or gained keyboard focus, check itemState
+				//ODA_SELECT:Selection status changed, check itemState
 				//Fill background //TODO(fran): the original background is still visible for some reason
 				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
 				//IMPORTANT INFO: this is no region set so I can actually draw to the entire control, useful for going over what the control draws
@@ -2187,7 +2283,6 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				}
 				//TODO?(fran): add a plus sign for the last tab and when pressed launch choosefile? or no plus sign at all since we dont really need it
 
-				break;
 			}
 
 			return TRUE;
