@@ -216,6 +216,8 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	//printf(msgToString(msg)); printf("\n");
 	unCapNcProcState* state = UNCAPNC_get_state(hwnd);
 
+	constexpr int menu_delay_ms = 100;
+
 	switch (msg)
 	{
 	case WM_UAHDESTROYWINDOW: //Only called when the window is being destroyed, wparam=lparam=0
@@ -1066,7 +1068,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 							TrackPopupMenu(submenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_LEFTBUTTON | TPM_NOANIMATION, menupt.x, menupt.y, 0, state->wnd, 0);
 							//Set menu delay to stop possible reopening
 							state->menu_on_delay = true;
-							SetTimer(state->wnd, UNCAPNC_TIMER_MENUDELAY, 200, NULL);
+							SetTimer(state->wnd, UNCAPNC_TIMER_MENUDELAY, menu_delay_ms, NULL);
 							//TODO(fran): here we could pass our client wnd as the owner of the menu
 							//TODO(fran): TPM_RETURNCMD could be interesting
 							//TODO(fran): TPM_RECURSE ?
@@ -1084,7 +1086,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 					UNCAPNC_show_rclickmenu(state, mpos);
 					//Set menu delay to stop possible reopening
 					state->menu_on_delay = true;
-					SetTimer(state->wnd, UNCAPNC_TIMER_MENUDELAY, 200, NULL);
+					SetTimer(state->wnd, UNCAPNC_TIMER_MENUDELAY, menu_delay_ms, NULL);
 					return 0;
 				}
 			}

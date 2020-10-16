@@ -23,7 +23,7 @@
 #include <Windowsx.h> //GET_X_LPARAM GET_Y_LPARAM
 #include "Open_Save_FileHandler.h"
 #include <string>
-#include <experimental/filesystem>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <propvarutil.h>
@@ -32,7 +32,6 @@
 #include <Commdlg.h>
 #include <Commctrl.h>
 #include <Shellapi.h>
-#include <wchar.h> //_wcsdup
 #include "LANGUAGE_MANAGER.h"
 #include <Shlobj.h>//SHGetKnownFolderPath
 #include "utf8.h" //Thanks to http://utfcpp.sourceforge.net/
@@ -56,13 +55,11 @@
 //#pragma comment(lib,"User32.lib")
 
 //----------------------NAMESPACES----------------------:
-using namespace std;
-namespace fs = std::experimental::filesystem;
-
+//using namespace std;
 
 //----------------------TODOs----------------------:
 //Paint Initial char and Final char wnds to look like the rest, add white border so they are more easily noticeable
-//Parametric sizes for everything, and DPI awareness for controls that dont move
+//Parametric sizes for everything, and DPI awareness for controls
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 //Option to retain original file encoding on save, otherwise utf8/user defined default
 //Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
@@ -108,7 +105,7 @@ enum COMMENT_TYPE {
 	brackets = 0, parenthesis, braces, other
 };
 
-struct TEXT_INFO {
+struct TAB_INFO {
 	//TODO(fran): will we store the data for each control or store the controls themselves and hide them?
 	HWND hText = NULL;
 	WCHAR filePath[MAX_PATH] = { 0 };//TODO(fran): nowadays this isn't really the max path lenght
@@ -120,7 +117,7 @@ struct TEXT_INFO {
 
 struct CUSTOM_TCITEM {
 	TC_ITEMHEADER tab_info;
-	TEXT_INFO extra_info;
+	TAB_INFO extra_info;
 };
 
 struct TABCLIENT { //Construct the "client" space of the tab control from this offsets, aka the space where you put your controls, in my case text editor
@@ -137,11 +134,6 @@ TCHAR unCap_wndclass_uncap_cl[] = TEXT("unCap_wndclass_uncap_cl"); //Client unca
 
 TCHAR appName[] = TEXT("unCap"); //Program name, to be displayed on the title of windows
 
-HMENU hMenu;//main menu bar(only used to append the rest)
-HMENU hFileMenu;
-HMENU hFileMenuLang;
-
-HWND hMain;//main window where everything else is displayed
 HWND hFile;//window for file directory //TODO(fran): remove this guy, and the stupid things that depend on it; for now I'll just hide it
 HWND hOptions;
 HWND hInitialText;
@@ -149,14 +141,9 @@ HWND hInitialChar;
 HWND hFinalText;
 HWND hFinalChar;
 HWND hRemove;
-//HWND hSubs;//window for file contents
 HWND hRemoveCommentWith;
-//HWND hRemoveProgress;
-//HWND hReadFile;
 HWND TextContainer;//The tab control where the text editors are "contained"
 HWND hMessage;//Show timed messages
-
-HMENU hPopupMenu;
 
 bool Backup_Is_Checked = false; //info file check, do backup or not
 
@@ -181,9 +168,9 @@ const wchar_t *info_parameters[] = {
 	L"[backup]=",
 	L"[locale]="
 };
-#define NRO_INFO_PARAMETERS size(info_parameters)
+#define NRO_INFO_PARAMETERS std::size(info_parameters)
 
-wstring last_accepted_file_dir = L""; //Path of the last valid file directory
+std::wstring last_accepted_file_dir = L""; //Path of the last valid file directory
 
 RECT rcMainWnd = {75,75,600,850}; //Main window size and position //TODO(fran) this only needs to exist during startup
 
@@ -204,45 +191,43 @@ CLOSEBUTTON TabCloseButtonInfo; //Information for the placement of the close but
 
 //----------------------HELPER FUNCTIONS----------------------:
 
-
-
-inline bool FileOrDirExists(const wstring& file) {
-	return fs::exists(file);//true if exists
+inline bool FileOrDirExists(const std::wstring& file) {
+	return std::filesystem::exists(file);//true if exists
 }
 
 //Retrieves full path to the info for program startup
-wstring GetInfoPath() {
+std::wstring GetInfoPath() {
 	//Load startup info
 	PWSTR folder_path;
 	HRESULT folder_res = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &folder_path);//TODO(fran): this is only supported on windows vista and above
 	//INFO: no retorna la ultima barra, la tenés que agregar vos, tambien te tenés que encargar de liberar el string
 	Assert(SUCCEEDED(folder_res));
-	wstring known_folder = folder_path;
+	std::wstring known_folder = folder_path;
 	CoTaskMemFree(folder_path);
-	wstring info_folder = L"unCap";
-	wstring info_file = L"info";
-	wstring info_extension = L"txt";//just so the user doesnt even have to open the file manually on windows
+	std::wstring info_folder = L"unCap";
+	std::wstring info_file = L"info";
+	std::wstring info_extension = L"txt";//just so the user doesnt even have to open the file manually on windows
 
-	wstring info_file_path = known_folder + L"\\" + info_folder + L"\\" + info_file + L"." + info_extension;
+	std::wstring info_file_path = known_folder + L"\\" + info_folder + L"\\" + info_file + L"." + info_extension;
 	return info_file_path;
 }
 
-wstring GetInfoDirectory() {
+std::wstring GetInfoDirectory() {
 	//TODO(fran): quick and dirty, make this nice, possibly put each part of the path on a struct
 	PWSTR folder_path;
 	HRESULT folder_res = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &folder_path);//TODO(fran): this is only supported on windows vista and above
 	//INFO: no retorna la ultima barra, la tenés que agregar vos, tambien te tenés que encargar de liberar el string
 	Assert(SUCCEEDED(folder_res));
-	wstring known_folder = folder_path;
+	std::wstring known_folder = folder_path;
 	CoTaskMemFree(folder_path);
-	wstring info_folder = L"unCap";
+	std::wstring info_folder = L"unCap";
 
-	wstring info_file_dir = known_folder + L"\\" + info_folder;
+	std::wstring info_file_dir = known_folder + L"\\" + info_folder;
 	return info_file_dir;
 }
 
-//Returns the nth tab's text info or a TEXT_INFO struct with everything set to 0
-TEXT_INFO GetTabExtraInfo(int index) {
+//Returns the nth tab's text info or a TAB_INFO struct with everything set to 0
+TAB_INFO GetTabExtraInfo(int index) {
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		item.tab_info.mask = TCIF_PARAM;
@@ -252,18 +237,18 @@ TEXT_INFO GetTabExtraInfo(int index) {
 		}
 		//TODO(fran): error handling
 	}
-	TEXT_INFO invalid = { 0 };
+	TAB_INFO invalid = { 0 };
 	return invalid;
 }
 
-//Returns the current tab's text info or a TEXT_INFO struct with everything set to 0
-TEXT_INFO GetCurrentTabExtraInfo() {
+//Returns the current tab's text info or a TAB_INFO struct with everything set to 0
+TAB_INFO GetCurrentTabExtraInfo() {
 	int index = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
 
 	return GetTabExtraInfo(index);
 }
 
-wstring GetTabTitle(int index){
+std::wstring GetTabTitle(int index){
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		WCHAR title[200];
@@ -278,7 +263,7 @@ wstring GetTabTitle(int index){
 	return L"";
 }
 
-BOOL SetTabExtraInfo(int index,const TEXT_INFO& text_data) {
+BOOL SetTabExtraInfo(int index,const TAB_INFO& text_data) {
 	CUSTOM_TCITEM item;
 	item.tab_info.mask = TCIF_PARAM;
 	item.extra_info = text_data;
@@ -287,7 +272,7 @@ BOOL SetTabExtraInfo(int index,const TEXT_INFO& text_data) {
 	return ret;
 }
 
-BOOL SetCurrentTabTitle(wstring title) {
+BOOL SetCurrentTabTitle(std::wstring title) {
 	int index = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
 	if (index != -1) {
 		CUSTOM_TCITEM item;
@@ -322,13 +307,15 @@ BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
 }
 
 //if new_filename==NULL || *new_filename == NULL then filename related info is cleared
-void UpdateMainWindowTitle_Filename(const WCHAR* new_filename) {
+void SetText_file_app(HWND wnd, const TCHAR* new_filename, const TCHAR* new_appname) {
 	if (new_filename == NULL || *new_filename == NULL) {
-		SetWindowTextW(hMain, appName);
+		SetWindowTextW(wnd, new_appname);
 	}
 	else {
-		wstring title_window = wstring(new_filename) + L" - " + appName;
-		SetWindowTextW(hMain, title_window.c_str());
+		std::wstring title_window = new_filename;  
+		title_window += L" - ";
+		title_window += new_appname;
+		SetWindowTextW(wnd, title_window.c_str());
 	}
 }
 
@@ -338,23 +325,20 @@ LRESULT CALLBACK	ComboProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK    UncapNcProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK	UncapClProc(HWND, UINT, WPARAM, LPARAM);
-void				ChooseFile(wstring);
+void				ChooseFile(std::wstring);
 void				CommentRemoval(HWND, FILE_FORMAT, WCHAR, WCHAR);
 void				CustomCommentRemoval(HWND, FILE_FORMAT);
 void				EnableOtherChar(bool);
-void				DoBackup();
-void				DoSave(HWND,wstring);
-HRESULT				DoSaveAs(HWND);
 void				CatchDrop(WPARAM);
 void				CreateInfoFile(HWND);
 void				CheckInfoFile();
-void				AcceptedFile(wstring);
-ENCODING			GetTextEncoding(wstring);
+void				AcceptedFile(std::wstring);
+ENCODING			GetTextEncoding(std::wstring);
 
 /// <summary>
 /// Decides which font FaceName is appropiate for the current system
 /// </summary>
-wstring GetFontFaceName() {
+std::wstring GetFontFaceName() {
 	//Font guidelines: https://docs.microsoft.com/en-us/windows/win32/uxguide/vis-fonts
 	//Stock fonts: https://docs.microsoft.com/en-us/windows/win32/gdi/using-a-stock-font-to-draw-text
 
@@ -368,16 +352,16 @@ wstring GetFontFaceName() {
 	//-Microsoft JhengHei or UI (look the same,good txt,ok jp) (3 codepages) (supported on most versions of windows)
 
 	HDC hdc = GetDC(GetDesktopWindow()); //You can use any hdc, but not NULL
-	vector<wstring> fontnames;
+	std::vector<std::wstring> fontnames;
 	EnumFontFamiliesEx(hdc, NULL
-		, [](const LOGFONT *lpelfe, const TEXTMETRIC* /*lpntme*/, DWORD /*FontType*/, LPARAM lParam)->int {((vector<wstring>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
+		, [](const LOGFONT *lpelfe, const TEXTMETRIC* /*lpntme*/, DWORD /*FontType*/, LPARAM lParam)->int {((std::vector<std::wstring>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
 	, (LPARAM)&fontnames, NULL);
 	
 	const WCHAR* requested_fontname[] = { TEXT("Segoe UI"), TEXT("Arial Unicode MS"), TEXT("Microsoft YaHei"), TEXT("Microsoft YaHei UI")
 										, TEXT("Microsoft JhengHei"), TEXT("Microsoft JhengHei UI")};
 
 	for(int i=0;i< ARRAYSIZE(requested_fontname);i++)
-		if(std::any_of(fontnames.begin(), fontnames.end(), [f=requested_fontname[i]](wstring s) {return !s.compare(f); })) return requested_fontname[i];
+		if(std::any_of(fontnames.begin(), fontnames.end(), [f=requested_fontname[i]](std::wstring s) {return !s.compare(f); })) return requested_fontname[i];
 	
 	return L"";
 }
@@ -386,14 +370,14 @@ wstring GetFontFaceName() {
 /// Performs comment removal for .srt type formats
 /// </summary>
 /// <returns>The number of comments removed, 0 indicates no comments were found</returns>
-size_t CommentRemovalSRT(wstring& text, WCHAR start, WCHAR end) {
+size_t CommentRemovalSRT(std::wstring& text, WCHAR start, WCHAR end) {
 	size_t comment_count = 0;
 	size_t start_pos = 0, end_pos = 0;
 
 	while (true) {
 		start_pos = text.find(start, start_pos);
 		end_pos = text.find(end, start_pos + 1);//+1, dont add it here 'cause breaks the if when end_pos=-1(string::npos)
-		if (start_pos == wstring::npos || end_pos == wstring::npos) {
+		if (start_pos == std::wstring::npos || end_pos == std::wstring::npos) {
 			//SendMessage(hRemoveProgress, PBM_SETPOS, text_length, 0);
 			break;
 		}
@@ -408,7 +392,7 @@ size_t CommentRemovalSRT(wstring& text, WCHAR start, WCHAR end) {
 /// Performs comment removal for all .ssa versions including .ass (v1,v2,v3,v4,v4+)
 /// </summary>
 /// <returns>The number of comments removed, 0 indicates no comments were found</returns>
-size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
+size_t CommentRemovalSSA(std::wstring& text, WCHAR start, WCHAR end) {
 
 	// Removing comments for Substation Alpha format (.ssa) and Advanced Substation Alpha format (.ass)
 	//https://wiki.multimedia.cx/index.php/SubStation_Alpha
@@ -438,11 +422,11 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 	while (true) {
 		//Find the "start" character
 		start_pos = text.find(start, start_pos);
-		if (start_pos == wstring::npos) break;
+		if (start_pos == std::wstring::npos) break;
 
 		//Check that the character is in a line that start with "Dialogue:"
 		line_pos = text.find_last_of(L'\n', start_pos);
-		if (line_pos == wstring::npos) line_pos = 0; //We are on the first line
+		if (line_pos == std::wstring::npos) line_pos = 0; //We are on the first line
 		else line_pos++; //We need to start checking from the next char after the end of line, eg "\nDialogue:" we want the "D"
 		if (text.compare(line_pos, text_marker_size - 1, text_marker)) {//if true the line where we found a possible comment does not start with the desired string
 			start_pos++; //Since we made no changes to the string at start_pos we have to move start_pos one char forward so we dont get stuck 
@@ -463,14 +447,14 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 		// How to perform the check: we have to go back from our position and search for the closest "{\" in our same line, but also check that there is
 		// no "}" that is closer
 		size_t command_begin_pos = text.rfind(L"{\\", start_pos); //We found a command, are we inside it?
-		if (command_begin_pos != wstring::npos) {
+		if (command_begin_pos != std::wstring::npos) {
 			if (command_begin_pos >= line_pos) {//Check that the "{\" is on the same line as us
 				//INFO: we are going to assume that nesting {} or {\} inside a {\} is invalid and is never used, otherwise add this extra check (probably needs a loop)
 				//size_t possible_comment_begin_pos; //Closest "{" going backwards from our current position
 				//possible_comment_begin_pos = text.find_last_of(L'{', start_pos);
 				size_t possible_comment_end_pos; //Closest "}" going forwards from command begin position
 				possible_comment_end_pos = text.find_first_of(L'}', command_begin_pos);
-				if (possible_comment_end_pos == wstring::npos) break; //There's a command that has no end, invalid
+				if (possible_comment_end_pos == std::wstring::npos) break; //There's a command that has no end, invalid
 				//TODO(fran): add check if the comment end is on the same line
 				if (possible_comment_end_pos > start_pos) { //TODO(fran): what to do if they are equal??
 					start_pos++;
@@ -480,7 +464,7 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 		}
 
 		end_pos = text.find(end, start_pos + 1); //Search for the end of the comment
-		if (end_pos == wstring::npos) break; //There's no "comment end" so lets just exit the loop, the file is probably incorrectly written
+		if (end_pos == std::wstring::npos) break; //There's no "comment end" so lets just exit the loop, the file is probably incorrectly written
 
 		text.erase(text.begin() + start_pos, text.begin() + end_pos + 1); //Erase the entire comment, including the "comment end" char, that's what the +1 is for
 		comment_count++; //Update comment count
@@ -491,7 +475,7 @@ size_t CommentRemovalSSA(wstring& text, WCHAR start, WCHAR end) {
 //si hay /n antes del corchete que lo borre tmb (y /r tmb)
 void CommentRemoval(HWND hText, FILE_FORMAT format, WCHAR start,WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
 	int text_length = GetWindowTextLengthW(hText) + 1;
-	wstring text(text_length, L'\0');
+	std::wstring text(text_length, L'\0');
 	GetWindowTextW(hText, &text[0], text_length);
 	size_t comment_count=0;
 	switch (format) {
@@ -504,7 +488,7 @@ void CommentRemoval(HWND hText, FILE_FORMAT format, WCHAR start,WCHAR end) {//TO
 
 	if (comment_count) {
 		SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
-		wstring comment_count_str = fmt::format(RS(LANG_CONTROL_TIMEDMESSAGES), comment_count);
+		std::wstring comment_count_str = fmt::format(RS(LANG_CONTROL_TIMEDMESSAGES), comment_count);
 		SetWindowText(hMessage, comment_count_str.c_str());
 	}
 	else {
@@ -527,7 +511,7 @@ void CustomCommentRemoval(HWND hText, FILE_FORMAT format) {
 }
 
 ///Every line separation(\r or \n or \r\n) will be transformed into \r\n
-void ProperLineSeparation(wstring &text) {
+void ProperLineSeparation(std::wstring &text) {
 	unsigned int pos = 0;
 
 	while (pos <= text.length()) {//length doesnt include \0
@@ -552,53 +536,50 @@ void DoBackup() { //TODO(fran): option to change backup folder //TODO(fran): I f
 
 	int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
-	wstring orig_file(text_length, L'\0');
+	std::wstring orig_file(text_length, L'\0');
 	GetWindowTextW(hFile, &orig_file[0], text_length);
 
 	if (orig_file[0] != L'\0') {//Check in case there is invalid data on the controls
-		wstring new_file = orig_file;
+		std::wstring new_file = orig_file;
 		size_t found = new_file.find_last_of(L"\\")+1;
-		Assert(found != wstring::npos);
+		Assert(found != std::wstring::npos);
 		new_file.insert(found, L"SDH_");//TODO(fran): add SDH to resource file?
 
 		if (!CopyFileW(orig_file.c_str(), new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);;
 	}
 }
 
-void DoSave(HWND textControl, wstring save_file) { //got to pass the encoding to the function too, and do proper conversion
+std::wstring DoSave(HWND textControl, std::wstring save_file) { //got to pass the encoding to the function too, and do proper conversion
 
 	//https://docs.microsoft.com/es-es/windows/desktop/api/commdlg/ns-commdlg-tagofna
 	//http://www.winprog.org/tutorial/app_two.html
 
 	//SEARCH(fran):	WideCharToMultiByte  :: Maps a UTF-16 (wide character) string to a new character string. 
 	//				The new character string is not necessarily from a multibyte character set.
-
+	std::wstring res;
 	//AnimateWindow
 	//TODO(fran): add ProgressBar hReadFile
-	wofstream new_file(save_file, ios::binary);
+	std::wofstream new_file(save_file, std::ios::binary);
 	if (new_file.is_open()) {
-		new_file.imbue(locale(new_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, generate_header>));//TODO(fran): multiple options for save encoding
+		new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::generate_header>));//TODO(fran): multiple options for save encoding
 		int text_length = GetWindowTextLengthW(textControl) + 1;
-		wstring text(text_length, L'\0');
+		std::wstring text(text_length, L'\0');
 		GetWindowTextW(textControl, &text[0], text_length);
 		new_file << text;
 		new_file.close();
 
-		SetWindowText(hMessage, RCS(LANG_SAVE_DONE));
-		
-		SetWindowTextW(hFile, save_file.c_str()); //Update filename viewer
-		UpdateMainWindowTitle_Filename(save_file.c_str());
-		
-		SetCurrentTabTitle(save_file.substr(save_file.find_last_of(L"\\") + 1)); //Update tab name
-
+		res = save_file;
+				
 		//TODO(fran): this is a bit cheating since we are not actually showing the new file but the old one, so if there was some error or mismatch
 		//when saving the user wouldnt know
 	}
 	else MessageBoxW(NULL, RCS(LANG_SAVE_ERROR), RCS(LANG_ERROR), MB_ICONEXCLAMATION);
+	return res;
 } 
 
-HRESULT DoSaveAs(HWND textControl) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
+std::wstring GetSaveAsStr() //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
 {
+	std::wstring res;
 	// CoCreate the File Open Dialog object.
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);//single threaded, @multi?
 	IFileSaveDialog *pfsd = NULL;
@@ -766,7 +747,7 @@ HRESULT DoSaveAs(HWND textControl) //https://msdn.microsoft.com/en-us/library/wi
 				hr = pfsd->GetResult(&file_handler);
 				LPWSTR filename_holder=NULL;
 				hr = file_handler->GetDisplayName(SIGDN_FILESYSPATH, &filename_holder); //@check other options for the flag
-				DoSave(textControl, filename_holder);
+				res = filename_holder;
 				
 				CoTaskMemFree(filename_holder);
 				file_handler->Release();
@@ -785,7 +766,7 @@ HRESULT DoSaveAs(HWND textControl) //https://msdn.microsoft.com/en-us/library/wi
 		pfsd->Release();
 		CoUninitialize();
 	}
-	return hr;
+	return res;
 }
 
 BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
@@ -937,7 +918,7 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 //Adds a new item to the tab control, inside of which will be an edit control
 //·Populate text_data with the values you need except for any HWND
 //Returns position of the new Tab Item or -1 if failed
-int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) { //INFO: TabName only needs to be valid during the execution of this function
+int AddTab(HWND TabControl, int position, LPWSTR TabName, TAB_INFO text_data) { //INFO: TabName only needs to be valid during the execution of this function
 
 	RECT tab_rec,text_rec;
 	GetClientRect(TabControl,&tab_rec);
@@ -963,7 +944,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TEXT_INFO text_data) {
 
 	SendMessageW(TextControl, EM_SETVSCROLL, (WPARAM)VScrollControl, 0);
 
-	//TEXT_INFO* text_info = (TEXT_INFO*)HeapAlloc(GetProcessHeap(), HEAP_NO_SERIALIZE| HEAP_ZERO_MEMORY,sizeof(TEXT_INFO));
+	//TAB_INFO* text_info = (TAB_INFO*)HeapAlloc(GetProcessHeap(), HEAP_NO_SERIALIZE| HEAP_ZERO_MEMORY,sizeof(TAB_INFO));
 	//Assert(text_info);
 	//text_info->hText = TextControl;
 
@@ -993,7 +974,7 @@ int SaveAndDisableCurrentTab(HWND tabControl) {
 
 			int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
-			wstring text(text_length, L'\0');
+			std::wstring text(text_length, L'\0');
 			GetWindowTextW(hFile, &text[0], text_length);
 
 			if (text[0]!=L'\0') {//Check in case there is invalid data on the controls
@@ -1025,11 +1006,11 @@ int SaveAndDisableCurrentTab(HWND tabControl) {
 	return index;
 }
 
-int EnableTab(const TEXT_INFO& text_data) {
+int EnableTab(const TAB_INFO& text_data, HWND showtitle/*TODO(fran): remove*/) {
 	ShowWindow(text_data.hText, SW_SHOW);
 
 	SetWindowTextW(hFile, text_data.filePath);//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
-	UpdateMainWindowTitle_Filename(text_data.filePath);
+	SetText_file_app(showtitle,text_data.filePath,appName);
 
 	SendMessage(hOptions, CB_SETCURSEL, text_data.commentType, 0);
 
@@ -1076,11 +1057,6 @@ int TestCloseButton(HWND tabControl, CLOSEBUTTON closeButtonInfo, POINT p ) {
 	return -1;
 }
 
-void CleanTabRelatedControls() {//TODO(fran): probably should ask for a blank TEXT_INFO to some sort of constructor
-	TEXT_INFO blank = { 0 };
-	EnableTab(blank);
-}
-
 #define BORDERLEFT 0x01
 #define BORDERTOP 0x02
 #define BORDERRIGHT 0x04
@@ -1096,7 +1072,7 @@ void FillRectBorder(HDC dc, RECT r, int thickness, HBRUSH br, u8 borders) {
 
 LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: if I ever feel like managing WM_PAINT: https://social.msdn.microsoft.com/Forums/expression/en-US/d25d08fb-acf1-489e-8e6c-55ac0f3d470d/tab-controls-in-win32-api?forum=windowsuidevelopment
-	printf(msgToString(msg)); printf("\n");
+	//printf(msgToString(msg)); printf("\n");
 	switch (msg) {
 #if 1
 	case WM_PAINT://TODO(fran): there's a mysterious pair of scroll buttons that appear when we open too many tabs, being rendered god knows where
@@ -1225,28 +1201,34 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT
 	}
 	case WM_LBUTTONUP:
 	{
-		POINT p;
-		p.x = GET_X_LPARAM(lParam);
-		p.y = GET_Y_LPARAM(lParam);
+		POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
 		int index = TestCloseButton(hwnd, TabCloseButtonInfo, p);
 		if (index != -1) {
 			//Delete corresponding tab
 			SendMessage(hwnd, TCM_DELETEITEM, index, 0); //After this no other messages are sent and the tab control's index gets set to -1
 			//Now we have to send a TCM_SETCURSEL, but in the special case that no other tabs are left we should clean the controls
 			int item_count = (int)SendMessage(hwnd, TCM_GETITEMCOUNT, 0, 0);
-			if (item_count == 0) CleanTabRelatedControls();									//if there's no tabs left clean the controls
-			else if (index == item_count) SendMessage(hwnd, TCM_SETCURSEL, index - 1, 0);	//if the deleted tab was the rightmost one change to the one on the left
-			else SendMessage(hwnd, TCM_SETCURSEL, index, 0);								//otherwise change to the tab that now holds the index that this one did(will select the one on its right)
 
+			if (item_count == 0) { //Notify when no tabs are left
+				int tabcontrol_identifier = GetDlgCtrlID(hwnd);
+				NMHDR nmhdr;
+				nmhdr.hwndFrom = hwnd;
+				nmhdr.idFrom = tabcontrol_identifier;
+				nmhdr.code = TCN_SELCHANGE;
+				SendMessage(GetParent(hwnd), WM_NOTIFY, (WPARAM)tabcontrol_identifier, (LPARAM)&nmhdr);
+			}
+			else if (index == item_count) SendMessage(hwnd, TCM_SETCURSEL, index - 1, 0);	//if the deleted tab was the rightmost one change to the one on the left
+			else SendMessage(hwnd, TCM_SETCURSEL, index, 0); //otherwise change to the tab that now holds the index that this one did (will select the one on its right)
+			return 0;
 		} 
-		break;
+		return DefSubclassProc(hwnd, msg, wParam, lParam);
 	}
 	case TCM_DELETEITEM:
 	{
 		//Since right now our controls (text editor) are not children of the particular tab they dont get deleted when that one does, so gotta do it manually
 		int index = (int)wParam;
 
-		TEXT_INFO info = GetTabExtraInfo(index);
+		TAB_INFO info = GetTabExtraInfo(index);
 		//Any hwnd should be destroyed
 		DestroyWindow(info.hText);
 
@@ -1265,17 +1247,18 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT
 	//	return DefSubclassProc(hwnd, Msg, wParam, lParam);
 	//}
 	case TCM_SETCURSEL: //When sending SETCURSEL, TCN_SELCHANGING and TCN_SELCHANGE are no sent, therefore we have to do everything in one message here
+		//NOTE: the defproc for this msg does NOT notify the parent with TCN_SELCHANGING and TCN_SELCHANGE, so yet again, we have to do it
 	{
-		SaveAndDisableCurrentTab(hwnd);
-
-		CUSTOM_TCITEM new_item;
-		new_item.tab_info.mask = TCIF_PARAM;
-		BOOL ret = (BOOL)SendMessage(hwnd, TCM_GETITEM, wParam, (LPARAM)&new_item);
-		if (ret) {
-			EnableTab(new_item.extra_info);
-		}
-
-		return DefSubclassProc(hwnd, msg, wParam, lParam);
+		int tabcontrol_identifier = GetDlgCtrlID(hwnd);
+		NMHDR nmhdr;
+		nmhdr.hwndFrom = hwnd;
+		nmhdr.idFrom = tabcontrol_identifier;
+		nmhdr.code = TCN_SELCHANGING;
+		SendMessage(GetParent(hwnd), WM_NOTIFY, (WPARAM)tabcontrol_identifier, (LPARAM)&nmhdr);
+		LRESULT res = DefSubclassProc(hwnd, msg, wParam, lParam);
+		nmhdr.code = TCN_SELCHANGE;
+		SendMessage(GetParent(hwnd), WM_NOTIFY, (WPARAM)tabcontrol_identifier, (LPARAM)&nmhdr);
+		return res;
 	}
 	default:
 		return DefSubclassProc(hwnd, msg, wParam, lParam);
@@ -1295,6 +1278,7 @@ LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UI
 	static BOOL MouseOverCombo = FALSE;
 	static HWND CurrentMouseOverCombo;
 
+	printf(msgToString(msg)); printf("\n");
 	//TODO(fran): there's a small bug, when opening the list box sometimes the text for the previously selected item changes without the user pressing anything
 
 	//INFO: we require GetWindowLongPtr at "position" GWLP_USERDATA to be left for us to use
@@ -1326,9 +1310,24 @@ LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UI
 	case CB_SETCURSEL:
 	{
 		EnableOtherChar(wparam == COMMENT_TYPE::other); //TODO(fran): parent should receive this msg and execute this
-		InvalidateRect(hwnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
-		return DefSubclassProc(hwnd, msg, wparam, lParam);
+		//InvalidateRect(hwnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
+
+		LONG_PTR  dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
+		// turn off WS_VISIBLE
+		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle & ~WS_VISIBLE);
+
+		// perform the default action, minus painting
+		LRESULT ret = DefSubclassProc(hwnd, msg, wparam, lParam); //defproc for setcursel DOES DRAWING, we gotta do the good ol' trick of invisibility, also it seems that it stores a paint request instead, cause after I make it visible again it asks for wm_paint, as it should have in the first place
+
+		// turn on WS_VISIBLE
+		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle);
+
+		return ret;
 	}
+	case WM_NCPAINT:
+	{
+		return 0;
+	} break;
 	case WM_MOUSEHOVER:
 	{
 		//force button to repaint and specify hover or not
@@ -1534,7 +1533,7 @@ void AddControls(HWND hwnd, HINSTANCE hInstance) {
 	//INFO:https://docs.microsoft.com/en-us/windows/win32/controls/tab-controls
 	TextContainer = CreateWindowExW(WS_EX_ACCEPTFILES, WC_TABCONTROL, NULL, WS_CHILD | WS_VISIBLE | TCS_FORCELABELLEFT | TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH
 							, 10, y_place + 104, 664 - 50, 618, hwnd, (HMENU)TABCONTROL, NULL, NULL);
-	TabCtrl_SetItemExtra(TextContainer, sizeof(TEXT_INFO));
+	TabCtrl_SetItemExtra(TextContainer, sizeof(TAB_INFO));
 	int tabWidth = 100,tabHeight=20;
 	SendMessage(TextContainer, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
 	SetWindowSubclass(TextContainer, TabProc,0,0);
@@ -1571,7 +1570,7 @@ inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) { //TODO(fran): lam
 	return file[max(offsetToFirstFile - 1,0)] == L'\0';//TODO(fran): is this max useful? if [0] is not valid I think it will fail anyway
 }
 
-void ChooseFile(wstring ext) {
+void ChooseFile(std::wstring ext) {
 	//TODO(fran): support for folder selection?
 	//TODO(fran): check for mem-leaks, the moment I select the open-file menu 10MB of ram are assigned for some reason
 	WCHAR name[MAX_PATH_LENGTH]; //TODO(fran): I dont think this is big enough
@@ -1583,7 +1582,7 @@ void ChooseFile(wstring ext) {
 	new_file.hwndOwner = NULL;
 	new_file.lpstrFile = name; //used for the default file selected
 	new_file.nMaxFile = MAX_PATH_LENGTH; //TODO(fran): this will not be enough with multi-file (Pd. dont forget lpstrFile and name[])
-	wstring filter = RS(LANG_CHOOSEFILE_FILTER_ALL_1) + L'\0' + RS(LANG_CHOOSEFILE_FILTER_ALL_2) + L'\0' 
+	std::wstring filter = RS(LANG_CHOOSEFILE_FILTER_ALL_1) + L'\0' + RS(LANG_CHOOSEFILE_FILTER_ALL_2) + L'\0' 
 		+ RS(LANG_CHOOSEFILE_FILTER_SRT_1) + L'\0' + RS(LANG_CHOOSEFILE_FILTER_SRT_2) + L'\0' + L'\0';
 
 	new_file.lpstrFilter = filter.c_str();
@@ -1607,7 +1606,7 @@ void ChooseFile(wstring ext) {
 				if (new_file.lpstrFile[i]==L'\0') {
 					if (new_file.lpstrFile[i + 1] == L'\0') break;
 					else {
-						wstring onefile = new_file.lpstrFile;//Will only take data until the first \0 it finds
+						std::wstring onefile = new_file.lpstrFile;//Will only take data until the first \0 it finds
 						onefile += L'\\';
 						onefile += &new_file.lpstrFile[i+1];
 						files.push_back(onefile);
@@ -1626,9 +1625,9 @@ void ChooseFile(wstring ext) {
 }
 
 //Returns complete path of all the files found, if a folder is found files are searched inside it
-std::vector<wstring> GetFiles(LPCWSTR s)//, int dir_lenght)
+std::vector<std::wstring> GetFiles(LPCWSTR s)//, int dir_lenght)
 {
-	std::vector<wstring> files; //capaz deberia ser = L"";
+	std::vector<std::wstring> files; //capaz deberia ser = L"";
 	for (auto& p : std::experimental::filesystem::recursive_directory_iterator(s)) {
 		//if (p.status().type() == std::experimental::filesystem::file_type::directory) files.push_back(p.path().wstring().substr(dir_lenght, string::npos));
 		//else
@@ -1652,11 +1651,11 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 
 		if (DragQueryFileW(hDrop, i, lpszFile, sizeof(lpszFile) / sizeof(lpszFile[0]))) {//retrieve the string
 
-			if (fs::is_directory(fs::path(lpszFile))) {//user dropped a folder
-				std::vector<wstring>files = GetFiles(lpszFile);
+			if (std::filesystem::is_directory(std::filesystem::path(lpszFile))) {//user dropped a folder
+				std::vector<std::wstring>files = GetFiles(lpszFile);
 				//GetFiles2(lpszFile);
 
-				for (wstring const& file : files) {
+				for (std::wstring const& file : files) {
 					AcceptedFile(file); //process the new file
 				}
 
@@ -1669,7 +1668,7 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 	DragFinish(hDrop); //free mem
 }
 
-ENCODING GetTextEncoding(wstring filename) {
+ENCODING GetTextEncoding(std::wstring filename) {
 	
 	HANDLE file;
 	DWORD  dwBytesRead = 0;
@@ -1697,11 +1696,11 @@ ENCODING GetTextEncoding(wstring filename) {
 
 		//Check for UTF8
 
-		ifstream ifs(filename); //TODO(fran): can ifstream open wstring (UTF16 encoded) filenames?
+		std::ifstream ifs(filename); //TODO(fran): can ifstream open wstring (UTF16 encoded) filenames?
 		Assert(ifs);
 
-		istreambuf_iterator<char> it(ifs.rdbuf());
-		istreambuf_iterator<char> eos;
+		std::istreambuf_iterator<char> it(ifs.rdbuf());
+		std::istreambuf_iterator<char> eos;
 
 		bool isUTF8 = utf8::is_valid(it, eos); //there's also https://unicodebook.readthedocs.io/guess_encoding.html
 
@@ -1730,14 +1729,14 @@ ENCODING GetTextEncoding(wstring filename) {
 	}
 }
 
-COMMENT_TYPE CommentTypeFound(wstring &text) {
-	if (text.find_first_of(L'{') != wstring::npos) {
+COMMENT_TYPE CommentTypeFound(std::wstring &text) {
+	if (text.find_first_of(L'{') != std::wstring::npos) {
 		return COMMENT_TYPE::braces;
 	}
-	else if (text.find_first_of(L'[') != wstring::npos) {
+	else if (text.find_first_of(L'[') != std::wstring::npos) {
 		return COMMENT_TYPE::brackets;
 	}
-	else if (text.find_first_of(L'(') != wstring::npos) {
+	else if (text.find_first_of(L'(') != std::wstring::npos) {
 		return COMMENT_TYPE::parenthesis;
 	}
 	else {
@@ -1751,24 +1750,24 @@ COMMENT_TYPE CommentTypeFound(wstring &text) {
 /// <param name="filepath">path to the file you want read</param>
 /// <param name="text">place where the read file's text will be stored</param>
 /// <returns>TRUE if successful, FALSE otherwise</returns>
-BOOL ReadText(wstring filepath, wstring& text) {
+BOOL ReadText(std::wstring filepath, std::wstring& text) {
 
 	ENCODING encoding = GetTextEncoding(filepath);
 
-	wifstream file(filepath, ios::binary);
+	std::wifstream file(filepath, std::ios::binary);
 
 	if (file.is_open()) {
 
 		//set encoding for getline
 		if (encoding == ENCODING::UTF8)
-			file.imbue(locale(std::locale::empty(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));
 			//int a;
 			//maybe the only thing needed when utf8 is detectedd is to remove the BOM if it is there
 		else if (encoding == ENCODING::UTF16)
-			file.imbue(locale(std::locale::empty(), new codecvt_utf16<wchar_t, 0x10ffff, consume_header>));
+			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::consume_header>));
 		//if encoding is ANSI we do nothing
 
-		wstringstream buffer;
+		std::wstringstream buffer;
 		buffer << file.rdbuf();
 		text = buffer.str();
 
@@ -1784,10 +1783,10 @@ BOOL ReadText(wstring filepath, wstring& text) {
 /// </summary>
 /// <param name="filename">Full path of the file</param>
 /// <returns>The presumed file format</returns>
-FILE_FORMAT GetFileFormat(wstring& filename) {
+FILE_FORMAT GetFileFormat(std::wstring& filename) {
 	size_t extesion_pos = 0;
-	extesion_pos = filename.find_last_of(L'.', wstring::npos); //Look for file extesion
-	if (extesion_pos != wstring::npos && (extesion_pos + 1) < filename.length()) {
+	extesion_pos = filename.find_last_of(L'.', std::wstring::npos); //Look for file extesion
+	if (extesion_pos != std::wstring::npos && (extesion_pos + 1) < filename.length()) {
 		//We found and extension and checked that there's at least one char after the ".", lets see if we support it
 		//TODO(fran): create some sort of a map FILE_FORMAT-wstring eg FILE_FORMAT::SRT - L"srt" and a way to enumerate every FILE_FORMAT
 
@@ -1818,17 +1817,17 @@ FILE_FORMAT GetFileFormat(wstring& filename) {
 }
 
 //TODO(fran): we could try to offload the entire procedure of AcceptedFile to a new thread so in case we receive multiple files we process them in parallel
-void AcceptedFile(wstring filename) {
+void AcceptedFile(std::wstring filename) {
 
 	//save file dir
 	last_accepted_file_dir = filename.substr(0, filename.find_last_of(L"\\")+1);
 
 	//save file name+ext
-	wstring accepted_file_name_with_ext = filename.substr(filename.find_last_of(L"\\")+1);
+	std::wstring accepted_file_name_with_ext = filename.substr(filename.find_last_of(L"\\")+1);
 
 #if 0
 	//show file contents (new thread)
-	wstring text;
+	std::wstring text;
 	PGLP parameters = (PGLP)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(GLP));
 	parameters->text = &text;
 	wcsncpy(parameters->file, filename.c_str(), sizeof(parameters->file) / sizeof(parameters->file[0]));
@@ -1844,10 +1843,10 @@ void AcceptedFile(wstring filename) {
 	HeapFree(GetProcessHeap(), 0, parameters);
 	parameters = NULL;
 #endif
-	wstring text;
+	std::wstring text;
 	ReadText(filename, text);
 
-	TEXT_INFO text_data;
+	TAB_INFO text_data;
 	wcsncpy_s(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
 
 	int pos = GetNextTabPos();//TODO(fran): careful with multithreading here
@@ -1863,7 +1862,7 @@ void AcceptedFile(wstring filename) {
 
 		ProperLineSeparation(text);
 
-		TEXT_INFO new_text_data = GetTabExtraInfo(res);
+		TAB_INFO new_text_data = GetTabExtraInfo(res);
 
 		SetWindowTextW(new_text_data.hText, text.c_str());
 
@@ -1877,7 +1876,7 @@ void AcceptedFile(wstring filename) {
 }
 
 void CreateInfoFile(HWND mainWindow){
-	wstring info_save_file = GetInfoPath();
+	std::wstring info_save_file = GetInfoPath();
 
 	RECT rect;
 	GetWindowRect(mainWindow, &rect);
@@ -1889,9 +1888,9 @@ void CreateInfoFile(HWND mainWindow){
 	}
 
 	_wremove(info_save_file.c_str()); //@I dont know if it's necessary to check if the file exists
-	wofstream create_info_file(info_save_file);
+	std::wofstream create_info_file(info_save_file);
 	if (create_info_file.is_open()) {
-		create_info_file.imbue(locale(create_info_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, generate_header>));
+		create_info_file.imbue(std::locale(create_info_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::generate_header>));
 		create_info_file << info_parameters[RC_LEFT] << rect.left << L"\n";			//posx
 		create_info_file << info_parameters[RC_TOP] << rect.top << L"\n";			//posy
 		create_info_file << info_parameters[RC_RIGHT] << rect.right << L"\n";			//sizex
@@ -1906,11 +1905,11 @@ void CreateInfoFile(HWND mainWindow){
 	//@@it still happens that some times the positions and sizes are saved wrong, investigate!!
 }
 
-void removeInitialWhiteSpace(wstring &text){
+void removeInitialWhiteSpace(std::wstring &text){
 	while(iswspace(text[0]))text.erase(0, 1);
 }
 
-void AddInfoParameters(wstring parameters[]) {//@the debugger only shows the first parameter,why??
+void AddInfoParameters(std::wstring parameters[]) {//@the debugger only shows the first parameter,why??
 	//puts the new data into the global variables
 
 	if (parameters[RC_LEFT] != L"") {
@@ -1952,11 +1951,11 @@ void AddInfoParameters(wstring parameters[]) {//@the debugger only shows the fir
 
 }
 
-void GetInfoParameters(wstring info) {
+void GetInfoParameters(std::wstring info) {
 	
-	wstring parameters[NRO_INFO_PARAMETERS];
+	std::wstring parameters[NRO_INFO_PARAMETERS];
 
-	wstring temp_info=L"";
+	std::wstring temp_info=L"";
 
 	size_t initial_pos = 0;
 	size_t final_pos = 0;
@@ -1968,14 +1967,14 @@ void GetInfoParameters(wstring info) {
 		initial_pos = info.find(info_parameters[param], 0);
 		final_pos = info.find(L'\n', initial_pos);
 
-		if (initial_pos != string::npos) {
+		if (initial_pos != std::string::npos) {
 
 			initial_pos += wcslen(info_parameters[param]);//after the =
 
-			if(final_pos!=string::npos) 
-				temp_info = wstring(info.begin() + initial_pos, info.begin() + final_pos);
+			if(final_pos!= std::string::npos)
+				temp_info = std::wstring(info.begin() + initial_pos, info.begin() + final_pos);
 			else 
-				temp_info = wstring(info.begin() + initial_pos, info.end());//@check this
+				temp_info = std::wstring(info.begin() + initial_pos, info.end());//@check this
 			removeInitialWhiteSpace(temp_info);
 				parameters[param] = temp_info;//@check that this works
 		}
@@ -1989,14 +1988,14 @@ void GetInfoParameters(wstring info) {
 void CheckInfoFile() {	//changes default values if file exists
 	//@Check that the values are valid, eg for pos: 0 < x < [monitor height]
 	//@@Check that the values are there, if not I'm filling the vars with nonsense
-	wstring dir = GetInfoPath();
-	wifstream info_file(dir);
+	std::wstring dir = GetInfoPath();
+	std::wifstream info_file(dir);
 	if (info_file.is_open()) {
-		info_file.imbue(locale(info_file.getloc(), new codecvt_utf8<wchar_t, 0x10ffff, consume_header>));
+		info_file.imbue(std::locale(info_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));
 		
-		wstringstream buffer;
+		std::wstringstream buffer;
 		buffer << info_file.rdbuf();
-		//wstring info = buffer.str();
+		//std::wstring info = buffer.str();
 
 		info_file.close();
 		
@@ -2091,15 +2090,21 @@ void MenuChangeLang(LANGUAGE_MANAGER::LANGUAGE new_lang) {
 	LANGUAGE_MANAGER::Instance().ChangeLanguage(new_lang);
 
 	//Uncheck the old lang
-	CheckMenuItem(hFileMenu, old_lang, MF_BYCOMMAND | MF_UNCHECKED);
+	//CheckMenuItem(hFileMenu, old_lang, MF_BYCOMMAND | MF_UNCHECKED);
 
 	//Check the new one
-	CheckMenuItem(hFileMenu, new_lang, MF_BYCOMMAND | MF_CHECKED);
+	//CheckMenuItem(hFileMenu, new_lang, MF_BYCOMMAND | MF_CHECKED);
 }
 
 struct unCapClProcState {
 	HWND wnd;
 	HWND nc_parent;
+
+	struct {//menu related
+		HMENU menu;
+		HMENU menu_file;
+		HMENU menu_lang;
+	};
 };
 
 ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
@@ -2122,15 +2127,15 @@ ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
 }
 
 #include "unCap_uncapnc.h" //TODO(fran): move up once we have uncapcl in a separate .h
-void AddMenus(HWND hwnd) {
+void AddMenus(unCapClProcState* state) {
 	//NOTE: each menu gets its parent HMENU stored in the itemData part of the struct
-	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(hwnd);
+	LANGUAGE_MANAGER::Instance().AddMenuDrawingHwnd(state->wnd);
 
 	//INFO: the top 32 bits of an HMENU are random each execution, in a way, they can actually get set to FFFFFFFF or to 00000000, so if you're gonna check two of those you better make sure you cut the top part in BOTH
 
-	hMenu = CreateMenu();
-	hFileMenu = CreateMenu();
-	hFileMenuLang = CreateMenu();
+	HMENU hMenu = CreateMenu(); state->menu = hMenu;
+	HMENU hFileMenu = CreateMenu(); state->menu_file = hFileMenu;
+	HMENU hFileMenuLang = CreateMenu(); state->menu_lang = hFileMenuLang;
 	AppendMenuW(hMenu, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)hFileMenu, (LPCWSTR)hMenu);
 	AMT(hMenu, (UINT_PTR)hFileMenu, LANG_MENU_FILE);
 
@@ -2181,7 +2186,7 @@ void AddMenus(HWND hwnd) {
 
 	CheckMenuItem(hFileMenuLang, LANGUAGE_MANAGER::Instance().GetCurrentLanguage(), MF_BYCOMMAND | MF_CHECKED);
 
-	UNCAPNC_set_menu(hwnd, hMenu);
+	UNCAPNC_set_menu(state->nc_parent, state->menu);
 }
 
 LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
@@ -2204,7 +2209,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				UINT index = item->itemID;
 
 				//Draw text
-				wstring text = GetTabTitle(index);
+				std::wstring text = GetTabTitle(index);
 
 				TEXTMETRIC tm;
 				GetTextMetrics(item->hDC, &tm);
@@ -2335,7 +2340,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	case WM_CREATE:
 	{
 		AddControls(state->wnd, (HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
-		AddMenus(state->nc_parent); //TODO(fran): menu rendering //TODO(fran): nc_parent has to re-send all the menu msgs to me, the client, via the standard WM_COMMAND way it gets them
+		AddMenus(state);
 
 		return 0;
 	} break;
@@ -2376,16 +2381,18 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		case TCN_SELCHANGE:
 		{
 			int index = (int)SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
+			printf("CURSEL: %d\n", index);
 			if (index != -1) {
 				CUSTOM_TCITEM new_item;
 				new_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
-				//WCHAR buf[20] = { 0 };
-				//prev_item.tab_info.pszText = buf;
-				//prev_item.tab_info.cchTextMax = 20;
 				BOOL ret = (BOOL)SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
 				if (ret) {
-					EnableTab(new_item.extra_info);
+					EnableTab(new_item.extra_info,state->nc_parent);
 				}
+			}
+			else {
+				TAB_INFO blank = { 0 };
+				EnableTab(blank, state->nc_parent);
 			}
 			return 0;//Return value isnt used
 		}
@@ -2407,10 +2414,10 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		case BACKUP_FILE: //Do backup menu item was clicked
 		{
 			if (Backup_Is_Checked) {
-				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED); //turn it off
+				CheckMenuItem(state->menu_file, BACKUP_FILE, MF_BYCOMMAND | MF_UNCHECKED); //turn it off
 			}
 			else {
-				CheckMenuItem(hFileMenu, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);//turn it on
+				CheckMenuItem(state->menu_file, BACKUP_FILE, MF_BYCOMMAND | MF_CHECKED);//turn it on
 			}
 			Backup_Is_Checked = !Backup_Is_Checked;
 			printf("BACKUP=%s\n", Backup_Is_Checked ? "true" : "false");
@@ -2448,16 +2455,21 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 			int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
-			wstring text(text_length, L'\0');
+			std::wstring text(text_length, L'\0');
 			GetWindowTextW(hFile, &text[0], text_length);
 
-			TEXT_INFO text_data = GetCurrentTabExtraInfo();
+			TAB_INFO text_data = GetCurrentTabExtraInfo();
 
-			if (text[0] != L'\0')
-				DoSave(text_data.hText, text);
+			if (text[0] != L'\0') {
+				std::wstring filename_saved = DoSave(text_data.hText, text);
+
+				SetWindowText(hMessage, RCS(LANG_SAVE_DONE)); //Notify success
+				SetWindowTextW(hFile, filename_saved.c_str()); //Update filename viewer
+				SetText_file_app(state->nc_parent, filename_saved.c_str(),appName); //Update nc title
+				SetCurrentTabTitle(filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
+			}
 			//TODO(fran): error handling
 
-			//}
 			return 0;
 		}
 		case SAVE_AS_FILE:
@@ -2465,7 +2477,18 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		{
 			//TODO(fran): DoSaveAs allows for saving of file when no tab is created and sets all the controls but doesnt create an empty tab,
 			//should we create the tab or not allow to save?
-			DoSaveAs(GetCurrentTabExtraInfo().hText); //No DoBackup() for Save As since the idea is the user saves to a new file obviously
+			std::wstring filename = GetSaveAsStr(); //TODO(fran): get requested attributes
+
+			//NOTE: No backup since the idea is the user saves to a new file obviously
+			if (filename[0] != L'\0') {
+				std::wstring filename_saved = DoSave(GetCurrentTabExtraInfo().hText, filename);
+
+				SetWindowText(hMessage, RCS(LANG_SAVE_DONE)); //Notify success
+				SetWindowTextW(hFile, filename_saved.c_str()); //Update filename viewer
+				SetText_file_app(state->nc_parent, filename_saved.c_str(),appName); //Update nc title
+				SetCurrentTabTitle(filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
+			}
+
 			return 0;
 		}
 		case LANGUAGE_MANAGER::LANGUAGE::ENGLISH://INFO: this relates to the menu item, TODO(fran): a way to check a range of numbers, from first lang to last
@@ -2476,7 +2499,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 #if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
 			HMENU old_menu = GetMenu(state->nc_parent);
 			//SetMenu(state->nc_parent, NULL);
-			AddMenus(state->nc_parent); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
+			AddMenus(state); //TODO(fran): get this working, we are gonna need to implement removal into lang_mgr, and other things
 			DestroyMenu(old_menu); //NOTE: I could also use RemoveMenu which doesnt destroy it's submenus and reattach them to a new "main" menu and correct parenting (itemData param)
 #else //the undocumented way, aka the way it should have always been
 			//WIP
@@ -2678,13 +2701,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	init_wndclass_unCap_button(hInstance);
 
 	//TODO(fran): I think the problem I get that someone else is drawing my nc area is because I ask for OVERLAPPED_WINDOW when I create the window, so it takes care of doing that, which I dont want, REMOVE IT
-	hMain = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, unCap_wndclass_uncap_nc, appName, WS_THICKFRAME | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+	HWND uncapnc = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, unCap_wndclass_uncap_nc, appName, WS_THICKFRAME | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
 		rcMainWnd.left, rcMainWnd.top, RECTWIDTH(rcMainWnd), RECTHEIGHT(rcMainWnd), nullptr, nullptr, hInstance, nullptr);
 
-	if (!hMain) return FALSE;
+	if (!uncapnc) return FALSE;
 
-	ShowWindow(hMain, nCmdShow);
-	UpdateWindow(hMain);
+	ShowWindow(uncapnc, nCmdShow);
+	UpdateWindow(uncapnc);
 
 	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_SRTFIXWIN32));
 
