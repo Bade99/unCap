@@ -170,7 +170,9 @@
     <ClInclude Include="targetver.h" />
     <ClInclude Include="text_encoding_detect.h" />
     <ClInclude Include="unCap_button.h" />
-    <ClInclude Include="unCap_global.h" />
+    <ClInclude Include="unCap_combobox.h" />
+    <ClInclude Include="unCap_Core.h" />
+    <ClInclude Include="unCap_Global.h" />
     <ClInclude Include="unCap_helpers.h" />
     <ClInclude Include="unCap_math.h" />
     <ClInclude Include="unCap_Platform.h" />

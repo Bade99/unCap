@@ -1,7 +1,8 @@
 #pragma once
 #include <Windows.h>
-#include "unCap_global.h"
+#include "unCap_Global.h"
 #include "unCap_helpers.h"
+#include "windows_undoc.h"
 
 //NOTE: this scrollbar is only for edit controls (for now), and only vertical
 //NOTE: it's important that the parent uses WS_CLIPCHILDREN to avoid horrible flickering

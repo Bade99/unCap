@@ -16,3 +16,9 @@ typedef double f64;
 
 typedef wchar_t utf16;
 typedef char32_t utf32;
+
+#ifdef UNICODE
+typedef std::wstring str;
+#else
+typedef std::string str;
+#endif

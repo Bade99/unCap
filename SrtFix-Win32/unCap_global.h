@@ -14,10 +14,11 @@ union UNCAP_COLORS {
 		HBRUSH ScrollbarMouseOver;
 		HBRUSH ScrollbarBk;
 		HBRUSH Img;
+		HBRUSH Img_Inactive;
 		HBRUSH CaptionBk;
 		HBRUSH CaptionBk_Inactive;
 	};
-	HBRUSH brushes[13];//REMEMBER to update
+	HBRUSH brushes[14];//REMEMBER to update
 };
 
 extern UNCAP_COLORS unCap_colors;

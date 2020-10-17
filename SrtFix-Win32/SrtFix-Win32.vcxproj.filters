@@ -42,9 +42,6 @@
     <ClInclude Include="unCap_helpers.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
-    <ClInclude Include="unCap_global.h">
-      <Filter>Archivos de encabezado</Filter>
-    </ClInclude>
     <ClInclude Include="windows_msg_mapper.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
@@ -64,6 +61,15 @@
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
     <ClInclude Include="windows_undoc.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_combobox.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_Core.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
+    <ClInclude Include="unCap_Global.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
   </ItemGroup>

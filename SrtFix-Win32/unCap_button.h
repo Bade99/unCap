@@ -1,11 +1,10 @@
 #pragma once
 #include <Windows.h>
 #include <windowsx.h>
-#include "unCap_global.h"
+#include "unCap_Global.h"
 #include "unCap_helpers.h"
 #include "unCap_Renderer.h"
-
-#include <stdio.h> //TODO(fran): unCap_Logger.h
+#include "windows_undoc.h"
 
 //NOTE: this buttons can have text or an img, but not both at the same time
 //NOTE: it's important that the parent uses WS_CLIPCHILDREN to avoid horrible flickering

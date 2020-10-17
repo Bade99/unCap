@@ -4,11 +4,6 @@
 #pragma warning(disable : 4505) //unreferenced local function has been removed
 #pragma warning(disable : 4189) //local variable is initialized but not referenced
 
-//Pointless unsafe complaints
-#ifdef _DEBUG
-#define _CRT_SECURE_NO_WARNINGS
-#endif
-
 //C++17 deprecation
 #define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING 
 
@@ -38,11 +33,13 @@
 #include "text_encoding_detect.h" //Thanks to https://github.com/AutoItConsulting/text-encoding-detect
 #include "fmt/format.h" //Thanks to https://github.com/fmtlib/fmt
 #include "unCap_helpers.h"
-#include "unCap_global.h"
+#include "unCap_Global.h"
 #include "unCap_math.h"
 #include "unCap_scrollbar.h"
 #include "unCap_button.h"
 #include"unCap_Renderer.h"
+#include "unCap_Core.h"
+#include "unCap_combobox.h"
 
 //----------------------LINKER----------------------:
 // Linker->Input->Additional Dependencies (right way to link the .lib)
@@ -54,17 +51,15 @@
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"") 
 //#pragma comment(lib,"User32.lib")
 
-//----------------------NAMESPACES----------------------:
-//using namespace std;
-
 //----------------------TODOs----------------------:
+//unCap_Logger.h
 //Paint Initial char and Final char wnds to look like the rest, add white border so they are more easily noticeable
 //Parametric sizes for everything, and DPI awareness for controls
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 //Option to retain original file encoding on save, otherwise utf8/user defined default
 //Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
 
-//----------------------DEFINES----------------------:
+//----------------------CONSTANTS----------------------:
 
 #define OPEN_FILE 11
 #define COMBO_BOX 12
@@ -88,22 +83,6 @@
 #define MAX_TEXT_LENGTH 288000 //Edit controls have their text limit set by default at 32767, we need to change that
 
 //----------------------USER DEFINED VARIABLES----------------------:
-enum ENCODING {
-	ANSI=1,
-	UTF8,
-	UTF16, //Big endian or Little endian
-	//ASCII is easily encoded in utf8 without problems
-};
-
-enum FILE_FORMAT {
-	SRT=1, //This can also be used for any format that doesnt use in its sintax any of the characters detected as "begin comment" eg [ { (
-	SSA //Used to signal any version of Substation Alpha: v1,v2,v3,v4,v4+ (Advanced Substation Alpha)
-};
-
-//The different types of characters that are detected as comments
-enum COMMENT_TYPE {
-	brackets = 0, parenthesis, braces, other
-};
 
 struct TAB_INFO {
 	//TODO(fran): will we store the data for each control or store the controls themselves and hide them?
@@ -195,24 +174,7 @@ inline bool FileOrDirExists(const std::wstring& file) {
 	return std::filesystem::exists(file);//true if exists
 }
 
-//Retrieves full path to the info for program startup
-std::wstring GetInfoPath() {
-	//Load startup info
-	PWSTR folder_path;
-	HRESULT folder_res = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &folder_path);//TODO(fran): this is only supported on windows vista and above
-	//INFO: no retorna la ultima barra, la tenés que agregar vos, tambien te tenés que encargar de liberar el string
-	Assert(SUCCEEDED(folder_res));
-	std::wstring known_folder = folder_path;
-	CoTaskMemFree(folder_path);
-	std::wstring info_folder = L"unCap";
-	std::wstring info_file = L"info";
-	std::wstring info_extension = L"txt";//just so the user doesnt even have to open the file manually on windows
-
-	std::wstring info_file_path = known_folder + L"\\" + info_folder + L"\\" + info_file + L"." + info_extension;
-	return info_file_path;
-}
-
-std::wstring GetInfoDirectory() {
+std::wstring GetInfoDirectory() {//NOTE: string return ends with \, eg c:\users\uncap\
 	//TODO(fran): quick and dirty, make this nice, possibly put each part of the path on a struct
 	PWSTR folder_path;
 	HRESULT folder_res = SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &folder_path);//TODO(fran): this is only supported on windows vista and above
@@ -222,9 +184,20 @@ std::wstring GetInfoDirectory() {
 	CoTaskMemFree(folder_path);
 	std::wstring info_folder = L"unCap";
 
-	std::wstring info_file_dir = known_folder + L"\\" + info_folder;
+	std::wstring info_file_dir = known_folder + L"\\" + info_folder + L"\\";
 	return info_file_dir;
 }
+
+//Retrieves full path to the info for program startup
+std::wstring GetInfoPath() {
+	//Load startup info
+	std::wstring dir = GetInfoDirectory();
+	std::wstring info_file = L"info";
+	std::wstring info_extension = L"txt";//just so the user doesnt even have to open the file manually on windows
+	std::wstring info_file_path = dir + info_file + L"." + info_extension;
+	return info_file_path;
+}
+
 
 //Returns the nth tab's text info or a TAB_INFO struct with everything set to 0
 TAB_INFO GetTabExtraInfo(int index) {
@@ -299,13 +272,6 @@ int DeleteTab(HWND TabControl, int position) {
 	return (int)SendMessage(TabControl, TCM_DELETEITEM, position, 0);
 }
 
-BOOL TestCollisionPointRect(POINT p, const RECT& rc) {
-	//TODO(fran): does this work with negative values?
-	if (p.x < rc.left || p.x > rc.right) return FALSE;
-	if (p.y < rc.top || p.y > rc.bottom) return FALSE;
-	return TRUE;
-}
-
 //if new_filename==NULL || *new_filename == NULL then filename related info is cleared
 void SetText_file_app(HWND wnd, const TCHAR* new_filename, const TCHAR* new_appname) {
 	if (new_filename == NULL || *new_filename == NULL) {
@@ -321,7 +287,6 @@ void SetText_file_app(HWND wnd, const TCHAR* new_filename, const TCHAR* new_appn
 
 //----------------------FUNCTION PROTOTYPES----------------------:
 LRESULT CALLBACK	ShowMessageProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-LRESULT CALLBACK	ComboProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK	EditCatchDrop(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
 LRESULT CALLBACK    UncapNcProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK	UncapClProc(HWND, UINT, WPARAM, LPARAM);
@@ -333,12 +298,42 @@ void				CatchDrop(WPARAM);
 void				CreateInfoFile(HWND);
 void				CheckInfoFile();
 void				AcceptedFile(std::wstring);
-ENCODING			GetTextEncoding(std::wstring);
 
+f64 GetPCFrequency() {
+	LARGE_INTEGER li;
+	QueryPerformanceFrequency(&li);
+	return f64(li.QuadPart) / 1000.0; //milliseconds
+}
+inline i64 StartCounter() {
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	return li.QuadPart;
+}
+inline f64 EndCounter(i64 CounterStart, f64 PCFreq = GetPCFrequency())
+{
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	return double(li.QuadPart - CounterStart) / PCFreq;
+}
+
+//The dc is passed to EnumFontFamiliesEx, you can just pass the desktop dc for example //TODO(fran): can we guarantee which dc we use doesnt matter? in that case dont ask the user for a dc and do it myself
+BOOL hasFontFace(HDC dc, const TCHAR* facename) {
+	int res = EnumFontFamiliesEx(dc/*You have to put some dc,not NULL*/, NULL
+		, [](const LOGFONT *lpelfe, const TEXTMETRIC* /*lpntme*/, DWORD /*FontType*/, LPARAM lparam)->int {
+			if (!StrCmpI((TCHAR*)lparam, lpelfe->lfFaceName)) {//Non case-sensitive comparison
+				return 0;
+			}
+			return 1;
+		}
+	, (LPARAM)facename, NULL);
+	return !res;
+}
+
+#if 0 //TODO(fran): this method without std::vector is faster for the best case but slower for the worst case
 /// <summary>
 /// Decides which font FaceName is appropiate for the current system
 /// </summary>
-std::wstring GetFontFaceName() {
+str GetFontFaceName() {
 	//Font guidelines: https://docs.microsoft.com/en-us/windows/win32/uxguide/vis-fonts
 	//Stock fonts: https://docs.microsoft.com/en-us/windows/win32/gdi/using-a-stock-font-to-draw-text
 
@@ -351,126 +346,52 @@ std::wstring GetFontFaceName() {
 	//-Microsoft YaHei or UI (look the same,good txt,good jp) (6 codepages) (supported on most versions of windows)
 	//-Microsoft JhengHei or UI (look the same,good txt,ok jp) (3 codepages) (supported on most versions of windows)
 
-	HDC hdc = GetDC(GetDesktopWindow()); //You can use any hdc, but not NULL
-	std::vector<std::wstring> fontnames;
-	EnumFontFamiliesEx(hdc, NULL
-		, [](const LOGFONT *lpelfe, const TEXTMETRIC* /*lpntme*/, DWORD /*FontType*/, LPARAM lParam)->int {((std::vector<std::wstring>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
-	, (LPARAM)&fontnames, NULL);
-	
-	const WCHAR* requested_fontname[] = { TEXT("Segoe UI"), TEXT("Arial Unicode MS"), TEXT("Microsoft YaHei"), TEXT("Microsoft YaHei UI")
+	i64 cnt = StartCounter(); defer{ printf("ELAPSED: %f\n",EndCounter(cnt)); };
+
+	TCHAR res[ARRAYSIZE(((LOGFONT*)0)->lfFaceName)]{0};
+	const TCHAR* requested_fontname[] = { TEXT("Segoe UI"), TEXT("Arial Unicode MS"), TEXT("Microsoft YaHei"), TEXT("Microsoft YaHei UI")
 										, TEXT("Microsoft JhengHei"), TEXT("Microsoft JhengHei UI")};
-
-	for(int i=0;i< ARRAYSIZE(requested_fontname);i++)
-		if(std::any_of(fontnames.begin(), fontnames.end(), [f=requested_fontname[i]](std::wstring s) {return !s.compare(f); })) return requested_fontname[i];
-	
-	return L"";
-}
-
-/// <summary>
-/// Performs comment removal for .srt type formats
-/// </summary>
-/// <returns>The number of comments removed, 0 indicates no comments were found</returns>
-size_t CommentRemovalSRT(std::wstring& text, WCHAR start, WCHAR end) {
-	size_t comment_count = 0;
-	size_t start_pos = 0, end_pos = 0;
-
-	while (true) {
-		start_pos = text.find(start, start_pos);
-		end_pos = text.find(end, start_pos + 1);//+1, dont add it here 'cause breaks the if when end_pos=-1(string::npos)
-		if (start_pos == std::wstring::npos || end_pos == std::wstring::npos) {
-			//SendMessage(hRemoveProgress, PBM_SETPOS, text_length, 0);
+	HDC dc = GetDC(GetDesktopWindow()); defer{ ReleaseDC(GetDesktopWindow(),dc); };
+	for (const TCHAR* req : requested_fontname) {
+		if (hasFontFace(dc, req)) {
+			StrCpy(res, req);
 			break;
 		}
-		text.erase(text.begin() + start_pos, text.begin() + end_pos + 1); //TODO(fran): handle exceptions
-		comment_count++;
-		//SendMessage(hRemoveProgress, PBM_SETPOS, start_pos, 0);
 	}
-	return comment_count;
+
+	return res;
 }
+#else
+str GetFontFaceName() {
+	//Font guidelines: https://docs.microsoft.com/en-us/windows/win32/uxguide/vis-fonts
+	//Stock fonts: https://docs.microsoft.com/en-us/windows/win32/gdi/using-a-stock-font-to-draw-text
 
-/// <summary>
-/// Performs comment removal for all .ssa versions including .ass (v1,v2,v3,v4,v4+)
-/// </summary>
-/// <returns>The number of comments removed, 0 indicates no comments were found</returns>
-size_t CommentRemovalSSA(std::wstring& text, WCHAR start, WCHAR end) {
+	//TODO(fran): can we take the best codepage from each font and create our own? (look at font linking & font fallback)
 
-	// Removing comments for Substation Alpha format (.ssa) and Advanced Substation Alpha format (.ass)
-	//https://wiki.multimedia.cx/index.php/SubStation_Alpha
-	//https://matroska.org/technical/specs/subtitles/ssa.html
-	//INFO: ssa has v1, v2, v3 and v4, v4+ is ass but all of them are very similar in what concerns us
-	//I only care about lines that start with Dialogue:
-	//This lines are always one liners, so we could use getline or variants
-	//This lines can contain extra commands in the format {\command} therefore in case we are removing braces "{" we must check whether the next char is \ and ignore in that case
-	//The same rule should apply when detecting the type of comments in CommentTypeFound
-	//If we find one of this extra commands inside of a comment we remove it, eg [Hello {\br} goodbye] -> Remove everything
-	
-	
-	//TODO(fran): check that a line with no text is still valid, eg if the comment was the only text on that Dialogue line after we remove it there will be nothing
+	//We looked at 2195 fonts, this is what's left
+	//Options:
+	//Segoe UI (good txt, jp ok) (10 codepages) (supported on most versions of windows)
+	//-Arial Unicode MS (good text; good jp) (33 codepages) (doesnt come with windows)
+	//-Microsoft YaHei or UI (look the same,good txt,good jp) (6 codepages) (supported on most versions of windows)
+	//-Microsoft JhengHei or UI (look the same,good txt,ok jp) (3 codepages) (supported on most versions of windows)
 
-	size_t comment_count = 0;
-	size_t start_pos = 0, end_pos = 0;
-	size_t line_pos=0;
-	WCHAR text_marker[] = L"Dialogue:";
-	size_t text_marker_size = ARRAYSIZE(text_marker);
+	i64 cnt = StartCounter(); defer{ printf("ELAPSED: %f ms\n",EndCounter(cnt)); };
 
-	//Substation Alpha has a special code for identifying text that will be shown to the user: 
-	//The line has to start with "Dialogue:"
-	//Also this lines can contain additional commands in the form {\command} 
-	//therefore we've got to be careful when "start" is "{" and also check the next char for "\"
-	//in which case it's not actually a comment and we should just ignore it and continue
+	HDC dc = GetDC(GetDesktopWindow()); defer{ ReleaseDC(GetDesktopWindow(),dc); }; //You can use any hdc, but not NULL
+	std::vector<str> fontnames;
+	EnumFontFamiliesEx(dc, NULL
+		, [](const LOGFONT *lpelfe, const TEXTMETRIC* /*lpntme*/, DWORD /*FontType*/, LPARAM lParam)->int {((std::vector<str>*)lParam)->push_back(lpelfe->lfFaceName); return TRUE; }
+	, (LPARAM)&fontnames, NULL);
 
-	while (true) {
-		//Find the "start" character
-		start_pos = text.find(start, start_pos);
-		if (start_pos == std::wstring::npos) break;
+	const TCHAR* requested_fontname[] = { TEXT("Segoe UI"), TEXT("Arial Unicode MS"), TEXT("Microsoft YaHei"), TEXT("Microsoft YaHei UI")
+										, TEXT("Microsoft JhengHei"), TEXT("Microsoft JhengHei UI") };
 
-		//Check that the character is in a line that start with "Dialogue:"
-		line_pos = text.find_last_of(L'\n', start_pos);
-		if (line_pos == std::wstring::npos) line_pos = 0; //We are on the first line
-		else line_pos++; //We need to start checking from the next char after the end of line, eg "\nDialogue:" we want the "D"
-		if (text.compare(line_pos, text_marker_size - 1, text_marker)) {//if true the line where we found a possible comment does not start with the desired string
-			start_pos++; //Since we made no changes to the string at start_pos we have to move start_pos one char forward so we dont get stuck 
-			continue; 
-		}
+	for (int i = 0; i < ARRAYSIZE(requested_fontname); i++)
+		if (std::any_of(fontnames.begin(), fontnames.end(), [f = requested_fontname[i]](str s) {return !s.compare(f); })) return requested_fontname[i];
 
-		//Now lets check in case "start" is "{" whether the next char is "\"
-		if (start == L'{') { //TODO(fran): can this be embedded in the code below?
-			if ((start_pos + 1) >= text.length()) break; //Check a next character exists after our current position
-			if (text.at(start_pos + 1) == L'\\') { //Indeed it was a \ so we where inside a special command, just ignore it and continue searching
-				start_pos++; //Since we made no changes to the string at start_pos we have to move start_pos one char forward so we dont get stuck 
-				continue; 
-			}
-		}
-
-		//TODO(fran): there's a bigger check that we need to perform, some of the commands inside {\command} can have parenthesis()
-		// So what we should do is always check if we are inside of a command in which case we ignore and continue
-		// How to perform the check: we have to go back from our position and search for the closest "{\" in our same line, but also check that there is
-		// no "}" that is closer
-		size_t command_begin_pos = text.rfind(L"{\\", start_pos); //We found a command, are we inside it?
-		if (command_begin_pos != std::wstring::npos) {
-			if (command_begin_pos >= line_pos) {//Check that the "{\" is on the same line as us
-				//INFO: we are going to assume that nesting {} or {\} inside a {\} is invalid and is never used, otherwise add this extra check (probably needs a loop)
-				//size_t possible_comment_begin_pos; //Closest "{" going backwards from our current position
-				//possible_comment_begin_pos = text.find_last_of(L'{', start_pos);
-				size_t possible_comment_end_pos; //Closest "}" going forwards from command begin position
-				possible_comment_end_pos = text.find_first_of(L'}', command_begin_pos);
-				if (possible_comment_end_pos == std::wstring::npos) break; //There's a command that has no end, invalid
-				//TODO(fran): add check if the comment end is on the same line
-				if (possible_comment_end_pos > start_pos) { //TODO(fran): what to do if they are equal??
-					start_pos++;
-					continue; //We are inside of a command, ignore and continue
-				}
-			}
-		}
-
-		end_pos = text.find(end, start_pos + 1); //Search for the end of the comment
-		if (end_pos == std::wstring::npos) break; //There's no "comment end" so lets just exit the loop, the file is probably incorrectly written
-
-		text.erase(text.begin() + start_pos, text.begin() + end_pos + 1); //Erase the entire comment, including the "comment end" char, that's what the +1 is for
-		comment_count++; //Update comment count
-	}
-	return comment_count;
+	return TEXT("");
 }
+#endif
 
 //si hay /n antes del corchete que lo borre tmb (y /r tmb)
 void CommentRemoval(HWND hText, FILE_FORMAT format, WCHAR start,WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
@@ -532,7 +453,7 @@ void ProperLineSeparation(std::wstring &text) {
 	}
 }
 
-void DoBackup() { //TODO(fran): option to change backup folder //TODO(fran): I feel backup is pretty pointless at this point, more confusing than anything else, REMOVE
+void DoBackup() { //TODO(fran): option to change backup folder //TODO(fran): I feel backup is pretty pointless at this point, more confusing than anything else, REMOVE once I implement undo
 
 	int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
 
@@ -769,23 +690,6 @@ std::wstring GetSaveAsStr() //https://msdn.microsoft.com/en-us/library/windows/d
 	return res;
 }
 
-BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
-	MENUITEMINFO i;
-	i.cbSize = sizeof(i);
-	i.fMask = MIIM_DATA;
-	i.dwItemData = data;
-	return SetMenuItemInfo(hmenu, item, fByPositon, &i);
-}
-
-BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, const TCHAR* str) {
-	MENUITEMINFOW menu_setter;
-	menu_setter.cbSize = sizeof(menu_setter);
-	menu_setter.fMask = MIIM_STRING;
-	menu_setter.dwTypeData = const_cast<TCHAR*>(str);
-	BOOL res = SetMenuItemInfoW(hmenu, item, fByPositon, &menu_setter);
-	return res;
-}
-
 //Method for managing edit control special features (ie dropped files,...)
 //there seems to be other ways like using SetWindowsHookExW or SetWindowLongPtrW 
 LRESULT CALLBACK EditCatchDrop(HWND hwnd, UINT uMsg, WPARAM wParam,
@@ -882,21 +786,19 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 	//case EM_SETHSCROLL: {
 	//	state->hscrollbar = (HWND)wparam;
 	//} break;
-	case TCM_RESIZE:
+	case TCM_RESIZE: //TODO(fran): get rid of this, our parent should tell us our new size, after that this control can be sent to a separate .h file
 	{
 		SIZE* control_size = (SIZE*)wparam;
 
-		MoveWindow(hwnd, TabOffset.leftOffset, TabOffset.topOffset
-			, control_size->cx - TabOffset.rightOffset - TabOffset.leftOffset, control_size->cy - TabOffset.bottomOffset - TabOffset.topOffset, TRUE);
+		MoveWindow(hwnd, TabOffset.leftOffset, TabOffset.topOffset , control_size->cx - TabOffset.rightOffset - TabOffset.leftOffset, control_size->cy - TabOffset.bottomOffset - TabOffset.topOffset, TRUE);
 		//x & y remain fixed and only width & height change
 
-		//TODO(fran): resize scrollbars
 		SendMessage(state->vscrollbar, U_SB_AUTORESIZE, 0, 0);
 
 		EDIT_update_scrollbar(state); //NOTE: actually here you just need to update nPage
 
 		return TRUE;
-	} //TODO(fran): now comes the hard part, to tell the scrollbar where we are, and the ranges
+	}
 	case WM_DESTROY:
 	{
 		free(state);
@@ -1047,7 +949,7 @@ int TestCloseButton(HWND tabControl, CLOSEBUTTON closeButtonInfo, POINT p ) {
 			item_rc.bottom -= yChange;
 
 			//3.Determine if the close button was hit
-			BOOL res = TestCollisionPointRect(p, item_rc);
+			BOOL res = test_pt_rc(p, item_rc);
 			
 			//4.Return index or -1
 			if (res) return item_index;
@@ -1055,19 +957,6 @@ int TestCloseButton(HWND tabControl, CLOSEBUTTON closeButtonInfo, POINT p ) {
 
 	}
 	return -1;
-}
-
-#define BORDERLEFT 0x01
-#define BORDERTOP 0x02
-#define BORDERRIGHT 0x04
-#define BORDERBOTTOM 0x08
-//NOTE: borders dont get centered, if you choose 5 it'll go 5 into the rc. TODO(fran): centered borders
-void FillRectBorder(HDC dc, RECT r, int thickness, HBRUSH br, u8 borders) {
-	RECT borderrc;
-	if (borders & BORDERLEFT)	{ borderrc = rectNpxL(r, thickness); FillRect(dc, &borderrc, br); }
-	if (borders & BORDERTOP)	{ borderrc = rectNpxT(r, thickness); FillRect(dc, &borderrc, br); }
-	if (borders & BORDERRIGHT)	{ borderrc = rectNpxR(r, thickness); FillRect(dc, &borderrc, br); }
-	if (borders & BORDERBOTTOM) { borderrc = rectNpxB(r, thickness); FillRect(dc, &borderrc, br); }
 }
 
 LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
@@ -1266,211 +1155,6 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT
 	return 0;
 }
 
-struct ComboProcState {
-	HWND wnd;
-	HBITMAP dropdown; //TODO(fran): decide who deletes this
-};
-
-#define CB_SETDROPDOWNIMG (WM_USER+1) //Only accepts monochrome bitmaps (.bmp), wparam=HBITMAP ; lparam=0
-#define CB_GETDROPDOWNIMG (WM_USER+2) //wparam=0 ; lparam=0 ; returns HBITMAP
-
-LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
-	static BOOL MouseOverCombo = FALSE;
-	static HWND CurrentMouseOverCombo;
-
-	printf(msgToString(msg)); printf("\n");
-	//TODO(fran): there's a small bug, when opening the list box sometimes the text for the previously selected item changes without the user pressing anything
-
-	//INFO: we require GetWindowLongPtr at "position" GWLP_USERDATA to be left for us to use
-	//NOTE: Im pretty sure that "position" 0 is already in use
-	ComboProcState* state = (ComboProcState*)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-	if (!state) {
-		ComboProcState* st = (ComboProcState*)calloc(1, sizeof(ComboProcState));
-		st->wnd = hwnd;
-		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)st);
-		state = st;
-	}
-
-	switch (msg)
-	{
-	case WM_NCDESTROY: //TODO(fran): better way to cleanup our state, we could have problems with state being referenced after WM_NCDESTROY and RemoveSubclass taking us out without being able to free our state, we need a way to find out when we are being removed
-	{
-		if (state) free(state);
-		return DefSubclassProc(hwnd, msg, wparam, lParam);
-	}
-	case CB_GETDROPDOWNIMG:
-	{
-		return (LRESULT)state->dropdown;
-	} break;
-	case CB_SETDROPDOWNIMG:
-	{
-		state->dropdown = (HBITMAP)wparam;
-		return 0;
-	} break;
-	case CB_SETCURSEL:
-	{
-		EnableOtherChar(wparam == COMMENT_TYPE::other); //TODO(fran): parent should receive this msg and execute this
-		//InvalidateRect(hwnd, NULL, TRUE); //Simple hack ->//TODO(fran): parts of the combo dont update and stay white when the tab tells it to change
-
-		LONG_PTR  dwStyle = GetWindowLongPtr(hwnd, GWL_STYLE);
-		// turn off WS_VISIBLE
-		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle & ~WS_VISIBLE);
-
-		// perform the default action, minus painting
-		LRESULT ret = DefSubclassProc(hwnd, msg, wparam, lParam); //defproc for setcursel DOES DRAWING, we gotta do the good ol' trick of invisibility, also it seems that it stores a paint request instead, cause after I make it visible again it asks for wm_paint, as it should have in the first place
-
-		// turn on WS_VISIBLE
-		SetWindowLongPtr(hwnd, GWL_STYLE, dwStyle);
-
-		return ret;
-	}
-	case WM_NCPAINT:
-	{
-		return 0;
-	} break;
-	case WM_MOUSEHOVER:
-	{
-		//force button to repaint and specify hover or not
-		if (MouseOverCombo && CurrentMouseOverCombo == hwnd) break;
-		MouseOverCombo = true;
-		CurrentMouseOverCombo = hwnd;
-		InvalidateRect(hwnd, 0, 1);
-		return DefSubclassProc(hwnd, msg, wparam, lParam);
-	}
-	case WM_MOUSELEAVE:
-	{
-		MouseOverCombo = false;
-		CurrentMouseOverCombo = NULL;
-		InvalidateRect(hwnd, 0, 1);
-		return DefSubclassProc(hwnd, msg, wparam, lParam);
-	}
-	case WM_MOUSEMOVE:
-	{
-		//TODO(fran): We are tracking the mouse every single time it moves, kind of suspect solution
-		TRACKMOUSEEVENT tme;
-		tme.cbSize = sizeof(TRACKMOUSEEVENT);
-		tme.dwFlags = TME_HOVER | TME_LEAVE;
-		tme.dwHoverTime = 1;
-		tme.hwndTrack = hwnd;
-
-		TrackMouseEvent(&tme);
-		return DefSubclassProc(hwnd, msg, wparam, lParam);
-	}
-	//case CBN_DROPDOWN://lets us now that the list is about to be show, therefore the user clicked us
-	case WM_PAINT:
-	{
-		DWORD style = (DWORD)GetWindowLongPtr(hwnd, GWL_STYLE);
-		if (!(style & CBS_DROPDOWNLIST))
-			break;
-
-		RECT rc; GetClientRect(hwnd, &rc);
-
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hwnd, &ps);
-
-		BOOL ButtonState = (BOOL)SendMessageW(hwnd, CB_GETDROPPEDSTATE, 0, 0);
-		if (ButtonState) {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkPush));
-			FillRect(hdc, &rc, unCap_colors.ControlBkPush);
-		}
-		else if (MouseOverCombo && CurrentMouseOverCombo == hwnd) {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBkMouseOver));
-			FillRect(hdc, &rc, unCap_colors.ControlBkMouseOver);
-		}
-		else {
-			SetBkColor(hdc, ColorFromBrush(unCap_colors.ControlBk));
-			FillRect(hdc, &rc, unCap_colors.ControlBk);
-		}
-
-		RECT client_rec;
-		GetClientRect(hwnd, &client_rec);
-
-		HPEN pen = CreatePen(PS_SOLID, max(1, (int)((RECTHEIGHT(client_rec))*.01f)), ColorFromBrush(unCap_colors.ControlTxt)); //para el borde
-
-		HBRUSH oldbrush = (HBRUSH)SelectObject(hdc, (HBRUSH)GetStockObject(HOLLOW_BRUSH));//para lo de adentro
-		HPEN oldpen = (HPEN)SelectObject(hdc, pen);
-
-		SelectObject(hdc, (HFONT)SendMessage(hwnd, WM_GETFONT, 0, 0));
-		//SetBkColor(hdc, bkcolor);
-		SetTextColor(hdc, ColorFromBrush(unCap_colors.ControlTxt));
-
-		//Border
-		Rectangle(hdc, 0, 0, rc.right, rc.bottom);
-
-		SelectObject(hdc, oldpen);
-		DeleteObject(pen);
-
-		/*
-		if (GetFocus() == hwnd)
-		{
-			//INFO: with this we know when the control has been pressed
-			RECT temp = rc;
-			InflateRect(&temp, -2, -2);
-			DrawFocusRect(hdc, &temp);
-		}
-		*/
-		int DISTANCE_TO_SIDE = 5;
-
-		int index = (int)SendMessage(hwnd, CB_GETCURSEL, 0, 0);
-		if (index >= 0)
-		{
-			int buflen = (int)SendMessage(hwnd, CB_GETLBTEXTLEN, index, 0);
-			TCHAR *buf = new TCHAR[(buflen + 1)];
-			SendMessage(hwnd, CB_GETLBTEXT, index, (LPARAM)buf);
-			RECT txt_rc = rc;
-			txt_rc.left += DISTANCE_TO_SIDE;
-			DrawText(hdc, buf, -1, &txt_rc, DT_EDITCONTROL | DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-			delete[]buf;
-		}
-
-
-		//HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
-		//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
-		//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
-		//HICON combo_dropdown_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(COMBO_ICON), IMAGE_ICON, icon_size.cx, icon_size.cy, LR_SHARED);
-
-		//if (combo_dropdown_icon) {
-		//	DrawIconEx(hdc, r.right - r.left - icon_size.cx - DISTANCE_TO_SIDE, ((r.bottom - r.top) - icon_size.cy) / 2,
-		//		combo_dropdown_icon, icon_size.cx, icon_size.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
-		//	DestroyIcon(combo_dropdown_icon);
-		//}
-		if (state->dropdown) {
-			HBITMAP bmp = state->dropdown;
-			BITMAP bitmap; GetObject(bmp, sizeof(bitmap), &bitmap);
-			if (bitmap.bmBitsPixel == 1) {
-
-				int max_sz = roundNdown(bitmap.bmWidth, (int)((float)RECTHEIGHT(rc)*.6f)); //HACK: instead use png + gdi+ + color matrices
-				if (!max_sz)max_sz = bitmap.bmWidth; //More HACKs
-
-				int bmp_height = max_sz;
-				int bmp_width = bmp_height;
-				int bmp_align_width = RECTWIDTH(rc) - bmp_width - DISTANCE_TO_SIDE;
-				int bmp_align_height = (RECTHEIGHT(rc) - bmp_height) / 2;
-				urender::draw_mask(hdc, bmp_align_width, bmp_align_height, bmp_width, bmp_height, bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, unCap_colors.Img);//TODO(fran): parametric color
-			}
-		}
-
-		
-		SelectObject(hdc, oldbrush);
-
-		EndPaint(hwnd, &ps);
-		return 0;
-	} break;
-	case WM_ERASEBKGND: 
-	{
-		return 1;
-	} break;
-	//case WM_NCDESTROY:
-	//{
-	//	RemoveWindowSubclass(hwnd, this->ComboProc, uIdSubclass);
-	//	break;
-	//}
-
-	}
-
-	return DefSubclassProc(hwnd, msg, wparam, lParam);
-}
-
 void AddControls(HWND hwnd, HINSTANCE hInstance) {
 	hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
 			| ES_AUTOHSCROLL | SS_CENTERIMAGE
@@ -1557,8 +1241,6 @@ void AddControls(HWND hwnd, HINSTANCE hInstance) {
 bool HACK_EnableOtherChar = false;
 
 void EnableOtherChar(bool op) {
-	//EnableWindow(hInitialText, op);
-	//EnableWindow(hFinalText, op);
 	HACK_EnableOtherChar = op;
 	InvalidateRect(hInitialText, NULL, TRUE);
 	InvalidateRect(hFinalText, NULL, TRUE);
@@ -1566,7 +1248,7 @@ void EnableOtherChar(bool op) {
 	EnableWindow(hFinalChar, op);	
 }
 
-inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) { //TODO(fran): lambda function
+inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) {
 	return file[max(offsetToFirstFile - 1,0)] == L'\0';//TODO(fran): is this max useful? if [0] is not valid I think it will fail anyway
 }
 
@@ -1593,13 +1275,13 @@ void ChooseFile(std::wstring ext) {
 	if (last_accepted_file_dir != L"\0") new_file.lpstrInitialDir = last_accepted_file_dir.c_str();
 	else new_file.lpstrInitialDir = NULL; //@este if genera bug si initialDir tiene data y abris el buscador pero no agarras nada
 
-	if (GetOpenFileNameW(&new_file) != 0) { //si el usuario elige un archivo
+	if (GetOpenFileNameW(&new_file)) { //si el usuario elige un archivo
 
 		//TODO(fran): I know that for multi-file the string is terminated with two NULLs, from my tests when it is single file this also happens, can I guarantee
 		//this always happens? Meanwhile I'll use IsMultiFile
 		BOOL multifile = isMultiFile(new_file.lpstrFile, new_file.nFileOffset);
 
-		std::vector<std::wstring> files;
+		//std::vector<std::wstring> files;
 
 		if (multifile) {
 			for (int i = new_file.nFileOffset - 1;;i++) {
@@ -1609,18 +1291,26 @@ void ChooseFile(std::wstring ext) {
 						std::wstring onefile = new_file.lpstrFile;//Will only take data until the first \0 it finds
 						onefile += L'\\';
 						onefile += &new_file.lpstrFile[i+1];
-						files.push_back(onefile);
+						//files.push_back(onefile);
+
+						if (FileOrDirExists(onefile)) AcceptedFile(onefile);
+						else  MessageBoxW(NULL, RCS(LANG_CHOOSEFILE_ERROR_NONEXISTENT), RCS(LANG_ERROR), MB_ICONERROR);
+
 						i += (int)wcslen(&new_file.lpstrFile[i + 1]);//TODO(fran): check this is actually faster
 					}
 				}
 			}
 		}
-		else files.push_back(new_file.lpstrFile);
-		
-		for (std::wstring const& onefile : files) {
-			if (FileOrDirExists(onefile)) AcceptedFile(onefile);
+		else {
+			//files.push_back(new_file.lpstrFile);
+			if (FileOrDirExists(new_file.lpstrFile)) AcceptedFile(new_file.lpstrFile);
 			else  MessageBoxW(NULL, RCS(LANG_CHOOSEFILE_ERROR_NONEXISTENT), RCS(LANG_ERROR), MB_ICONERROR);
 		}
+		
+		/*for (std::wstring const& onefile : files) {
+			if (FileOrDirExists(onefile)) AcceptedFile(onefile);
+			else  MessageBoxW(NULL, RCS(LANG_CHOOSEFILE_ERROR_NONEXISTENT), RCS(LANG_ERROR), MB_ICONERROR);
+		}*/
 	}
 }
 
@@ -1668,154 +1358,6 @@ void CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 	DragFinish(hDrop); //free mem
 }
 
-ENCODING GetTextEncoding(std::wstring filename) {
-	
-	HANDLE file;
-	DWORD  dwBytesRead = 0;
-	BYTE   header[4] = { 0 };
-
-	file = CreateFile(filename.c_str(),// file to open
-		GENERIC_READ,          // open for reading
-		FILE_SHARE_READ,       // share for reading
-		NULL,                  // default security
-		OPEN_EXISTING,         // existing file only
-		FILE_ATTRIBUTE_NORMAL, // normal file
-		NULL);                 // no attr. template
-
-	Assert(file != INVALID_HANDLE_VALUE);
-
-	BOOL read_res = ReadFile(file, header, 4, &dwBytesRead, NULL);
-	Assert(read_res);
-
-	CloseHandle(file);
-
-	if (header[0] == 0xEF && header[1] == 0xBB && header[2] == 0xBF)	return ENCODING::UTF8; //File has UTF8 BOM
-	else if (header[0] == 0xFF && header[1] == 0xFE)		return ENCODING::UTF16; //File has UTF16LE BOM, INFO: this could actually be UTF32LE but I've never seen a subtitle file enconded in utf32 so no real need to do the extra checks
-	else if (header[0] == 0xFE && header[1] == 0xFF)		return ENCODING::UTF16; //File has UTF16BE BOM
-	else {//Do manual check
-
-		//Check for UTF8
-
-		std::ifstream ifs(filename); //TODO(fran): can ifstream open wstring (UTF16 encoded) filenames?
-		Assert(ifs);
-
-		std::istreambuf_iterator<char> it(ifs.rdbuf());
-		std::istreambuf_iterator<char> eos;
-
-		bool isUTF8 = utf8::is_valid(it, eos); //there's also https://unicodebook.readthedocs.io/guess_encoding.html
-
-		ifs.close();
-
-		if (isUTF8) return ENCODING::UTF8; //File is valid UTF8
-
-		//Check for UTF16
-
-		file = CreateFile(filename.c_str(),GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL); //Open file for reading
-		Assert(file != INVALID_HANDLE_VALUE);
-
-		BYTE fixedBuffer[50000] = {0}; //We dont need the entire file, just enough data for the functions to be as accurate as possible. Pd. this is probably too much already
-		read_res = ReadFile(file, fixedBuffer, 50000, &dwBytesRead, NULL);
-		Assert(read_res);
-
-		CloseHandle(file);
-
-		AutoIt::Common::TextEncodingDetect textDetect;
-		bool isUTF16 = textDetect.isUTF16(fixedBuffer,dwBytesRead);
-
-		if (isUTF16) return ENCODING::UTF16;
-
-		//Give up and return ANSI
-		return ENCODING::ANSI;
-	}
-}
-
-COMMENT_TYPE CommentTypeFound(std::wstring &text) {
-	if (text.find_first_of(L'{') != std::wstring::npos) {
-		return COMMENT_TYPE::braces;
-	}
-	else if (text.find_first_of(L'[') != std::wstring::npos) {
-		return COMMENT_TYPE::brackets;
-	}
-	else if (text.find_first_of(L'(') != std::wstring::npos) {
-		return COMMENT_TYPE::parenthesis;
-	}
-	else {
-		return COMMENT_TYPE::other;
-	}
-}
-
-/// <summary>
-/// 
-/// </summary>
-/// <param name="filepath">path to the file you want read</param>
-/// <param name="text">place where the read file's text will be stored</param>
-/// <returns>TRUE if successful, FALSE otherwise</returns>
-BOOL ReadText(std::wstring filepath, std::wstring& text) {
-
-	ENCODING encoding = GetTextEncoding(filepath);
-
-	std::wifstream file(filepath, std::ios::binary);
-
-	if (file.is_open()) {
-
-		//set encoding for getline
-		if (encoding == ENCODING::UTF8)
-			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));
-			//int a;
-			//maybe the only thing needed when utf8 is detectedd is to remove the BOM if it is there
-		else if (encoding == ENCODING::UTF16)
-			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::consume_header>));
-		//if encoding is ANSI we do nothing
-
-		std::wstringstream buffer;
-		buffer << file.rdbuf();
-		text = buffer.str();
-
-		file.close();
-		return TRUE;
-	}
-	else return FALSE;
-}
-
-/// <summary>
-/// Detects the file's format through different techniques
-/// <para>If the filename has an extesion then that will be trusted as correct</para>
-/// </summary>
-/// <param name="filename">Full path of the file</param>
-/// <returns>The presumed file format</returns>
-FILE_FORMAT GetFileFormat(std::wstring& filename) {
-	size_t extesion_pos = 0;
-	extesion_pos = filename.find_last_of(L'.', std::wstring::npos); //Look for file extesion
-	if (extesion_pos != std::wstring::npos && (extesion_pos + 1) < filename.length()) {
-		//We found and extension and checked that there's at least one char after the ".", lets see if we support it
-		//TODO(fran): create some sort of a map FILE_FORMAT-wstring eg FILE_FORMAT::SRT - L"srt" and a way to enumerate every FILE_FORMAT
-
-		//TODO(fran): make every character in the filename that we're going to compare lowercase
-		WCHAR srt[] = L"srt";
-		if (!filename.compare(extesion_pos + 1, ARRAYSIZE(srt) - 1, srt) && (filename.length() - (extesion_pos + 1)) == (ARRAYSIZE(srt) - 1)) 
-			return FILE_FORMAT::SRT;
-		//TODO(fran): check the -1 is correct
-		WCHAR ssa[] = L"ssa";
-		if (!filename.compare(extesion_pos + 1, ARRAYSIZE(ssa) - 1, ssa) && (filename.length() - (extesion_pos + 1)) == (ARRAYSIZE(ssa) - 1)) 
-			return FILE_FORMAT::SSA;
-
-		WCHAR ass[] = L"ass";
-		if (!filename.compare(extesion_pos + 1, ARRAYSIZE(ass) - 1, ass) && (filename.length() - (extesion_pos + 1)) == (ARRAYSIZE(ass) - 1))
-			return FILE_FORMAT::SSA;
-	}
-	else {
-		//File has no extension, do manual checking. Note that we are either checking the extesion or using manual checks but not both,
-		//the idea behind it is that if the file has an extension and we couldn't find it between our supported list then we dont support it,
-		//since, for now, we trust that what the extension says is true
-
-		//TODO(fran): manual checking, aka reading the file
-
-	}
-	
-	//If everything else fails fallback to srt //TODO(fran): we could also reject the file, adding an INVALID into FILE_FORMAT
-	return FILE_FORMAT::SRT;
-}
-
 //TODO(fran): we could try to offload the entire procedure of AcceptedFile to a new thread so in case we receive multiple files we process them in parallel
 void AcceptedFile(std::wstring filename) {
 
@@ -1843,15 +1385,14 @@ void AcceptedFile(std::wstring filename) {
 	HeapFree(GetProcessHeap(), 0, parameters);
 	parameters = NULL;
 #endif
-	std::wstring text;
-	ReadText(filename, text);
+	std::wstring text = ReadText(filename);
 
 	TAB_INFO text_data;
 	wcsncpy_s(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
 
 	int pos = GetNextTabPos();//TODO(fran): careful with multithreading here
 
-	text_data.commentType = CommentTypeFound(text);
+	text_data.commentType = GetCommentType(text);
 
 	text_data.fileFormat = GetFileFormat(filename);
 
@@ -2208,6 +1749,8 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 				UINT index = item->itemID;
 
+				bool is_cursel = index == TabCtrl_GetCurSel(item->hwndItem);;
+
 				//Draw text
 				std::wstring text = GetTabTitle(index);
 
@@ -2240,7 +1783,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				COLORREF old_txt_color = GetTextColor(item->hDC);
 
 				SetBkColor(item->hDC, ColorFromBrush(unCap_colors.ControlBk));
-				SetTextColor(item->hDC, ColorFromBrush(unCap_colors.ControlTxt));
+				SetTextColor(item->hDC, ColorFromBrush(is_cursel ? unCap_colors.ControlTxt : unCap_colors.ControlTxt_Inactive));
 				TextOut(item->hDC, xPos, yPos, text.c_str(), len);
 
 				//Reset hdc as it was before our painting
@@ -2276,7 +1819,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				HBITMAP bmp = HACK_close;
 				BITMAP bitmap; GetObject(bmp, sizeof(bitmap), &bitmap);
 				if (bitmap.bmBitsPixel == 1) {
-					
+					//TODO(fran): there's no reason why I cant go in halves to, add extra if for bigger or smaller than bmp
 					int max_sz = roundNdown(bitmap.bmWidth, min(TabCloseButtonInfo.icon.cx, TabCloseButtonInfo.icon.cy)); //HACK: instead use png + gdi+ + color matrices
 					if (!max_sz)max_sz = bitmap.bmWidth; //More HACKs
 
@@ -2284,7 +1827,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 					int bmp_width = bmp_height;
 					int bmp_align_width = item->rcItem.right - TabCloseButtonInfo.rightPadding - bmp_width;
 					int bmp_align_height = item->rcItem.top + (RECTHEIGHT(item->rcItem) - bmp_height) / 2;
-					urender::draw_mask(item->hDC, bmp_align_width, bmp_align_height, bmp_width, bmp_height, bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, unCap_colors.Img);//TODO(fran): parametric color
+					urender::draw_mask(item->hDC, bmp_align_width, bmp_align_height, bmp_width, bmp_height, bmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, is_cursel ? unCap_colors.Img : unCap_colors.Img_Inactive);//TODO(fran): parametric color
 				}
 				//TODO?(fran): add a plus sign for the last tab and when pressed launch choosefile? or no plus sign at all since we dont really need it
 
@@ -2304,6 +1847,19 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 		return (INT_PTR)unCap_colors.ControlBk;
 	}
+	case WM_CTLCOLOREDIT://TODO(fran): paint my own edit box so I can add a 1px border, OR paint it here, I do get the dc, and apply a clip region so no one overrides it
+	{//NOTE: there doesnt seem to be a way to modify the border that I added with WS_BORDER, it probably is handled outside of the control
+		/*HWND ctl = (HWND)lparam;
+		HDC dc = (HDC)wparam;
+		if (ctl == hInitialChar || ctl == hFinalChar)
+		{
+			SetBkColor(dc, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor(dc, ColorFromBrush(unCap_colors.ControlTxt));
+			return (LRESULT)unCap_colors.ControlBk;
+		}
+		else return DefWindowProc(hwnd, msg, wparam, lparam);*/
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
 	case WM_CTLCOLORSTATIC:
 	{
 		//TODO(fran): check we are changing the right controls
@@ -2402,6 +1958,21 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	} break;
 	case WM_COMMAND:
 	{
+		printf("HIWORD(wparam)=%d\n", HIWORD(wparam));
+		switch (HIWORD(wparam)) {//NOTE: old controls use this style of messaging the parent instead of WM_NOTIFY
+		case CBN_SELCHANGE://Combobox selection has changed
+			WORD ctl_identifier = LOWORD(wparam);
+			HWND ctl_wnd = (HWND)lparam;
+			if (ctl_wnd == hOptions) {
+				int cursel = ComboBox_GetCurSel(ctl_wnd);
+				EnableOtherChar(cursel == COMMENT_TYPE::other);
+				return 0;
+			}
+		}
+
+		//TODO(fran): determine a standard to avoid msgs entering into the wrong switch statement, eg 0 on the HI or LOWORD of wparam means dont enter in that switch
+		//            Or replace the WM_COMMAND sendmsg in the controls for WM_NOTIFY
+
 		// Msgs from my controls
 		switch (LOWORD(wparam))
 		{
@@ -2520,8 +2091,8 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			//} break;
 			return 0;
 		} 
-		default: return DefWindowProc(hwnd, msg, wparam, lparam);
 		}
+		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_NCCALCSIZE:
 	{
@@ -2603,10 +2174,6 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_CTLCOLOREDIT://TODO(fran): hmm, strange that this guy got here
-	{
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
 	case WM_DESTROY:
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -2648,9 +2215,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 #ifdef _DEBUG
 	AllocConsole();
-	freopen("CONIN$", "r", stdin);
-	freopen("CONOUT$", "w", stdout);
-	freopen("CONOUT$", "w", stderr);
+	FILE* ___s; defer{ fclose(___s); };
+	freopen_s(&___s, "CONIN$", "r", stdin);
+	freopen_s(&___s, "CONOUT$", "w", stdout);
+	freopen_s(&___s, "CONOUT$", "w", stderr);
 #endif
 
 	CheckInfoFile();
@@ -2670,6 +2238,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	unCap_colors.ScrollbarMouseOver = CreateSolidBrush(RGB(188, 188, 182));
 	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(50, 51, 45));
 	unCap_colors.Img = CreateSolidBrush(RGB(228, 228, 222));
+	unCap_colors.Img_Inactive = CreateSolidBrush(RGB(198, 198, 192));
 	unCap_colors.CaptionBk = CreateSolidBrush(RGB(20, 21, 15));
 	unCap_colors.CaptionBk_Inactive = CreateSolidBrush(RGB(60, 61, 65));
 	defer{ for (HBRUSH& b : unCap_colors.brushes) if (b) { DeleteBrush(b); b = NULL; } };
@@ -2680,13 +2249,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	TabOffset.bottomOffset = TabOffset.leftOffset;
 	TabOffset.topOffset = 24;
 
-	LOGFONTW lf{0};
+	LOGFONT lf{0};
 	lf.lfQuality = CLEARTYPE_QUALITY;
 	lf.lfHeight = -15;//TODO(fran): parametric
 	//INFO: by default if I dont set faceName it uses "Modern", looks good but it lacks some charsets
-	wcsncpy_s(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
+	StrCpyN(lf.lfFaceName, GetFontFaceName().c_str(), ARRAYSIZE(lf.lfFaceName));
 	
-	unCap_fonts.General = CreateFontIndirectW(&lf);
+	unCap_fonts.General = CreateFontIndirect(&lf);
 	if (!unCap_fonts.General) MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
 
 	lf.lfHeight = (LONG)((float)GetSystemMetrics(SM_CYMENU)*.85f);

@@ -1,6 +1,5 @@
 #pragma once
-
-#define DCX_USESTYLE 0x00010000 /*Windows never disappoints with its crucial undocumented features, HDC dc = GetDCEx(hwnd, 0, DCX_WINDOW | DCX_USESTYLE);*/
+#include <Windows.h>
 
 #ifdef _DEBUG
 #define UNCAP_ASSERTIONS
@@ -12,9 +11,6 @@
 #define Assert(assertion) 
 #endif
 
-#define RECTWIDTH(r) (r.right >= r.left ? r.right - r.left : r.left - r.right )
-
-#define RECTHEIGHT(r) (r.bottom >= r.top ? r.bottom - r.top : r.top - r.bottom )
 
 //Thanks to https://handmade.network/forums/t/1273-post_your_c_c++_macro_tricks/3
 template <typename F> struct Defer { Defer(F f) : f(f) {} ~Defer() { f(); } F f; };
@@ -25,6 +21,12 @@ struct defer_dummy { };
 template<typename F> Defer<F> operator+(defer_dummy, F&& f) { return makeDefer<F>(std::forward<F>(f)); }
 //usage: defer{block of code;}; //the last defer in a scope gets executed first (LIFO)
 #define defer auto _defer( __LINE__ ) = defer_dummy( ) + [ & ]( )
+
+//RECT related
+
+#define RECTWIDTH(r) (r.right >= r.left ? r.right - r.left : r.left - r.right )
+
+#define RECTHEIGHT(r) (r.bottom >= r.top ? r.bottom - r.top : r.top - r.bottom )
 
 static RECT rectWH(LONG left, LONG top, LONG width, LONG height) {
 	RECT r;
@@ -69,6 +71,19 @@ static RECT rect1pxB(RECT r) {
 	return res;
 }
 
+#define BORDERLEFT 0x01
+#define BORDERTOP 0x02
+#define BORDERRIGHT 0x04
+#define BORDERBOTTOM 0x08
+//NOTE: borders dont get centered, if you choose 5 it'll go 5 into the rc. TODO(fran): centered borders
+void FillRectBorder(HDC dc, RECT r, int thickness, HBRUSH br, int borders) {
+	RECT borderrc;
+	if (borders & BORDERLEFT) { borderrc = rectNpxL(r, thickness); FillRect(dc, &borderrc, br); }
+	if (borders & BORDERTOP) { borderrc = rectNpxT(r, thickness); FillRect(dc, &borderrc, br); }
+	if (borders & BORDERRIGHT) { borderrc = rectNpxR(r, thickness); FillRect(dc, &borderrc, br); }
+	if (borders & BORDERBOTTOM) { borderrc = rectNpxB(r, thickness); FillRect(dc, &borderrc, br); }
+}
+
 static bool test_pt_rc(POINT p, RECT r) {
 	bool res = false;
 	if (p.y >= r.top &&//top
@@ -91,11 +106,15 @@ static bool sameRc(RECT r1, RECT r2) {
 	return res;
 }
 
-inline COLORREF ColorFromBrush(HBRUSH br) {
+//HBRUSH related
+
+static COLORREF ColorFromBrush(HBRUSH br) {
 	LOGBRUSH lb;
 	GetObject(br, sizeof(lb), &lb);
 	return lb.lbColor;
 }
+
+//ICON related
 
 struct MYICON_INFO //This is so stupid I find it hard to believe
 {
@@ -104,7 +123,7 @@ struct MYICON_INFO //This is so stupid I find it hard to believe
 	int     nBitsPerPixel;
 };
 
-MYICON_INFO MyGetIconInfo(HICON hIcon)
+static MYICON_INFO MyGetIconInfo(HICON hIcon)
 {
 	MYICON_INFO myinfo; ZeroMemory(&myinfo, sizeof(myinfo));
 
@@ -141,4 +160,23 @@ MYICON_INFO MyGetIconInfo(HICON hIcon)
 	if (info.hbmMask) DeleteObject(info.hbmMask);
 
 	return myinfo;
+}
+
+//HMENU related
+
+BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
+	MENUITEMINFO i;
+	i.cbSize = sizeof(i);
+	i.fMask = MIIM_DATA;
+	i.dwItemData = data;
+	return SetMenuItemInfo(hmenu, item, fByPositon, &i);
+}
+
+BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, const TCHAR* str) {
+	MENUITEMINFOW menu_setter;
+	menu_setter.cbSize = sizeof(menu_setter);
+	menu_setter.fMask = MIIM_STRING;
+	menu_setter.dwTypeData = const_cast<TCHAR*>(str);
+	BOOL res = SetMenuItemInfoW(hmenu, item, fByPositon, &menu_setter);
+	return res;
 }

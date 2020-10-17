@@ -3,7 +3,7 @@
 #include <windowsx.h>
 #include "unCap_helpers.h"
 #include "unCap_math.h"
-#include "unCap_global.h"
+#include "unCap_Global.h"
 #include "unCap_Renderer.h"
 #include "unCap_button.h"
 #include "resource.h" //TODO(fran): everything that we take from the resources must be parameterized
@@ -23,6 +23,7 @@
 #define UNCAPNC_MINIMIZE 100 //sent through WM_COMMAND
 #define UNCAPNC_MAXIMIZE 101 //sent through WM_COMMAND
 #define UNCAPNC_CLOSE 102 //sent through WM_COMMAND
+#define UNCAPNC_RESTORE 103 //sent through WM_COMMAND
 
 #define UNCAPNC_TIMER_MENUDELAY 0xf1 //A little delay before allowing the user to select a new menu, this prevents problems, eg the user trying to close the menu by selecting it again in the menu bar
 
@@ -183,17 +184,19 @@ void UNCAPNC_show_rclickmenu(unCapNcProcState* state, POINT mouse) {
 	HMENU subm = CreateMenu();//IMPORTANT: you need a MF_POPUP submenu for the menu wnd to be rendered properly, thanks https://www.codeproject.com/Questions/334598/Popup-Menu-Problem-is-not-working-properly
 	AppendMenuW(m, MF_POPUP | MF_OWNERDRAW, (UINT_PTR)subm, (LPCWSTR)m);
 
-	//TODO(fran): UNCAPNC_RESTORE
+	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_RESTORE, (LPCWSTR)subm);
+	SetMenuItemString(subm, UNCAPNC_RESTORE, FALSE, RCS(LANG_NC_RESTORE));
+
 	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_MINIMIZE, (LPCWSTR)subm);
-	SetMenuItemString(subm, UNCAPNC_MINIMIZE, FALSE, TEXT("Minimize"));
+	SetMenuItemString(subm, UNCAPNC_MINIMIZE, FALSE, RCS(LANG_NC_MINIMIZE));
 
 	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_MAXIMIZE, (LPCWSTR)subm);
-	SetMenuItemString(subm, UNCAPNC_MAXIMIZE, FALSE, TEXT("Maximize"));
+	SetMenuItemString(subm, UNCAPNC_MAXIMIZE, FALSE, RCS(LANG_NC_MAXIMIZE));
 
 	AppendMenuW(subm, MF_SEPARATOR | MF_OWNERDRAW, 0, (LPCWSTR)subm);
 
 	AppendMenuW(subm, MF_STRING | MF_OWNERDRAW, UNCAPNC_CLOSE, (LPCWSTR)subm);
-	SetMenuItemString(subm, UNCAPNC_CLOSE, FALSE, TEXT("Close"));
+	SetMenuItemString(subm, UNCAPNC_CLOSE, FALSE, RCS(LANG_NC_CLOSE));
 
 	MENUINFO mi{ sizeof(mi) };
 	mi.fMask = MIM_BACKGROUND | MIM_APPLYTOSUBMENUS;
@@ -603,7 +606,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				menu_nfo.dwTypeData = menu_str;
 				GetMenuItemInfo((HMENU)item->itemData, item->itemID, FALSE, &menu_nfo);
 
-				wprintf(L"%s\n", menu_str);
+				//wprintf(L"%s\n", menu_str);
 
 				HDC dc = GetDC(hwnd); //Of course they had to ask for a dc, and not give the option to just provide the font, which is the only thing this function needs
 				HFONT hfntPrev = (HFONT)SelectObject(dc, unCap_fonts.Menu);//TODO(fran): parametric
@@ -630,7 +633,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				}
 				item->itemHeight = GetSystemMetrics(SM_CYMENU); //Height of menu
 
-				printf("width:%d ; height:%d\n", item->itemWidth, item->itemHeight);
+				//printf("width:%d ; height:%d\n", item->itemWidth, item->itemHeight);
 
 				return TRUE;
 			} break;
@@ -883,6 +886,11 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		// Msgs from my controls
 		switch (LOWORD(wparam))
 		{
+		case UNCAPNC_RESTORE:
+		{
+			ShowWindow(state->wnd, SW_RESTORE);
+			return 0;
+		} break;
 		case UNCAPNC_MINIMIZE: //TODO(fran): move away from WM_COMMAND and start using WM_SYSCOMMAND, that probably means getting rid of the individual nc buttons and handling all myself like with the menubar
 		{
 			ShowWindow(state->wnd, SW_MINIMIZE);
@@ -1175,11 +1183,13 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case 49233:
+	case 49454:
 	case 49467:
 	case 49488: //TaskbarButtonCreated, seems like the same string changes ids
-	case 49558: //TaskbarButtonCreated, where that comes from or what that does I have no clue
-	case 49566: //TaskbarButtonCreated, where that comes from or what that does I have no clue
-	case 49895: //TaskbarButtonCreated
+	case 49558: //TaskbarButtonCreated, generated when you open an explorer window for some reason, wtf
+	case 49566:
+	case 49895:
 	{
 		TCHAR arr[256];
 		int res = GetClipboardFormatName(msg, arr, 256); //IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages, these are: "String messages for use by applications."
