@@ -10,6 +10,22 @@ LANGUAGE_MANAGER::~LANGUAGE_MANAGER()
 {
 }
 
+bool LANGUAGE_MANAGER::deserialize(str name, const str& content) {
+	bool res=false;
+	str start = name + _keyvaluesepartor + _structbegin + _newline;
+	size_t s = find_identifier(content, 0, start);
+	size_t e = find_closing_str(content, s + start.size(), _structbegin, _structend);
+	if (str_found(s) && str_found(e)) {
+		s += start.size();
+		str substr = content.substr(s, e - s);
+		_foreach_LANGUAGE_MANAGER_member(_deserialize_member);
+		res = true;
+	}
+	this->ChangeLanguage(this->CurrentLanguage);//whatever happens we need to set some language
+	return res;
+}
+
+
 HINSTANCE LANGUAGE_MANAGER::SetHInstance(HINSTANCE hInst)
 {
 	HINSTANCE oldHInst = this->hInstance;
@@ -42,7 +58,7 @@ BOOL LANGUAGE_MANAGER::AddMenuText(HMENU hmenu, UINT_PTR ID, UINT stringID)
 	return res;
 }
 
-LANGUAGE_MANAGER::LANGUAGE LANGUAGE_MANAGER::GetCurrentLanguage()
+LANGUAGE LANGUAGE_MANAGER::GetCurrentLanguage()
 {
 	return this->CurrentLanguage;
 }
@@ -142,9 +158,9 @@ inline BOOL LANGUAGE_MANAGER::UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID
 LCID LANGUAGE_MANAGER::GetLCID(LANGUAGE lang)
 {
 	switch (lang) {
-	case LANGUAGE::ENGLISH:
-		return MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT);
-	case LANGUAGE::SPANISH:
+	case LANGUAGE::English: 
+		return MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US), SORT_DEFAULT); //TODO(fran):this is deprecated and not great for macros, unless we set each enum to this values
+	case LANGUAGE::Español:
 		return MAKELCID(MAKELANGID(LANG_SPANISH, SUBLANG_SPANISH), SORT_DEFAULT);
 	default:
 		return NULL;
@@ -155,9 +171,9 @@ LANGID LANGUAGE_MANAGER::GetLANGID(LANGUAGE lang)
 {
 	//INFO: https://docs.microsoft.com/en-us/windows/win32/intl/language-identifier-constants-and-strings
 	switch (lang) {
-	case LANGUAGE::ENGLISH:
-		return MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);
-	case LANGUAGE::SPANISH:
+	case LANGUAGE::English:
+		return MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US);//TODO(fran): same as GetLCID
+	case LANGUAGE::Español:
 		return MAKELANGID(LANG_SPANISH, SUBLANG_SPANISH);
 	default:
 		return NULL;

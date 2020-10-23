@@ -1,6 +1,6 @@
 #pragma once
 #include <Windows.h>
-#include "unCap_helpers.h"
+#include "unCap_Helpers.h"
 #include "unCap_math.h"
 
 #define UNCAP_GDIPLUS /*For lazy bilinear filtered drawing*/

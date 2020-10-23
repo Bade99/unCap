@@ -173,11 +173,13 @@
     <ClInclude Include="unCap_combobox.h" />
     <ClInclude Include="unCap_Core.h" />
     <ClInclude Include="unCap_Global.h" />
-    <ClInclude Include="unCap_helpers.h" />
+    <ClInclude Include="unCap_Helpers.h" />
     <ClInclude Include="unCap_math.h" />
     <ClInclude Include="unCap_Platform.h" />
+    <ClInclude Include="unCap_Reflection.h" />
     <ClInclude Include="unCap_Renderer.h" />
     <ClInclude Include="unCap_scrollbar.h" />
+    <ClInclude Include="unCap_Serialization.h" />
     <ClInclude Include="unCap_uncapnc.h" />
     <ClInclude Include="windows_undoc.h" />
     <ClInclude Include="unCap_Vector.h" />

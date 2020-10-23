@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint> //uint8_t
+#include <string> //unfortunate
 
 typedef uint8_t u8; //prepping for jai
 typedef uint16_t u16;

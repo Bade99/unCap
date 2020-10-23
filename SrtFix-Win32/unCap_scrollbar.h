@@ -1,7 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include "unCap_Global.h"
-#include "unCap_helpers.h"
+#include "unCap_Helpers.h"
 #include "windows_undoc.h"
 
 //NOTE: this scrollbar is only for edit controls (for now), and only vertical

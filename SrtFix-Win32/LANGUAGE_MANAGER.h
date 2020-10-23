@@ -2,6 +2,9 @@
 #include <windows.h>
 #include <map>
 #include <vector>
+#include "unCap_Helpers.h"
+#include "unCap_Reflection.h"
+#include "unCap_Serialization.h"
 
 //Request string
 #define RS(stringID) LANGUAGE_MANAGER::Instance().RequestString(stringID)
@@ -18,17 +21,67 @@
 //Add menu string
 #define AMT(hmenu,ID,stringID) LANGUAGE_MANAGER::Instance().AddMenuText(hmenu,ID,stringID);
 
+enum LANGUAGE
+{
+	#define _foreach_language(op) \
+				op(English,=1)  \
+				op(Español,)  \
+
+	_foreach_language(_generate_enum_member)
+};
+
+
+namespace userial {
+	static str serialize(LANGUAGE v) {
+		switch (v) {
+			_foreach_language(_string_enum_case);
+		default: return L"";
+		}
+	}
+	static bool deserialize(LANGUAGE& var, str name, const str& content) {
+		str start = name + _keyvaluesepartor;
+		size_t s = find_identifier(content, 0, start);
+		if (str_found(s)) {
+			s += start.size();
+			str substr = content.substr(s);//TODO(fran):we dont really need a substr and neither till the end of content
+			bool found = false;
+			#define _compare_enum_string_found(member,value) if(!substr.compare(0,str(_t(#member)).size(),_t(#member))){var = member; found=true;} else
+			_foreach_language(_compare_enum_string_found) {/*you can do something on the final else case*/ };
+
+			return found;
+		}
+		return false;
+	}
+}
+
 class LANGUAGE_MANAGER
 {
-public://TODO(fran): add lang to the rest of the classes: outmgr,duplmgr,...
+public:
 
-	enum LANGUAGE
-	{
-		ENGLISH = 1, SPANISH
-	};
 
-	static BOOL IsValidLanguage(int lang) {//TODO(fran): simpler way to check for valid enum without having to add each lang here
-		return lang == LANGUAGE::ENGLISH || lang == LANGUAGE::SPANISH;
+private:
+
+#define _foreach_LANGUAGE_MANAGER_member(op) \
+		op(LANGUAGE,CurrentLanguage,LANGUAGE::English) \
+
+	_foreach_LANGUAGE_MANAGER_member(_generate_member)
+
+public:
+
+	static int GetLanguageStringIndex(LANGUAGE lang) {
+		int idx = 0;
+#define _language_add_or_return(member,value) if(lang==member)return idx;else ++idx;
+		_foreach_language(_language_add_or_return);
+#undef _language_add_or_return
+		return 0;
+	}
+
+	static bool IsValidLanguage(LANGUAGE lang) {
+
+		switch (lang) {
+			_foreach_language(_isvalid_enum_case)
+			default: return false;
+		}
 	}
 
 	static LANGUAGE_MANAGER& Instance()
@@ -76,7 +129,11 @@ public://TODO(fran): add lang to the rest of the classes: outmgr,duplmgr,...
 
 	BOOL AddMenuText(HMENU hmenu, UINT_PTR ID, UINT stringID);
 
-	LANGUAGE_MANAGER::LANGUAGE GetCurrentLanguage();
+	LANGUAGE GetCurrentLanguage();
+
+	_generate_default_struct_serialize(_foreach_LANGUAGE_MANAGER_member);
+
+	bool deserialize(str name, const str& content);
 
 private:
 	LANGUAGE_MANAGER();
@@ -84,7 +141,6 @@ private:
 
 	HINSTANCE hInstance = NULL;//TODO(fran): should we ask for the instance to each control? for now we dont really need it
 
-	LANGUAGE CurrentLanguage = (LANGUAGE)-1;
 	std::map<HWND, UINT> Hwnds;
 	std::map<HWND, UINT> DynamicHwnds;
 	std::map<std::pair<HWND, UINT>, UINT> Comboboxes;
@@ -93,13 +149,23 @@ private:
 	std::map<std::pair<HMENU, UINT_PTR>, UINT> Menus;
 	//Add list of hwnd that have dynamic text, therefore need to know when there was a lang change to update their text
 
-	inline BOOL UpdateHwnd(HWND hwnd, UINT stringID);
-	inline BOOL UpdateDynamicHwnd(HWND hwnd, UINT messageID);
-	inline BOOL UpdateCombo(HWND hwnd, UINT ID, UINT stringID);
-	inline BOOL UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID);
+	BOOL UpdateHwnd(HWND hwnd, UINT stringID);
+	BOOL UpdateDynamicHwnd(HWND hwnd, UINT messageID);
+	BOOL UpdateCombo(HWND hwnd, UINT ID, UINT stringID);
+	BOOL UpdateMenu(HMENU hmenu, UINT_PTR ID, UINT stringID);
 
 	LCID GetLCID(LANGUAGE lang);
 
 	LANGID GetLANGID(LANGUAGE lang);
 };
 
+//_add_struct_to_serialization_namespace(LANGUAGE_MANAGER) /* TODO(fran): Im pretty sure I've got to do this by hand, I dont think we can create an instance of LANGUAGE_MANAGER, we only accept LANGUAGE_MANAGER& */
+
+namespace userial {
+	static str serialize(LANGUAGE_MANAGER& var) {
+		return var.serialize();
+	}
+	static bool deserialize(LANGUAGE_MANAGER& var, str name, const str& content) {
+		return var.deserialize( name, content);
+	}
+}

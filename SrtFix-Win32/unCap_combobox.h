@@ -1,7 +1,7 @@
 #pragma once
 #include <Windows.h>
 #include <CommCtrl.h> //DefSubclassProc
-#include "unCap_helpers.h"
+#include "unCap_Helpers.h"
 #include "unCap_Global.h"
 
 struct ComboProcState {

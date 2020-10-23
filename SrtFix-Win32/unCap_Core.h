@@ -102,7 +102,7 @@ enum FILE_FORMAT {
 	SSA //Used to signal any version of Substation Alpha: v1,v2,v3,v4,v4+ (Advanced Substation Alpha)
 };
 
-FILE_FORMAT GetFileFormat(std::wstring& filename) {
+FILE_FORMAT GetFileFormat(std::wstring filename) {
 	size_t extesion_pos = 0;
 	extesion_pos = filename.find_last_of(L'.', std::wstring::npos); //Look for file extesion
 	if (extesion_pos != std::wstring::npos && (extesion_pos + 1) < filename.length()) {

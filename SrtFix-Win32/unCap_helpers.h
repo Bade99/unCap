@@ -1,5 +1,6 @@
 #pragma once
 #include <Windows.h>
+#include "unCap_Platform.h"
 
 #ifdef _DEBUG
 #define UNCAP_ASSERTIONS
@@ -11,6 +12,44 @@
 #define Assert(assertion) 
 #endif
 
+#ifdef UNICODE
+#define to_str(v) std::to_wstring(v)
+#else
+#define to_str(v) std::to_string(v)
+#endif
+
+static bool str_found(size_t p) {
+	return p != str::npos;
+}
+
+//NOTE: offset should be 1 after the last character of "begin"
+//NOTE: returns str::npos if not found
+static size_t find_closing_str(str text, size_t offset, str begin, str close) {
+	//Finds closing str, eg: open= { ; close= } ; you're here-> {......{..}....} <-finds this one
+	size_t closePos = offset - 1;
+	i32 counter = 1;
+	while (counter > 0 && text.size() > ++closePos) {
+		if (!text.compare(closePos, begin.size(), begin)) {
+			counter++;
+		}
+		else if (!text.compare(closePos, close.size(), close)) {
+			counter--;
+		}
+	}
+	return !counter ? closePos : str::npos;
+}
+
+//Returns first non matching char, could be 1 past the size of the string
+static size_t find_till_no_match(str s, size_t offset, str match) {
+	size_t p = offset - 1;
+	while (s.size() > ++p) {
+		size_t r = (str(1, s[p])).find_first_of(match.c_str());//NOTE: find_first_of is really badly designed
+		if (!str_found(r)) {
+			break;
+		}
+	}
+	return p;
+}
 
 //Thanks to https://handmade.network/forums/t/1273-post_your_c_c++_macro_tricks/3
 template <typename F> struct Defer { Defer(F f) : f(f) {} ~Defer() { f(); } F f; };
@@ -76,7 +115,7 @@ static RECT rect1pxB(RECT r) {
 #define BORDERRIGHT 0x04
 #define BORDERBOTTOM 0x08
 //NOTE: borders dont get centered, if you choose 5 it'll go 5 into the rc. TODO(fran): centered borders
-void FillRectBorder(HDC dc, RECT r, int thickness, HBRUSH br, int borders) {
+static void FillRectBorder(HDC dc, RECT r, int thickness, HBRUSH br, int borders) {
 	RECT borderrc;
 	if (borders & BORDERLEFT) { borderrc = rectNpxL(r, thickness); FillRect(dc, &borderrc, br); }
 	if (borders & BORDERTOP) { borderrc = rectNpxT(r, thickness); FillRect(dc, &borderrc, br); }
@@ -164,7 +203,7 @@ static MYICON_INFO MyGetIconInfo(HICON hIcon)
 
 //HMENU related
 
-BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
+static BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
 	MENUITEMINFO i;
 	i.cbSize = sizeof(i);
 	i.fMask = MIIM_DATA;
@@ -172,7 +211,7 @@ BOOL SetMenuItemData(HMENU hmenu, UINT item, BOOL fByPositon, ULONG_PTR data) {
 	return SetMenuItemInfo(hmenu, item, fByPositon, &i);
 }
 
-BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, const TCHAR* str) {
+static BOOL SetMenuItemString(HMENU hmenu, UINT item, BOOL fByPositon, const TCHAR* str) {
 	MENUITEMINFOW menu_setter;
 	menu_setter.cbSize = sizeof(menu_setter);
 	menu_setter.fMask = MIIM_STRING;

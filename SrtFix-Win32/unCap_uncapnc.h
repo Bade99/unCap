@@ -1,13 +1,15 @@
 #pragma once
 #include <Windows.h>
 #include <windowsx.h>
-#include "unCap_helpers.h"
+#include "unCap_Helpers.h"
 #include "unCap_math.h"
 #include "unCap_Global.h"
 #include "unCap_Renderer.h"
 #include "unCap_button.h"
 #include "resource.h" //TODO(fran): everything that we take from the resources must be parameterized
 #include "windows_undoc.h"
+#include "unCap_Serialization.h"
+#include "unCap_Reflection.h"
 
 // ------------------------ USAGE NOTES ------------------------ //
 // - If you need menus to resize, for example when you change languages
@@ -35,7 +37,6 @@ struct unCapNcProcState {
 	//TODO(fran): might be good to store client and wnd rect, find the one place where we get this two. Then we wont have the code littered with those two calls
 
 	HWND btn_min, btn_max, btn_close;
-
 
 	RECT rc_caption;
 	SIZE caption_btn;
@@ -92,6 +93,12 @@ void UNCAPNC_calc_caption(unCapNcProcState* state) {
 	state->rc_caption.bottom = distance(testrc.top, ncrc.top);
 
 	state->caption_btn.cy = RECTHEIGHT(state->rc_caption); state->caption_btn.cx = state->caption_btn.cy * 16 / 9;;
+}
+
+RECT UNCAPNC_calc_nonclient_rc_from_client(RECT uncapcl_rc,BOOL has_menu) {
+	RECT res= uncapcl_rc;
+	AdjustWindowRect(&res, WS_OVERLAPPEDWINDOW, has_menu);//TODO(fran): standardize this or some other measure
+	return res;
 }
 
 RECT UNCAPNC_calc_menu_rc(unCapNcProcState* state) {
@@ -170,7 +177,7 @@ bool UNCAPNC_is_on_menu_bar(unCapNcProcState* state, UINT menuitem) {
 	for (int i = 0; i < cnt; i++) {
 		HMENU submenu = GetSubMenu(state->menu, i);
 		
-		if (menuitem == (UINT)submenu || menuitem == (UINT)state->menu) {
+		if (menuitem == (UINT)(UINT_PTR)submenu || menuitem == (UINT)(UINT_PTR)state->menu) {
 			res = true;
 			break;
 		}
@@ -401,7 +408,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		ATOM class_res = init_wndclass_unCap_uncap_cl((HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE)); //TODO(fran): client class must be parameterized
 		Assert(class_res);
 		RECT rc = UNCAPNC_calc_client_rc(state);
-		state->client = CreateWindow(unCap_wndclass_uncap_cl, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, 0);//TODO(fran): client class must be parameterized
+		state->client = CreateWindow(unCap_wndclass_uncap_cl, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, createnfo->lpCreateParams);//TODO(fran): client class must be parameterized
 
 		return 0;
 	} break;
@@ -690,7 +697,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				else
 				{
 					txt_br = unCap_colors.ControlTxt;
-					Assert((int)item->hwndItem);
+					Assert((UINT)(UINT_PTR)item->hwndItem);
 					MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
 					//GetMenuInfo((HMENU)item->hwndItem, &mnfo); //We will not ask our "parent" hmenu since sometimes it decides it doesnt have the hbrush, we'll go straight to the menu bar
 					GetMenuInfo(state->menu, &mnfo);

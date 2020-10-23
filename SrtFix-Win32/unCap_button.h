@@ -2,7 +2,7 @@
 #include <Windows.h>
 #include <windowsx.h>
 #include "unCap_Global.h"
-#include "unCap_helpers.h"
+#include "unCap_Helpers.h"
 #include "unCap_Renderer.h"
 #include "windows_undoc.h"
 
@@ -270,7 +270,7 @@ static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CREATESTRUCT* creation_nfo = (CREATESTRUCT*)lparam;
 		st->parent = creation_nfo->hwndParent;
 		st->wnd = hwnd;
-		st->msg_to_send = (UINT)creation_nfo->hMenu;
+		st->msg_to_send = (UINT)(UINT_PTR)creation_nfo->hMenu;
 		return TRUE; //continue creation, this msg seems kind of more of a user setup place, strange considering there's also WM_CREATE
 	} break;
 	case WM_NCCALCSIZE: { //2nd msg received https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize
