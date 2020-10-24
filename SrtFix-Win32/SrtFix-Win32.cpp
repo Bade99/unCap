@@ -920,7 +920,7 @@ std::vector<std::wstring> CatchDrop(WPARAM wParam) { //TODO(fran): check for val
 		if (DragQueryFileW(hDrop, i, lpszFile, sizeof(lpszFile) / sizeof(lpszFile[0]))) {//retrieve the string
 
 			if (std::filesystem::is_directory(std::filesystem::path(lpszFile))) {//user dropped a folder
-				std::vector<std::wstring>files = GetFiles(lpszFile);
+				files = GetFiles(lpszFile);
 			}
 			else {
 				files.push_back(lpszFile);
@@ -1362,7 +1362,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 				UINT index = item->itemID;
 
-				bool is_cursel = index == TabCtrl_GetCurSel(item->hwndItem);;
+				bool is_cursel = index == (UINT)TabCtrl_GetCurSel(item->hwndItem);
 
 				//Draw text
 				std::wstring text = GetTabTitle(index);
