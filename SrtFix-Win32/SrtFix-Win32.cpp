@@ -899,7 +899,11 @@ std::vector<std::wstring> GetFiles(LPCWSTR s)//, int dir_lenght)
 		//if (p.status().type() == std::experimental::filesystem::file_type::directory) files.push_back(p.path().wstring().substr(dir_lenght, string::npos));
 		//else
 		//if (!p.path().extension().compare(".srt")) files.push_back(p.path().wstring().substr(dir_lenght, string::npos));
-		if (!p.path().extension().compare(".srt")) files.push_back(p.path().wstring());
+		//auto ext = p.path().extension();
+		//if (ext.empty() || !ext.compare(_t(".srt")) || !ext.compare(_t(".ass")) || !ext.compare(_t(".ssa")) || !ext.compare(_t(".txt"))) files.push_back(p.path().wstring());
+
+		//TODO(fran): do one pass storing all the extesnsions, then show a window to the user with multiple selection, like those circles you can press, and let the user choose what types they want
+		files.push_back(p.path().wstring());
 	}
 	return files;
 }

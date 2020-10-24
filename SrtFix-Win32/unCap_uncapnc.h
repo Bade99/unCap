@@ -1192,10 +1192,12 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	} break;
 	case 49233:
 	case 49454:
+	case 49470:
 	case 49467:
 	case 49488: //TaskbarButtonCreated, seems like the same string changes ids
 	case 49558: //TaskbarButtonCreated, generated when you open an explorer window for some reason, wtf
 	case 49566:
+	case 49707:
 	case 49895:
 	{
 		TCHAR arr[256];

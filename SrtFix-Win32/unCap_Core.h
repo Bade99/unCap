@@ -89,7 +89,7 @@ std::wstring ReadText(std::wstring filepath) {
 		//if encoding is ANSI we do nothing
 
 		std::wstringstream buffer;
-		buffer << file.rdbuf();
+		buffer << file.rdbuf(); //TODO(fran): this is horribly slow, just useless
 		res = buffer.str();
 
 		file.close();
