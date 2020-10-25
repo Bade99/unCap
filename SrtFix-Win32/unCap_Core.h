@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include "unCap_Platform.h"
+#include <sstream>
 
 enum TXT_ENCODING {
 	ANSI = 1,

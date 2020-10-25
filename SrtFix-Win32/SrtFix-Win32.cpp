@@ -20,7 +20,6 @@
 #include <string>
 #include <filesystem>
 #include <fstream>
-#include <sstream>
 #include <propvarutil.h>
 #include <Propsys.h>
 #include <propkey.h>
@@ -81,7 +80,6 @@
 
 #define UNCAP_SETTEXTDURATION (WM_USER+52) //Sets duration of text in a control before it's hidden. wParam=(UINT)duration in milliseconds ; lParam = NOT USED
 
-#define MAX_PATH_LENGTH MAX_PATH
 #define MAX_TEXT_LENGTH 288000 //Edit controls have their text limit set by default at 32767, we need to change that
 
 //----------------------USER DEFINED VARIABLES----------------------:
@@ -113,19 +111,7 @@ struct CLOSEBUTTON {
 //----------------------GLOBALS----------------------:
 i32 n_tabs = 0;//Needed for serialization
 
-TCHAR unCap_wndclass_uncap_cl[] = TEXT("unCap_wndclass_uncap_cl"); //Client uncap
-
 TCHAR appName[] = TEXT("unCap"); //Program name, to be displayed on the title of windows
-
-HWND hOptions;
-HWND hInitialText;
-HWND hInitialChar;
-HWND hFinalText;
-HWND hFinalChar;
-HWND hRemove;
-HWND hRemoveCommentWith;
-HWND TextContainer;//The tab control where the text editors are "contained"
-HWND hMessage;//Show timed messages
 
 UNCAP_COLORS unCap_colors;
 UNCAP_FONTS unCap_fonts;
@@ -148,11 +134,11 @@ CLOSEBUTTON TabCloseButtonInfo; //Information for the placement of the close but
 //----------------------HELPER FUNCTIONS----------------------:
 
 //Returns the nth tab's text info or a TAB_INFO struct with everything set to 0
-TAB_INFO GetTabExtraInfo(int index) {
+TAB_INFO GetTabExtraInfo(HWND tab, int index) {
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		item.tab_info.mask = TCIF_PARAM;
-		BOOL ret = (BOOL)SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&item);
+		BOOL ret = (BOOL)SendMessage(tab, TCM_GETITEM, index, (LPARAM)&item);
 		if (ret) {
 			return item.extra_info;
 		}
@@ -163,20 +149,20 @@ TAB_INFO GetTabExtraInfo(int index) {
 }
 
 //Returns the current tab's text info or a TAB_INFO struct with everything set to 0
-TAB_INFO GetCurrentTabExtraInfo() {
-	int index = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
+TAB_INFO GetCurrentTabExtraInfo(HWND tab) {
+	int index = (int)SendMessage(tab, TCM_GETCURSEL, 0, 0);
 
-	return GetTabExtraInfo(index);
+	return GetTabExtraInfo(tab,index);
 }
 
-std::wstring GetTabTitle(int index){
+std::wstring GetTabTitle(HWND tab, int index){
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		WCHAR title[200];
 		item.tab_info.mask = TCIF_TEXT;
 		item.tab_info.pszText = title;
 		item.tab_info.cchTextMax = ARRAYSIZE(title);
-		BOOL ret = (BOOL)SendMessage(TextContainer, TCM_GETITEM, index, (LPARAM)&item);
+		BOOL ret = (BOOL)SendMessage(tab, TCM_GETITEM, index, (LPARAM)&item);
 		if (ret) {
 			return title;
 		}
@@ -184,40 +170,40 @@ std::wstring GetTabTitle(int index){
 	return L"";
 }
 
-BOOL SetTabExtraInfo(int index,const TAB_INFO& text_data) {
+BOOL SetTabExtraInfo(HWND tab, int index,const TAB_INFO& text_data) {
 	CUSTOM_TCITEM item;
 	item.tab_info.mask = TCIF_PARAM;
 	item.extra_info = text_data;
 
-	int ret = (int)SendMessage(TextContainer, TCM_SETITEM, index, (LPARAM)&item);
+	int ret = (int)SendMessage(tab, TCM_SETITEM, index, (LPARAM)&item);
 	return ret;
 }
 
-BOOL SetCurrentTabTitle(std::wstring title) {
-	int index = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
+BOOL SetCurrentTabTitle(HWND tab, std::wstring title) {
+	int index = (int)SendMessage(tab, TCM_GETCURSEL, 0, 0);
 	if (index != -1) {
 		CUSTOM_TCITEM item;
 		item.tab_info.mask = TCIF_TEXT;
 		item.tab_info.pszText = (LPWSTR)title.c_str();
-		int ret = (int)SendMessage(TextContainer, TCM_SETITEM, index, (LPARAM)&item);
+		int ret = (int)SendMessage(tab, TCM_SETITEM, index, (LPARAM)&item);
 		return ret;
 	}
 	else return index;
 }
 
-int GetNextTabPos() {
-	int count = (int)SendMessage(TextContainer, TCM_GETITEMCOUNT, 0, 0);
+int GetNextTabPos(HWND tab) {
+	int count = (int)SendMessage(tab, TCM_GETITEMCOUNT, 0, 0);
 	return count + 1; //TODO(fran): check if this is correct, or there is a better way
 }
 
 //Returns the index of the previously selected tab if successful, or -1 otherwise.
-int ChangeTabSelected(int index) {
-	return (int)SendMessage(TextContainer, TCM_SETCURSEL, index, 0);
+int ChangeTabSelected(HWND tab, int index) {
+	return (int)SendMessage(tab, TCM_SETCURSEL, index, 0);
 }
 
 //Returns TRUE if successful, or FALSE otherwise.
-int DeleteTab(HWND TabControl, int position) {
-	return (int)SendMessage(TabControl, TCM_DELETEITEM, position, 0);
+int DeleteTab(HWND tab, int position) {
+	return (int)SendMessage(tab, TCM_DELETEITEM, position, 0);
 }
 
 //if new_filename==NULL || *new_filename == NULL then filename related info is cleared
@@ -234,12 +220,6 @@ void SetText_file_app(HWND wnd, const TCHAR* new_filename, const TCHAR* new_appn
 }
 
 //----------------------FUNCTION PROTOTYPES----------------------:
-LRESULT CALLBACK	ShowMessageProc(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-LRESULT CALLBACK    UncapNcProc(HWND, UINT, WPARAM, LPARAM);
-LRESULT CALLBACK	UncapClProc(HWND, UINT, WPARAM, LPARAM);
-void				CommentRemoval(HWND, FILE_FORMAT, WCHAR, WCHAR);
-void				CustomCommentRemoval(HWND, FILE_FORMAT);
-void				EnableOtherChar(bool);
 
 //TODO(fran): get this guy out of here once the HACKs are removed
 LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/);
@@ -338,44 +318,6 @@ str GetFontFaceName() {
 }
 #endif
 
-//si hay /n antes del corchete que lo borre tmb (y /r tmb)
-void CommentRemoval(HWND hText, FILE_FORMAT format, WCHAR start,WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
-	int text_length = GetWindowTextLengthW(hText) + 1;
-	std::wstring text(text_length, L'\0');
-	GetWindowTextW(hText, &text[0], text_length);
-	size_t comment_count=0;
-	switch (format) {
-	case FILE_FORMAT::SRT:
-		comment_count = CommentRemovalSRT(text, start, end); break;
-	case FILE_FORMAT::SSA:
-		comment_count = CommentRemovalSSA(text, start, end); break;
-	//TODO(fran): should add default:?
-	}
-
-	if (comment_count) {
-		SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
-		std::wstring comment_count_str = fmt::format(RS(LANG_CONTROL_TIMEDMESSAGES), comment_count);
-		SetWindowText(hMessage, comment_count_str.c_str());
-	}
-	else {
-		SendMessage(hMessage, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_NOTHINGTOREMOVE));
-	}
-	//ShowWindow(hRemoveProgress, SW_HIDE);
-}
-
-void CustomCommentRemoval(HWND hText, FILE_FORMAT format) {
-	WCHAR temp[2] = {0};
-	WCHAR start;
-	WCHAR end;
-	GetWindowTextW(hInitialChar, temp, 2); //tambien la funcion devuelve 0 si no agarra nada, podemos agregar ese check
-	start = temp[0];//vale '\0' si no tiene nada
-	GetWindowTextW(hFinalChar, temp, 2);
-	end = temp[0];
-
-	if (start != L'\0' && end != L'\0') CommentRemoval(hText,format, start, end);
-	else SendMessage(hMessage, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_ADDCHARS));
-}
-
 ///Every line separation(\r or \n or \r\n) will be transformed into \r\n
 void ProperLineSeparation(std::wstring &text) {
 	unsigned int pos = 0;
@@ -400,19 +342,12 @@ void ProperLineSeparation(std::wstring &text) {
 
 void DoBackup(const TCHAR* filepath) { //TODO(fran): option to change backup folder //TODO(fran): I feel backup is pretty pointless at this point, more confusing than anything else, REMOVE once I implement undo
 
-	//int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
+	std::wstring new_file = filepath;
+	size_t found = new_file.find_last_of(L"\\")+1;
+	Assert(found != std::wstring::npos);
+	new_file.insert(found, L"SDH_");//TODO(fran): add SDH to resource file?
 
-	//std::wstring orig_file(text_length, L'\0');
-	//GetWindowTextW(hFile, &orig_file[0], text_length);
-
-	//if (orig_file[0] != L'\0') {//Check in case there is invalid data on the controls
-		std::wstring new_file = filepath;
-		size_t found = new_file.find_last_of(L"\\")+1;
-		Assert(found != std::wstring::npos);
-		new_file.insert(found, L"SDH_");//TODO(fran): add SDH to resource file?
-
-		if (!CopyFileW(filepath, new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);; //TODO(fran): seems like CopyFile adds an extra null terminator to the saved file which isnt really needed and no other program adds
-	//}
+	if (!CopyFileW(filepath, new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);; //TODO(fran): seems like CopyFile adds an extra null terminator to the saved file which isnt really needed and no other program adds
 }
 
 //TODO(fran): DoSave shouldnt add a final null terminator, no other program does that
@@ -793,73 +728,6 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TAB_INFO text_data) { 
 	return (int)SendMessage(TabControl, TCM_INSERTITEM, position, (LPARAM)&newItem);
 }
 
-//Returns the current position of that tab or -1 if failed
-int SaveAndDisableCurrentTab(HWND tabControl) {
-	int index = (int)SendMessage(tabControl, TCM_GETCURSEL, 0, 0);
-	if (index != -1) {
-		CUSTOM_TCITEM prev_item;
-		prev_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
-		//WCHAR buf[20] = { 0 };
-		//prev_item.tab_info.pszText = buf;
-		//prev_item.tab_info.cchTextMax = 20;
-		BOOL res = (BOOL)SendMessage(tabControl, TCM_GETITEM, index, (LPARAM)&prev_item);//TODO(fran): replace with gettabextrainfo
-		if (res) {
-			ShowWindow(prev_item.extra_info.hText, SW_HIDE);
-
-			//int text_length = GetWindowTextLengthW(hFile) + 1;//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
-
-			//std::wstring text(text_length, L'\0');
-			//GetWindowTextW(hFile, &text[0], text_length);
-
-			//if (text[0]!=L'\0') {//Check in case there is invalid data on the controls
-				//TODO(fran): make sure this check doesnt break anything in some specific case
-
-				//wcsncpy_s(prev_item.extra_info.filePath, text.c_str(), sizeof(prev_item.extra_info.filePath) / sizeof(prev_item.extra_info.filePath[0]));
-
-				prev_item.extra_info.commentType = (COMMENT_TYPE)SendMessage(hOptions, CB_GETCURSEL, 0, 0);
-
-				WCHAR temp[2] = {0};
-				WCHAR initialChar;
-				WCHAR finalChar;
-				GetWindowTextW(hInitialChar, temp, 2); //tambien la funcion devuelve 0 si no agarra nada, podemos agregar ese check
-				initialChar = temp[0];//vale '\0' si no tiene nada
-				GetWindowTextW(hFinalChar, temp, 2);
-				finalChar = temp[0];
-
-				prev_item.extra_info.initialChar = initialChar;
-
-				prev_item.extra_info.finalChar = finalChar;
-
-				//Save back to the control
-				prev_item.tab_info.mask = TCIF_PARAM; //just in case it changed for some reason
-				SendMessage(tabControl, TCM_SETITEM, index, (LPARAM)&prev_item);
-			//}
-
-		}
-	}
-	return index;
-}
-
-int EnableTab(const TAB_INFO& text_data, HWND showtitle/*TODO(fran): remove*/) {
-	ShowWindow(text_data.hText, SW_SHOW);
-
-	//SetWindowTextW(hFile, text_data.filePath);//TODO(fran): this is pretty ugly, maybe having duplicate controls is not so bad of an idea
-	SetText_file_app(showtitle,text_data.filePath,appName);
-
-	SendMessage(hOptions, CB_SETCURSEL, text_data.commentType, 0);
-
-	WCHAR temp[2] = { 0 };
-	temp[1] = L'\0';
-
-	temp[0] = text_data.initialChar;
-	SetWindowText(hInitialChar, temp);
-
-	temp[0] = text_data.finalChar;
-	SetWindowText(hFinalChar, temp);
-
-	return 1;//TODO(fran): proper return
-}
-
 //Determines if a close button was pressed in any of the tab control's tabs and returns its zero based index
 //p must be in client space of the tab control
 //Returns -1 if no button was pressed
@@ -910,7 +778,7 @@ std::vector<std::wstring> GetFiles(LPCWSTR s)//, int dir_lenght)
 
 std::vector<std::wstring> CatchDrop(WPARAM wParam) { //TODO(fran): check for valid file extesion
 	HDROP hDrop = (HDROP)wParam;
-	WCHAR lpszFile[MAX_PATH_LENGTH] = { 0 };
+	WCHAR lpszFile[MAX_PATH] = { 0 };
 	UINT file_count = 0;
 
 	file_count = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, NULL);
@@ -937,112 +805,8 @@ std::vector<std::wstring> CatchDrop(WPARAM wParam) { //TODO(fran): check for val
 	return files;
 }
 
-void UNCAPCL_add_controls(HWND hwnd, HINSTANCE hInstance) {
-	//hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
-	//		| ES_AUTOHSCROLL | SS_CENTERIMAGE
-	//		, 10, y_place, 664, 20, hwnd, NULL, NULL, NULL);
-	//ChangeWindowMessageFilterEx(hFile, WM_DROPFILES, MSGFLT_ADD,NULL); y mas que habia
-	
-	//TODO(fran): add more interesting progress bar
-	//hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
-	//	, 10, y_place, 664, 20, hwnd, (HMENU)NULL, NULL, NULL);
-
-	hRemoveCommentWith = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
-	, 25, y_place+3, 155, 20, hwnd, NULL, NULL, NULL);
-	AWT(hRemoveCommentWith, LANG_CONTROL_REMOVECOMMENTWITH);
-
-	hOptions = CreateWindowW(L"ComboBox", NULL, WS_VISIBLE | WS_CHILD| CBS_DROPDOWNLIST|WS_TABSTOP
-		, 195, y_place, 130, 90/*20*/, hwnd, (HMENU)COMBO_BOX, hInstance, NULL);
-	//SetOptionsComboBox(hOptions, TRUE);
-	ACT(hOptions, COMMENT_TYPE::brackets, LANG_CONTROL_CHAROPTIONS_BRACKETS);
-	ACT(hOptions, COMMENT_TYPE::parenthesis, LANG_CONTROL_CHAROPTIONS_PARENTHESIS);
-	ACT(hOptions, COMMENT_TYPE::braces, LANG_CONTROL_CHAROPTIONS_BRACES);
-	ACT(hOptions, COMMENT_TYPE::other, LANG_CONTROL_CHAROPTIONS_OTHER);
-	SendMessage(hOptions, CB_SETCURSEL, 0, 0);
-	SetWindowSubclass(hOptions, ComboProc, 0, 0);
-	HBITMAP dropdown = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_DROPDOWN));
-	SendMessage(hOptions, CB_SETDROPDOWNIMG, (WPARAM)dropdown, 0);
-	
-	//WCHAR explain_combobox[] = L"Also separates the lines";
-	//CreateToolTip(COMBO_BOX, hwnd, explain_combobox);
-
-	hInitialText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED 
-		, 78, y_place + 35, 105, 20, hwnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
-	AWT(hInitialText, LANG_CONTROL_INITIALCHAR);
-
-	hInitialChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER |ES_CENTER | WS_TABSTOP | WS_DISABLED
-		, 195, y_place + 34, 20, 21, hwnd, NULL, NULL, NULL);
-	SendMessageW(hInitialChar, EM_LIMITTEXT, 1, 0);
-
-	hFinalText = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED
-		, 78, y_place + 65, 105, 20, hwnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
-	AWT(hFinalText, LANG_CONTROL_FINALCHAR);
-
-	hFinalChar = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER| WS_TABSTOP| WS_DISABLED
-		, 195, y_place + 64, 20, 21, hwnd, NULL, NULL, NULL);
-	SendMessageW(hFinalChar, EM_LIMITTEXT, 1, 0);
-
-	hRemove = CreateWindowW(unCap_wndclass_button, NULL, WS_VISIBLE | WS_CHILD| WS_TABSTOP
-		, 256, y_place + 44, 70, 30, hwnd, (HMENU)REMOVE, NULL, NULL);
-	AWT(hRemove, LANG_CONTROL_REMOVE);
-	UNCAPBTN_set_brushes(hRemove, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
-
-	hMessage = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
-		, 256+70+10, y_place + 44, 245, 30,hwnd,(HMENU)TIMEDMESSAGES,NULL,NULL); //INFO: width will be as large as needed to show the needed string
-	SetWindowSubclass(hMessage, ShowMessageProc, 0, 0);
-	SendMessage(hMessage, UNCAP_SETTEXTDURATION, 5000, 0);
-
-	//hRemoveProgress = CreateWindowExW(0,PROGRESS_CLASS,(LPWSTR)NULL, WS_CHILD
-	//	, 256, y_place + 74, 70, 30,hwnd, (HMENU)NULL,NULL,NULL);
-
-	//TODO(fran): init common controls for tab control
-	//INFO:https://docs.microsoft.com/en-us/windows/win32/controls/tab-controls
-	TextContainer = CreateWindowExW(WS_EX_ACCEPTFILES, WC_TABCONTROL, NULL, WS_CHILD | WS_VISIBLE | TCS_FORCELABELLEFT | TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH
-							, 10, y_place + 104, 664 - 50, 618, hwnd, (HMENU)TABCONTROL, NULL, NULL);
-	TabCtrl_SetItemExtra(TextContainer, sizeof(TAB_INFO));
-	int tabWidth = 100,tabHeight=20;
-	SendMessage(TextContainer, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
-	SetWindowSubclass(TextContainer, TabProc,0,0);
-
-	TabCloseButtonInfo.icon.cx = (LONG)(tabHeight*.6f);
-	TabCloseButtonInfo.icon.cy = TabCloseButtonInfo.icon.cx;
-	TabCloseButtonInfo.rightPadding = (tabHeight-TabCloseButtonInfo.icon.cx)/2;
-
-	//SendMessage(hFile, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE); //TODO(fran): for loop with union struct
-	SendMessage(hRemoveCommentWith, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hOptions, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hInitialText, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hInitialChar, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hFinalText, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hFinalChar, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hRemove, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(TextContainer, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(hMessage, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-}
-
-bool HACK_EnableOtherChar = false;
-
-void EnableOtherChar(bool op) {
-	HACK_EnableOtherChar = op;
-	InvalidateRect(hInitialText, NULL, TRUE);
-	InvalidateRect(hFinalText, NULL, TRUE);
-	EnableWindow(hInitialChar, op);
-	EnableWindow(hFinalChar, op);	
-}
-
 void removeInitialWhiteSpace(std::wstring &text){
 	while(iswspace(text[0]))text.erase(0, 1);
-}
-
-void UNCAPCL_ResizeWindows(HWND mainWindow) {
-	RECT rect;
-	GetClientRect(mainWindow, &rect);
-	//MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
-	MoveWindow(hMessage, 256 + 70 + 10, y_place + 44, RECTWIDTH(rect) - (256+70+4) - 36, 30, TRUE);
-	//@No se si actualizar las demas
-	int txtcont_top = y_place + 104;
-	MoveWindow(TextContainer, 10, txtcont_top, RECTWIDTH(rect) - 20, RECTHEIGHT(rect) - txtcont_top - 10, TRUE);
-	SendMessage(TextContainer, TCM_RESIZETABS, 0, 0);
 }
 
 /// <summary>
@@ -1055,7 +819,7 @@ void UNCAPCL_ResizeWindows(HWND mainWindow) {
 /// </summary>
 /// <param name="uIdSubclass">Not used</param>
 /// <param name="dwRefData">Not used</param>
-LRESULT CALLBACK ShowMessageProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+LRESULT CALLBACK NotifyProc(HWND hwnd, UINT Msg, WPARAM wParam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 	//INFO: for this procedure and its hwnds we are going to try the SetProp method for storing info in the hwnd
 	TCHAR text_duration[] = TEXT("TextDuration_unCap");
 	switch (Msg)
@@ -1115,16 +879,6 @@ v2 GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/
 	return dpi;
 }
 
-void MenuChangeLang(LANGUAGE new_lang) {
-	LANGUAGE old_lang = LANGUAGE_MANAGER::Instance().GetCurrentLanguage();
-	LANGUAGE_MANAGER::Instance().ChangeLanguage(new_lang);
-	//Uncheck the old lang
-	//CheckMenuItem(hFileMenu, old_lang, MF_BYCOMMAND | MF_UNCHECKED);
-
-	//Check the new one
-	//CheckMenuItem(hFileMenu, new_lang, MF_BYCOMMAND | MF_CHECKED);
-}
-
 struct unCapClSettings {
 
 	#define foreach_unCapClSettings_member(op) \
@@ -1154,27 +908,165 @@ struct unCapClProcState {
 		HMENU menu_lang;
 	};
 
+	struct unCapClControls{
+		HWND tab, combo_commentmarker, edit_commentbegin, edit_commentend, static_commentbegin, static_commentend, static_removecomment, button_removecomment, static_notify;
+	}controls;
+
 	unCapClSettings* settings;
+
+	bool is_commentmarker_other;//TODO(fran): remove once I paint my own static controls
 };
 
-ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
-	WNDCLASSEXW wcex{ sizeof(wcex) };
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc = UncapClProc;
-	wcex.cbClsExtra = 0;
-	wcex.cbWndExtra = sizeof(unCapClProcState*);
-	wcex.hInstance = inst;
-	wcex.hIcon = 0;
-	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = unCap_colors.ControlBk;
-	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
-	wcex.lpszClassName = unCap_wndclass_uncap_cl;
-	wcex.hIconSm = 0;
+TCHAR unCap_wndclass_uncap_cl[] = TEXT("unCap_wndclass_uncap_cl"); //Client uncap
 
-	ATOM class_atom = RegisterClassExW(&wcex);
-	Assert(class_atom);
-	return class_atom;
+//si hay /n antes del corchete que lo borre tmb (y /r tmb)
+void UNCAPCL_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT format, WCHAR start, WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
+	int text_length = GetWindowTextLengthW(hText) + 1;
+	std::wstring text(text_length, L'\0');
+	GetWindowTextW(hText, &text[0], text_length);
+	size_t comment_count = 0;
+	switch (format) {
+	case FILE_FORMAT::SRT:
+		comment_count = CommentRemovalSRT(text, start, end); break;
+	case FILE_FORMAT::SSA:
+		comment_count = CommentRemovalSSA(text, start, end); break;
+		//TODO(fran): should add default:?
+	}
+
+	if (comment_count) {
+		SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
+		std::wstring comment_count_str = fmt::format(RS(LANG_CONTROL_TIMEDMESSAGES), comment_count);
+		SetWindowText(state->controls.static_notify, comment_count_str.c_str());
+	}
+	else {
+		SendMessage(state->controls.static_notify, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_NOTHINGTOREMOVE));
+	}
+	//ShowWindow(hRemoveProgress, SW_HIDE);
 }
+
+void UNCAPCL_ResizeWindows(unCapClProcState* state) {
+	RECT rect;
+	GetClientRect(state->wnd, &rect);
+	//MoveWindow(hFile, 10, y_place, RECTWIDTH(rect) - 36, 20, TRUE);
+	MoveWindow(state->controls.static_notify, 256 + 70 + 10, y_place + 44, RECTWIDTH(rect) - (256 + 70 + 4) - 36, 30, TRUE);
+	//@No se si actualizar las demas
+	int txtcont_top = y_place + 104;
+	MoveWindow(state->controls.tab, 10, txtcont_top, RECTWIDTH(rect) - 20, RECTHEIGHT(rect) - txtcont_top - 10, TRUE);
+	SendMessage(state->controls.tab, TCM_RESIZETABS, 0, 0);
+}
+
+void UNCAPCL_custom_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT format) {
+	WCHAR temp[2] = { 0 };
+	GetWindowTextW(state->controls.edit_commentbegin, temp, 2); //tambien la funcion devuelve 0 si no agarra nada, podemos agregar ese check
+	WCHAR start = temp[0];//vale '\0' si no tiene nada
+	GetWindowTextW(state->controls.edit_commentend, temp, 2);
+	WCHAR end = temp[0];
+
+	if (start != L'\0' && end != L'\0') UNCAPCL_comment_removal(state, hText, format, start, end);
+	else SendMessage(state->controls.static_notify, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_ADDCHARS));
+}
+
+int UNCAPCL_enable_tab(unCapClProcState* state, const TAB_INFO& text_data) {
+	ShowWindow(text_data.hText, SW_SHOW);
+
+	SetText_file_app(state->nc_parent, text_data.filePath, appName);
+
+	SendMessage(state->controls.combo_commentmarker, CB_SETCURSEL, text_data.commentType, 0);
+
+	WCHAR temp[2] = { 0 };
+	temp[1] = L'\0';
+
+	temp[0] = text_data.initialChar;
+	SetWindowText(state->controls.edit_commentbegin, temp);
+
+	temp[0] = text_data.finalChar;
+	SetWindowText(state->controls.edit_commentend, temp);
+
+	return 1;//TODO(fran): proper return
+}
+
+void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
+	//hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
+	//		| ES_AUTOHSCROLL | SS_CENTERIMAGE
+	//		, 10, y_place, 664, 20, hwnd, NULL, NULL, NULL);
+	//ChangeWindowMessageFilterEx(hFile, WM_DROPFILES, MSGFLT_ADD,NULL); y mas que habia
+
+	//TODO(fran): add more interesting progress bar
+	//hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
+	//	, 10, y_place, 664, 20, hwnd, (HMENU)NULL, NULL, NULL);
+
+	state->controls.static_removecomment = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
+		, 25, y_place + 3, 155, 20, state->wnd, NULL, NULL, NULL);
+	AWT(state->controls.static_removecomment, LANG_CONTROL_REMOVECOMMENTWITH);
+
+	state->controls.combo_commentmarker = CreateWindowW(L"ComboBox", NULL, WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | WS_TABSTOP
+		, 195, y_place, 130, 90/*20*/, state->wnd, (HMENU)COMBO_BOX, hInstance, NULL);
+	ACT(state->controls.combo_commentmarker, COMMENT_TYPE::brackets, LANG_CONTROL_CHAROPTIONS_BRACKETS);
+	ACT(state->controls.combo_commentmarker, COMMENT_TYPE::parenthesis, LANG_CONTROL_CHAROPTIONS_PARENTHESIS);
+	ACT(state->controls.combo_commentmarker, COMMENT_TYPE::braces, LANG_CONTROL_CHAROPTIONS_BRACES);
+	ACT(state->controls.combo_commentmarker, COMMENT_TYPE::other, LANG_CONTROL_CHAROPTIONS_OTHER);
+	SendMessage(state->controls.combo_commentmarker, CB_SETCURSEL, 0, 0);
+	SetWindowSubclass(state->controls.combo_commentmarker, ComboProc, 0, 0);
+	HBITMAP dropdown = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_DROPDOWN));
+	SendMessage(state->controls.combo_commentmarker, CB_SETDROPDOWNIMG, (WPARAM)dropdown, 0);
+
+	//WCHAR explain_combobox[] = L"Also separates the lines";
+	//CreateToolTip(COMBO_BOX, hwnd, explain_combobox);
+
+	state->controls.static_commentbegin = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED 
+		, 78, y_place + 35, 105, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+	AWT(state->controls.static_commentbegin, LANG_CONTROL_INITIALCHAR);
+
+	state->controls.edit_commentbegin = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
+		, 195, y_place + 34, 20, 21, state->wnd, NULL, NULL, NULL);
+	SendMessageW(state->controls.edit_commentbegin, EM_LIMITTEXT, 1, 0);
+
+	state->controls.static_commentend = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED
+		, 78, y_place + 65, 105, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+	AWT(state->controls.static_commentend, LANG_CONTROL_FINALCHAR);
+
+	state->controls.edit_commentend = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
+		, 195, y_place + 64, 20, 21, state->wnd, NULL, NULL, NULL);
+	SendMessageW(state->controls.edit_commentend, EM_LIMITTEXT, 1, 0);
+
+	state->controls.button_removecomment = CreateWindowW(unCap_wndclass_button, NULL, WS_VISIBLE | WS_CHILD | WS_TABSTOP
+		, 256, y_place + 44, 70, 30, state->wnd, (HMENU)REMOVE, NULL, NULL);
+	AWT(state->controls.button_removecomment, LANG_CONTROL_REMOVE);
+	UNCAPBTN_set_brushes(state->controls.button_removecomment, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+
+	state->controls.static_notify = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
+		, 256 + 70 + 10, y_place + 44, 245, 30, state->wnd, (HMENU)TIMEDMESSAGES, NULL, NULL); //INFO: width will be as large as needed to show the needed string
+	SetWindowSubclass(state->controls.static_notify, NotifyProc, 0, 0);
+	SendMessage(state->controls.static_notify, UNCAP_SETTEXTDURATION, 5000, 0);
+
+	//hRemoveProgress = CreateWindowExW(0,PROGRESS_CLASS,(LPWSTR)NULL, WS_CHILD
+	//	, 256, y_place + 74, 70, 30,state->wnd, (HMENU)NULL,NULL,NULL);
+
+	//TODO(fran): init common controls for tab control
+	//INFO:https://docs.microsoft.com/en-us/windows/win32/controls/tab-controls
+	state->controls.tab = CreateWindowExW(WS_EX_ACCEPTFILES, WC_TABCONTROL, NULL, WS_CHILD | WS_VISIBLE | TCS_FORCELABELLEFT | TCS_OWNERDRAWFIXED | TCS_FIXEDWIDTH
+		, 10, y_place + 104, 664 - 50, 618, state->wnd, (HMENU)TABCONTROL, NULL, NULL);
+	TabCtrl_SetItemExtra(state->controls.tab, sizeof(TAB_INFO));
+	int tabWidth = 100, tabHeight = 20;
+	SendMessage(state->controls.tab, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
+	SetWindowSubclass(state->controls.tab, TabProc, 0, 0);
+
+	TabCloseButtonInfo.icon.cx = (LONG)(tabHeight*.6f);
+	TabCloseButtonInfo.icon.cy = TabCloseButtonInfo.icon.cx;
+	TabCloseButtonInfo.rightPadding = (tabHeight - TabCloseButtonInfo.icon.cx) / 2;
+
+	//SendMessage(hFile, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE); //TODO(fran): for loop with union struct
+	SendMessage(state->controls.static_removecomment, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.combo_commentmarker, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.static_commentbegin, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.edit_commentbegin, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.static_commentend, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.edit_commentend, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.button_removecomment, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.tab, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	SendMessage(state->controls.static_notify, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+}
+
 
 void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 	//TODO(fran): multithreading for multiple files?
@@ -1189,7 +1081,7 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 	TAB_INFO text_data;
 	wcsncpy_s(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
 
-	int pos = GetNextTabPos();//NOTE: careful with multithreading here
+	int pos = GetNextTabPos(state->controls.tab);//NOTE: careful with multithreading here
 
 	std::wstring text = ReadText(filename);
 
@@ -1199,17 +1091,17 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 
 	ProperLineSeparation(text);
 
-	int res = AddTab(TextContainer, pos, (LPWSTR)accepted_file_name_with_ext.c_str(), text_data);
+	int res = AddTab(state->controls.tab, pos, (LPWSTR)accepted_file_name_with_ext.c_str(), text_data);
 	Assert(res != -1);
 
-	TAB_INFO new_text_data = GetTabExtraInfo(res);
+	TAB_INFO new_text_data = GetTabExtraInfo(state->controls.tab, res);
 
 	SetWindowTextW(new_text_data.hText, text.c_str());
 
 	//enable buttons and text editor
-	EnableWindow(hRemove, TRUE); //TODO(fran): this could also be a saved parameter
+	EnableWindow(state->controls.button_removecomment, TRUE); //TODO(fran): this could also be a saved parameter
 
-	ChangeTabSelected(res);
+	ChangeTabSelected(state->controls.tab,res);
 }
 
 inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) {
@@ -1219,7 +1111,7 @@ inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) {
 void UNCAPCL_choose_file(unCapClProcState* state, std::wstring ext) {
 	//TODO(fran): support for folder selection?
 	//TODO(fran): check for mem-leaks, the moment I select the open-file menu 10MB of ram are assigned for some reason
-	WCHAR name[MAX_PATH_LENGTH]; //TODO(fran): I dont think this is big enough
+	WCHAR name[MAX_PATH]; //TODO(fran): I dont think this is big enough
 	name[0] = L'\0';
 	OPENFILENAMEW new_file;
 	ZeroMemory(&new_file, sizeof(OPENFILENAMEW));
@@ -1227,7 +1119,7 @@ void UNCAPCL_choose_file(unCapClProcState* state, std::wstring ext) {
 	new_file.lStructSize = sizeof(OPENFILENAMEW);
 	new_file.hwndOwner = NULL;
 	new_file.lpstrFile = name; //used for the default file selected
-	new_file.nMaxFile = MAX_PATH_LENGTH; //TODO(fran): this will not be enough with multi-file (Pd. dont forget lpstrFile and name[])
+	new_file.nMaxFile = MAX_PATH; //TODO(fran): this will not be enough with multi-file (Pd. dont forget lpstrFile and name[])
 	std::wstring filter = RS(LANG_CHOOSEFILE_FILTER_ALL_1) + L'\0' + RS(LANG_CHOOSEFILE_FILTER_ALL_2) + L'\0'
 		+ RS(LANG_CHOOSEFILE_FILTER_SRT_1) + L'\0' + RS(LANG_CHOOSEFILE_FILTER_SRT_2) + L'\0' + L'\0';
 
@@ -1347,6 +1239,47 @@ unCapClProcState* UNCAPCL_get_state(HWND uncapcl) {
 	return state;
 }
 
+//Returns the current position of that tab or -1 if failed
+int UNCAPCL_SaveAndDisableCurrentTab(unCapClProcState* state) {
+	int index = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
+	if (index != -1) {
+		CUSTOM_TCITEM prev_item;
+		prev_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
+		BOOL res = (BOOL)SendMessage(state->controls.tab, TCM_GETITEM, index, (LPARAM)&prev_item);//TODO(fran): replace with gettabextrainfo
+		if (res) {
+			ShowWindow(prev_item.extra_info.hText, SW_HIDE);
+
+			prev_item.extra_info.commentType = (COMMENT_TYPE)SendMessage(state->controls.combo_commentmarker, CB_GETCURSEL, 0, 0);
+
+			WCHAR temp[2] = { 0 };
+			WCHAR initialChar;
+			WCHAR finalChar;
+			GetWindowTextW(state->controls.edit_commentbegin, temp, 2); //tambien la funcion devuelve 0 si no agarra nada, podemos agregar ese check
+			initialChar = temp[0];//vale '\0' si no tiene nada
+			GetWindowTextW(state->controls.edit_commentend, temp, 2);
+			finalChar = temp[0];
+
+			prev_item.extra_info.initialChar = initialChar;
+
+			prev_item.extra_info.finalChar = finalChar;
+
+			//Save back to the control
+			prev_item.tab_info.mask = TCIF_PARAM; //just in case it changed for some reason
+			SendMessage(state->controls.tab, TCM_SETITEM, index, (LPARAM)&prev_item);
+
+		}
+	}
+	return index;
+}
+
+void UNCAPCL_enable_other_char(unCapClProcState* state, bool op) {
+	state->is_commentmarker_other = op;
+	InvalidateRect(state->controls.static_commentbegin, NULL, TRUE);//TODO(fran): I need to paint my own static wnds, these are terrible, they dont handle well being disabled and enabled
+	InvalidateRect(state->controls.static_commentend, NULL, TRUE);
+	EnableWindow(state->controls.edit_commentbegin, op);
+	EnableWindow(state->controls.edit_commentend, op);
+}
+
 LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	unCapClProcState * state = UNCAPCL_get_state(hwnd);
 	switch (msg) {
@@ -1369,7 +1302,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				bool is_cursel = index == (UINT)TabCtrl_GetCurSel(item->hwndItem);
 
 				//Draw text
-				std::wstring text = GetTabTitle(index);
+				std::wstring text = GetTabTitle(state->controls.tab,index);
 
 				TEXTMETRIC tm;
 				GetTextMetrics(item->hDC, &tm);
@@ -1480,7 +1413,8 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	case WM_CTLCOLORSTATIC:
 	{
 		//TODO(fran): check we are changing the right controls
-		switch (GetDlgCtrlID((HWND)lparam)) {
+		HWND static_wnd = (HWND)lparam;
+		switch (GetDlgCtrlID(static_wnd)) {
 		case TIMEDMESSAGES:
 		{
 			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
@@ -1491,7 +1425,8 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		{
 			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
 			COLORREF txt=NULL;
-			if (HACK_EnableOtherChar) {
+			printf("enabled: %d\n",IsWindowEnabled(static_wnd));
+			if (state->is_commentmarker_other) {
 				txt = ColorFromBrush(unCap_colors.ControlTxt);
 			}
 			else txt = ColorFromBrush(unCap_colors.InitialFinalCharDisabled);
@@ -1512,14 +1447,14 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	}
 	case WM_CREATE:
 	{
-		UNCAPCL_add_controls(state->wnd, (HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
+		UNCAPCL_add_controls(state, (HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
 		UNCAPCL_add_menus(state);
 
 		return 0;
 	} break;
 	case WM_SIZE:
 	{
-		UNCAPCL_ResizeWindows(state->wnd);
+		UNCAPCL_ResizeWindows(state);
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_NCDESTROY:
@@ -1551,26 +1486,31 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			//Handling tab changes, since there is no specific msg to manage this from inside the tab control, THANKS WINDOWS
 		case TCN_SELCHANGING: //TODO(fran): now we are outside the tab control we should use the other parameters to check we are actually changing the control we want
 		{
-			SaveAndDisableCurrentTab(msg_info->hwndFrom);
-			return FALSE; //FALSE=Allow selection to change. TRUE= prevent it from changing
+			if (msg_info->hwndFrom == state->controls.tab) {
+				UNCAPCL_SaveAndDisableCurrentTab(state);
+				return FALSE; //FALSE=Allow selection to change. TRUE= prevent it from changing
+			}
+			else return DefWindowProc(hwnd, msg, wparam, lparam);
 		}
 		case TCN_SELCHANGE:
 		{
-			int index = (int)SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
-			printf("CURSEL: %d\n", index);
-			if (index != -1) {
-				CUSTOM_TCITEM new_item;
-				new_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
-				BOOL ret = (BOOL)SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
-				if (ret) {
-					EnableTab(new_item.extra_info,state->nc_parent);
+			if (msg_info->hwndFrom == state->controls.tab) {
+				int index = (int)SendMessage(msg_info->hwndFrom, TCM_GETCURSEL, 0, 0);
+				printf("CURSEL: %d\n", index);
+				if (index != -1) {
+					CUSTOM_TCITEM new_item;
+					new_item.tab_info.mask = TCIF_PARAM; //|TCIF_TEXT;
+					BOOL ret = (BOOL)SendMessage(msg_info->hwndFrom, TCM_GETITEM, index, (LPARAM)&new_item);
+					if (ret) {
+						UNCAPCL_enable_tab(state, new_item.extra_info);
+					}
 				}
-			}
-			else {
-				TAB_INFO blank = { 0 };
-				EnableTab(blank, state->nc_parent);
-			}
-			return 0;//Return value isnt used
+				else {
+					TAB_INFO blank = { 0 };
+					UNCAPCL_enable_tab(state, blank);
+				}
+				return 0;//Return value isnt used
+			} else return DefWindowProc(hwnd, msg, wparam, lparam);
 		}
 		default:
 			return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -1583,9 +1523,9 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		case CBN_SELCHANGE://Combobox selection has changed
 			WORD ctl_identifier = LOWORD(wparam);
 			HWND ctl_wnd = (HWND)lparam;
-			if (ctl_wnd == hOptions) {
+			if (ctl_wnd == state->controls.combo_commentmarker) {
 				int cursel = ComboBox_GetCurSel(ctl_wnd);
-				EnableOtherChar(cursel == COMMENT_TYPE::other);
+				UNCAPCL_enable_other_char(state, cursel == COMMENT_TYPE::other);
 				return 0;
 			}
 		}
@@ -1616,24 +1556,24 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		}
 		case COMBO_BOX:
 			if (HIWORD(wparam) == CBN_SELCHANGE)
-				EnableOtherChar(SendMessageW(hOptions, CB_GETCURSEL, 0, 0) == COMMENT_TYPE::other);
+				UNCAPCL_enable_other_char(state, SendMessageW(state->controls.combo_commentmarker, CB_GETCURSEL, 0, 0) == COMMENT_TYPE::other);
 			return 0;
 
 		case REMOVE:
 		{
-			FILE_FORMAT format = GetCurrentTabExtraInfo().fileFormat;
-			switch (SendMessageW(hOptions, CB_GETCURSEL, 0, 0)) {
+			FILE_FORMAT format = GetCurrentTabExtraInfo(state->controls.tab).fileFormat;
+			switch (SendMessageW(state->controls.combo_commentmarker, CB_GETCURSEL, 0, 0)) {
 			case COMMENT_TYPE::brackets:
-				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'[', L']');
+				UNCAPCL_comment_removal(state, GetCurrentTabExtraInfo(state->controls.tab).hText, format, L'[', L']');
 				break;
 			case COMMENT_TYPE::parenthesis:
-				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'(', L')');
+				UNCAPCL_comment_removal(state, GetCurrentTabExtraInfo(state->controls.tab).hText, format, L'(', L')');
 				break;
 			case COMMENT_TYPE::braces:
-				CommentRemoval(GetCurrentTabExtraInfo().hText, format, L'{', L'}');
+				UNCAPCL_comment_removal(state, GetCurrentTabExtraInfo(state->controls.tab).hText, format, L'{', L'}');
 				break;
 			case COMMENT_TYPE::other:
-				CustomCommentRemoval(GetCurrentTabExtraInfo().hText, format);
+				UNCAPCL_custom_comment_removal(state, GetCurrentTabExtraInfo(state->controls.tab).hText, format);
 				break;
 			}
 			return 0;
@@ -1641,12 +1581,12 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		case SAVE_FILE:
 		case ID_SAVE:
 		{
-			TAB_INFO tabnfo = GetCurrentTabExtraInfo();
+			TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
 			if (state->settings->is_backup_enabled) DoBackup(tabnfo.filePath);
 
 			std::wstring filename_saved = DoSave(tabnfo.hText, tabnfo.filePath);
 
-			SetWindowText(hMessage, RCS(LANG_SAVE_DONE)); //Notify success
+			SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
 
 			return 0;
 		}
@@ -1658,18 +1598,18 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			std::wstring filename = GetSaveAsStr(state->settings->last_dir); //TODO(fran): get requested attributes
 
 			//NOTE: No backup since the idea is the user saves to a new file obviously
-			std::wstring filename_saved = DoSave(GetCurrentTabExtraInfo().hText, filename);
+			std::wstring filename_saved = DoSave(GetCurrentTabExtraInfo(state->controls.tab).hText, filename);
 			if (filename_saved[0]) {
 
-				SetWindowText(hMessage, RCS(LANG_SAVE_DONE)); //Notify success
+				SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
 				//SetWindowTextW(hFile, filename_saved.c_str()); //Update filename viewer
 				SetText_file_app(state->nc_parent, filename_saved.c_str(),appName); //Update nc title
-				SetCurrentTabTitle(filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
+				SetCurrentTabTitle(state->controls.tab,filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
 
-				int tabindex = (int)SendMessage(TextContainer, TCM_GETCURSEL, 0, 0);
-				TAB_INFO tabnfo = GetCurrentTabExtraInfo();
+				int tabindex = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
+				TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
 				wcsncpy_s(tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(tabnfo.filePath));//Update tab item's filepath
-				SetTabExtraInfo(tabindex,tabnfo);
+				SetTabExtraInfo(state->controls.tab,tabindex,tabnfo);
 				//TODO(fran): update tab with new filepath
 			}
 
@@ -1681,7 +1621,9 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		//case LANGUAGE_MANAGER::LANGUAGE::SPANISH:
 		{
 			//NOTE: maybe I can force menu item remeasuring by SetMenu, basically sending it the current menu
-			MenuChangeLang((LANGUAGE)LOWORD(wparam));
+			//MenuChangeLang((LANGUAGE)LOWORD(wparam));
+			LANGUAGE_MANAGER::Instance().ChangeLanguage((LANGUAGE)LOWORD(wparam));
+
 #if 1 //One way of updating the menus and getting them recalculated, destroy everything and create it again, problems: gotta change internal code to fix some state which doesnt take into account the realtime values, gotta take language_manager related things out of the function to avoid repetition, or add checks in language_mgr to ignore repeated objects
 			HMENU old_menu = GetMenu(state->nc_parent);
 			//SetMenu(state->nc_parent, NULL);
@@ -1810,6 +1752,25 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 #endif
 	}
 	return 0;
+}
+
+ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
+	WNDCLASSEXW wcex{ sizeof(wcex) };
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = UncapClProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = sizeof(unCapClProcState*);
+	wcex.hInstance = inst;
+	wcex.hIcon = 0;
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = unCap_colors.ControlBk;
+	wcex.lpszMenuName = 0;// MAKEINTRESOURCEW(IDC_SRTFIXWIN32);//TODO(fran): remove?
+	wcex.lpszClassName = unCap_wndclass_uncap_cl;
+	wcex.hIconSm = 0;
+
+	ATOM class_atom = RegisterClassExW(&wcex);
+	Assert(class_atom);
+	return class_atom;
 }
 
 //TODO(fran): get this guy out of here once the HACKs are removed
@@ -1978,7 +1939,7 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT
 		//Since right now our controls (text editor) are not children of the particular tab they dont get deleted when that one does, so gotta do it manually
 		int index = (int)wParam;
 
-		TAB_INFO info = GetTabExtraInfo(index);
+		TAB_INFO info = GetTabExtraInfo(hwnd/*HACK: only the owner should know about the extra info, this has to be done in the owner*/, index); //TODO(fran): do cleanup on the parent
 		//Any hwnd should be destroyed
 		DestroyWindow(info.hText);
 
@@ -2078,6 +2039,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	unCap_fonts.Menu = CreateFontIndirectW(&lf);
 	if (!unCap_fonts.Menu) MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
 
+	init_wndclass_unCap_uncap_cl(hInstance);
+
 	init_wndclass_unCap_uncap_nc(hInstance);
 
 	init_wndclass_unCap_scrollbar(hInstance);
@@ -2095,9 +2058,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 
 	RECT uncapnc_rc = UNCAPNC_calc_nonclient_rc_from_client(uncap_cl.rc,TRUE);
 
+	unCapNcLpParam nclpparam;
+	nclpparam.client_class_name = unCap_wndclass_uncap_cl;
+	nclpparam.client_lp_param = &uncap_cl;
+
 	//TODO(fran): I think the problem I get that someone else is drawing my nc area is because I ask for OVERLAPPED_WINDOW when I create the window, so it takes care of doing that, which I dont want, REMOVE IT
-	HWND uncapnc = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, unCap_wndclass_uncap_nc, appName, WS_THICKFRAME | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-		uncapnc_rc.left, uncapnc_rc.top, RECTWIDTH(uncapnc_rc), RECTHEIGHT(uncapnc_rc), nullptr, nullptr, hInstance, &uncap_cl);
+	HWND uncapnc = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, unCap_wndclass_uncap_nc, NULL, WS_THICKFRAME | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+		uncapnc_rc.left, uncapnc_rc.top, RECTWIDTH(uncapnc_rc), RECTHEIGHT(uncapnc_rc), nullptr, nullptr, hInstance, &nclpparam);
 
 	if (!uncapnc) return FALSE;
 

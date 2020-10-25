@@ -31,6 +31,11 @@
 
 constexpr TCHAR unCap_wndclass_uncap_nc[] = TEXT("unCap_wndclass_uncap_nc"); //Non client uncap
 
+struct unCapNcLpParam {//NOTE: pass a pointer to unCapNcLpParam to set up the client area, if client_class_name is null no client is created
+	TCHAR* client_class_name;
+	void* client_lp_param;
+};
+
 struct unCapNcProcState {
 	HWND wnd;
 	HWND client;
@@ -53,27 +58,6 @@ struct unCapNcProcState {
 		bool menu_on_delay;//NOTE: the delay is only needed for left click accessed menus //TODO(fran): this is quite a bit of a cheap hack solution
 	};
 };
-
-ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
-	WNDCLASSEXW wcex;
-
-	wcex.cbSize = sizeof(WNDCLASSEX);
-	wcex.style = CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc = UncapNcProc;
-	wcex.cbClsExtra = 0;
-	wcex.cbWndExtra = sizeof(unCapNcProcState*);
-	wcex.hInstance = inst;
-	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
-	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-	wcex.hbrBackground = NULL;
-	wcex.lpszMenuName = 0;
-	wcex.lpszClassName = unCap_wndclass_uncap_nc;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
-
-	ATOM class_atom = RegisterClassExW(&wcex);
-	Assert(class_atom);
-	return class_atom;
-}
 
 unCapNcProcState* UNCAPNC_get_state(HWND uncapnc) {
 	unCapNcProcState* state = (unCapNcProcState*)GetWindowLongPtr(uncapnc, 0);//INFO: windows recomends to use GWL_USERDATA https://docs.microsoft.com/en-us/windows/win32/learnwin32/managing-application-state-
@@ -382,6 +366,9 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 
 		CREATESTRUCT* createnfo = (CREATESTRUCT*)lparam;
+
+		unCapNcLpParam* lpParam = (unCapNcLpParam*)createnfo->lpCreateParams;
+
 		SetWindowText(state->wnd, createnfo->lpszName); //NOTE: for handmade classes you have to manually call setwindowtext
 
 		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state);
@@ -405,11 +392,10 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 		//TODO(fran): create the icons, one idea is to ask windows to paint them in some dc, and then I can store the HBITMAP and re-use it all I want
 
-		ATOM class_res = init_wndclass_unCap_uncap_cl((HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE)); //TODO(fran): client class must be parameterized
-		Assert(class_res);
-		RECT rc = UNCAPNC_calc_client_rc(state);
-		state->client = CreateWindow(unCap_wndclass_uncap_cl, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, createnfo->lpCreateParams);//TODO(fran): client class must be parameterized
-
+		if (lpParam->client_class_name) {
+			RECT rc = UNCAPNC_calc_client_rc(state);
+			state->client = CreateWindow(lpParam->client_class_name, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, lpParam->client_lp_param);//TODO(fran): client class must be parameterized
+		}
 		return 0;
 	} break;
 	case WM_NCLBUTTONDBLCLK:
@@ -1212,4 +1198,25 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 #endif
 	}
 	return 0;
+}
+
+ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
+	WNDCLASSEXW wcex;
+
+	wcex.cbSize = sizeof(WNDCLASSEX);
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = UncapNcProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = sizeof(unCapNcProcState*);
+	wcex.hInstance = inst;
+	wcex.hIcon = LoadIcon(inst, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
+	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	wcex.hbrBackground = NULL;
+	wcex.lpszMenuName = 0;
+	wcex.lpszClassName = unCap_wndclass_uncap_nc;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(UNCAP_ICO_LOGO)); //TODO(fran): LoadImage to choose the best size
+
+	ATOM class_atom = RegisterClassExW(&wcex);
+	Assert(class_atom);
+	return class_atom;
 }
