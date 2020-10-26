@@ -30,7 +30,7 @@
 #include <Shlobj.h>//SHGetKnownFolderPath
 #include "utf8.h" //Thanks to http://utfcpp.sourceforge.net/
 #include "text_encoding_detect.h" //Thanks to https://github.com/AutoItConsulting/text-encoding-detect
-#include "fmt/format.h" //Thanks to https://github.com/fmtlib/fmt
+#include "fmt.h"
 #include "unCap_Helpers.h"
 #include "unCap_Global.h"
 #include "unCap_math.h"
@@ -61,6 +61,9 @@
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
 //Option to retain original file encoding on save, otherwise utf8/user defined default
 //Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
+
+//BUGS
+//When the tab control is empty and you load the first file it doesnt seem to update the comment marker
 
 //----------------------GLOBALS----------------------:
 i32 n_tabs = 0;//Needed for serialization

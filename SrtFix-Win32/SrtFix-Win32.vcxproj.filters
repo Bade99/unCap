@@ -90,6 +90,9 @@
     <ClInclude Include="unCap_edit.h">
       <Filter>Archivos de encabezado</Filter>
     </ClInclude>
+    <ClInclude Include="fmt.h">
+      <Filter>Archivos de encabezado</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="LANGUAGE_MANAGER.cpp">
