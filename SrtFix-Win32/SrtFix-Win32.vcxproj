@@ -193,8 +193,7 @@
   <ItemGroup>
     <ClCompile Include="format.cc" />
     <ClCompile Include="LANGUAGE_MANAGER.cpp" />
-    <ClCompile Include="SrtFix-Win32.cpp" />
-    <ClCompile Include="text_encoding_detect.cpp" />
+    <ClCompile Include="unCap_Main.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="SrtFix-Win32.rc" />

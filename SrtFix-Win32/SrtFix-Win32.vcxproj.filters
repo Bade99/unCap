@@ -92,16 +92,13 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="SrtFix-Win32.cpp">
-      <Filter>Archivos de origen</Filter>
-    </ClCompile>
     <ClCompile Include="LANGUAGE_MANAGER.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="text_encoding_detect.cpp">
+    <ClCompile Include="format.cc">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="format.cc">
+    <ClCompile Include="unCap_Main.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
   </ItemGroup>
