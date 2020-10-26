@@ -261,3 +261,25 @@ size_t CommentRemovalSSA(std::wstring& text, utf16 start, utf16 end) {
 	}
 	return comment_count;
 }
+
+///Every line separation(\r or \n or \r\n) will be transformed into \r\n
+void ProperLineSeparation(std::wstring &text) {
+	unsigned int pos = 0;
+
+	while (pos <= text.length()) {//length doesnt include \0
+		if (text[pos] == L'\r') {
+			if (text[pos + 1] != L'\n') {
+				text.insert(pos + 1, L"\n");//este nunca se pasa del rango
+			}
+			pos += 2;
+		}
+		else if (text[pos] == L'\n') {
+			//if(text[pos-1] == L'\r')//ya se que no tiene \r xq sino hubiera entrado por el otro
+			text.insert(pos, L"\r");
+			pos += 2;
+		}
+		else {
+			pos++;
+		}
+	}
+}
