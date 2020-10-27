@@ -1,25 +1,43 @@
 #pragma once
 #include <Windows.h>
+#include "unCap_Reflection.h"
+#include "unCap_Serialization.h"
 
-union UNCAP_COLORS {
+union UNCAP_COLORS {//TODO(fran): HBRUSH Border
 	struct {
-		HBRUSH ControlBk;
-		HBRUSH ControlBkPush;
-		HBRUSH ControlBkMouseOver;
-		HBRUSH ControlTxt;
-		HBRUSH ControlTxt_Inactive;
-		HBRUSH ControlMsg;
-		HBRUSH InitialFinalCharDisabled;
-		HBRUSH Scrollbar;
-		HBRUSH ScrollbarMouseOver;
-		HBRUSH ScrollbarBk;
-		HBRUSH Img;
-		HBRUSH Img_Inactive;
-		HBRUSH CaptionBk;
-		HBRUSH CaptionBk_Inactive;
+		//TODO(fran): macro magic to auto generate the appropriately sized HBRUSH array
+		//TODO(fran): we're in a bit of a problem here with the brush's default, we can override it since that'd mean leaking the default brush, we may need to add a step after serialization that checks for null hbrushes and only then default creates them 
+#define foreach_color(op) \
+		op(HBRUSH,ControlBk,CreateSolidBrush(RGB(40, 41, 35))) \
+		op(HBRUSH,ControlBkPush,CreateSolidBrush(RGB(0, 110, 200))) \
+		op(HBRUSH,ControlBkMouseOver,CreateSolidBrush(RGB(0, 120, 215))) \
+		op(HBRUSH,ControlTxt,CreateSolidBrush(RGB(248, 248, 242))) \
+		op(HBRUSH,ControlTxt_Inactive,CreateSolidBrush(RGB(208, 208, 202))) \
+		op(HBRUSH,ControlMsg,CreateSolidBrush(RGB(248, 230, 0))) \
+		op(HBRUSH,InitialFinalCharDisabled,CreateSolidBrush(RGB(128, 128, 128))) \
+		op(HBRUSH,Scrollbar,CreateSolidBrush(RGB(148, 148, 142))) \
+		op(HBRUSH,ScrollbarMouseOver,CreateSolidBrush(RGB(188, 188, 182))) \
+		op(HBRUSH,ScrollbarBk,CreateSolidBrush(RGB(50, 51, 45))) \
+		op(HBRUSH,Img,CreateSolidBrush(RGB(228, 228, 222))) \
+		op(HBRUSH,Img_Inactive,CreateSolidBrush(RGB(198, 198, 192))) \
+		op(HBRUSH,CaptionBk,CreateSolidBrush(RGB(20, 21, 15))) \
+		op(HBRUSH,CaptionBk_Inactive,CreateSolidBrush(RGB(60, 61, 65))) \
+		
+		foreach_color(_generate_member_no_default_init);
+
 	};
 	HBRUSH brushes[14];//REMEMBER to update
+
+	_generate_default_struct_serialize(foreach_color);
+
+	_generate_default_struct_deserialize(foreach_color);
 };
+
+void default_colors_if_not_set(UNCAP_COLORS* c) {
+#define _default_initialize(type, name,value) if(!c->name) c->name = value;
+	foreach_color(_default_initialize);
+#undef _default_initialize
+}
 
 extern UNCAP_COLORS unCap_colors;
 

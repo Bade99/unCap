@@ -543,7 +543,7 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 	state->controls.button_removecomment = CreateWindowW(unCap_wndclass_button, NULL, WS_VISIBLE | WS_CHILD | WS_TABSTOP
 		, 256, y_pad + 44, 70, 30, state->wnd, (HMENU)REMOVE, NULL, NULL);
 	AWT(state->controls.button_removecomment, LANG_CONTROL_REMOVE);
-	UNCAPBTN_set_brushes(state->controls.button_removecomment, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+	UNCAPBTN_set_brushes(state->controls.button_removecomment, TRUE, unCap_colors.Img, unCap_colors.ControlBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
 
 	state->controls.static_notify = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
 		, 256 + 70 + 10, y_pad + 44, 245, 30, state->wnd, (HMENU)TIMEDMESSAGES, NULL, NULL); //INFO: width will be as large as needed to show the needed string

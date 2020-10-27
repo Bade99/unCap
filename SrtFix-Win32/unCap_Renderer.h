@@ -368,46 +368,32 @@ namespace urender {
 			Gdiplus::Unit::UnitPixel);//TODO(fran): get the current unit from the device
 	}
 
-	//NOTE: specific procedure for drawing images on windows' menus, other drawing functions may fail on different situations
+	//NOTE: specific procedure for drawing images on windows' menus, other drawing functions may fail on specific situations
 	//NOTE: this is set up to work with masks that have black as the color and white as transparency, otherwise you'll need to flip your colors, for example BitBlt(arrowDC, 0, 0, arrowW, arrowH, arrowDC, 0, 0, DSTINVERT)
 	void draw_menu_mask(HDC destDC, int xDest, int yDest, int wDest, int hDest, HBITMAP mask, int xSrc, int ySrc, int wSrc, int hSrc, HBRUSH colorbr)
 	{
 		{BITMAP bmpnfo; GetObject(mask, sizeof(bmpnfo), &bmpnfo); Assert(bmpnfo.bmBitsPixel == 1); }
 
-		//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
 		//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
 
 		//Create the DCs and Bitmaps we will need
 		HDC maskDC = CreateCompatibleDC(destDC);
-		HDC fillDC = CreateCompatibleDC(destDC);
 		HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, wDest, hDest);
-		HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
+		HBITMAP oldFillBitmap = (HBITMAP)SelectObject(maskDC, fillBitmap);
 
+		//Blit the content already stored in dest onto a secondary buffer
+		BitBlt(maskDC, 0, 0, wDest, hDest, destDC, xDest, yDest, SRCCOPY);
 
-		HBITMAP scaled_mask = urender::scale_mask(mask, wDest, hDest);
-		HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(maskDC, scaled_mask);
-		BitBlt(maskDC, 0, 0, wDest, hDest, maskDC, 0, 0, DSTINVERT);
+		//Draw on the new buffer, this is neeeded cause draw_mask uses MaskBlt which sometimes fails on menus 
+		//Explanation: I think I know what the problem is, draw_mask doesnt fail on the first submenus because the menu window is already being shown/exists, but for submenus of those guys the window is not yet shown when we draw onto it, this problaly confuses MaskBlt in some strange way
+		urender::draw_mask(maskDC, 0, 0, wDest, hDest, mask, 0, 0, wDest, hDest, colorbr);
 
-		//Set the arrow color
-		HBRUSH arrowBrush = colorbr;
-
-		//Set the offscreen arrow rect
-		RECT tmpArrowR = rectWH(0, 0, wDest, hDest);
-
-		//Fill the fill bitmap with the arrow color
-		FillRect(fillDC, &tmpArrowR, arrowBrush);
-
-		//Blit the items in a masking fashion
-		BitBlt(destDC, xDest, yDest, wDest, hDest, fillDC, 0, 0, SRCINVERT);
-		BitBlt(destDC, xDest, yDest, wDest, hDest, maskDC, 0, 0, SRCAND);
-		BitBlt(destDC, xDest, yDest, wDest, hDest, fillDC, 0, 0, SRCINVERT);
+		//Draw back to dest with the new content
+		BitBlt(destDC, xDest, yDest, wDest, hDest, maskDC, 0, 0, SRCCOPY);
 
 		//Clean up
-		SelectObject(fillDC, oldFillBitmap);
+		SelectObject(maskDC, oldFillBitmap);
 		DeleteObject(fillBitmap);
-		SelectObject(maskDC, oldArrowBitmap);
-		DeleteObject(scaled_mask);
-		DeleteDC(fillDC);
 		DeleteDC(maskDC);
 	}
 }
@@ -468,4 +454,47 @@ void DrawMenuImg(HDC destDC, RECT& r, HBITMAP mask) {
 	BOOL res = MaskBlt(destDC, r.left, r.top, imgW, imgH, destDC, 0, 0, mask, 0, 0, MAKEROP4(0x00AA0029, PATCOPY)); 
 	SelectBrush(destDC, oldBr);
 }
+*/
+
+/*
+	void draw_menu_mask(HDC destDC, int xDest, int yDest, int wDest, int hDest, HBITMAP mask, int xSrc, int ySrc, int wSrc, int hSrc, HBRUSH colorbr)
+	{
+		{BITMAP bmpnfo; GetObject(mask, sizeof(bmpnfo), &bmpnfo); Assert(bmpnfo.bmBitsPixel == 1); }
+
+		//Thanks again https://www.codeguru.com/cpp/controls/menu/miscellaneous/article.php/c13017/Owner-Drawing-the-Submenu-Arrow.htm
+		//NOTE: I dont know if this will be final, dont really wanna depend on windows, but it's pretty good for now. see https://docs.microsoft.com/en-us/windows/win32/gdi/scaling-an-image maybe some of those stretch modes work better than HALFTONE
+
+		//Create the DCs and Bitmaps we will need
+		HDC maskDC = CreateCompatibleDC(destDC);
+		HDC fillDC = CreateCompatibleDC(destDC);
+		HBITMAP fillBitmap = CreateCompatibleBitmap(destDC, wDest, hDest);
+		HBITMAP oldFillBitmap = (HBITMAP)SelectObject(fillDC, fillBitmap);
+
+
+		HBITMAP scaled_mask = urender::scale_mask(mask, wDest, hDest);
+		HBITMAP oldArrowBitmap = (HBITMAP)SelectObject(maskDC, scaled_mask);
+		BitBlt(maskDC, 0, 0, wDest, hDest, maskDC, 0, 0, DSTINVERT);
+
+		//Set the arrow color
+		HBRUSH arrowBrush = colorbr;
+
+		//Set the offscreen arrow rect
+		RECT tmpArrowR = rectWH(0, 0, wDest, hDest);
+
+		//Fill the fill bitmap with the arrow color
+		FillRect(fillDC, &tmpArrowR, arrowBrush);
+
+		//Blit the items in a masking fashion //TODO(fran): this doesnt blend correctly
+		BitBlt(destDC, xDest, yDest, wDest, hDest, fillDC, 0, 0, SRCINVERT);
+		BitBlt(destDC, xDest, yDest, wDest, hDest, maskDC, 0, 0, SRCAND);
+		BitBlt(destDC, xDest, yDest, wDest, hDest, fillDC, 0, 0, SRCINVERT);
+
+		//Clean up
+		SelectObject(fillDC, oldFillBitmap);
+		DeleteObject(fillBitmap);
+		SelectObject(maskDC, oldArrowBitmap);
+		DeleteObject(scaled_mask);
+		DeleteDC(fillDC);
+		DeleteDC(maskDC);
+	}
 */

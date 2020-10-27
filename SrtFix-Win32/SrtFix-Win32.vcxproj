@@ -192,12 +192,6 @@
     <ClInclude Include="windows_msg_mapper.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="format.cc">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="LANGUAGE_MANAGER.cpp" />
     <ClCompile Include="unCap_Main.cpp" />
   </ItemGroup>

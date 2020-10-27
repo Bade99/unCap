@@ -269,16 +269,24 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 			TextOut(dc, icon_align_width * 2 + icon_width, yPos, title, sz);
 
+			HBRUSH btn_border, btn_bk, btn_fore, btn_bk_push,btn_bk_mouseover;
 			if (state->active) {
-				UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
-				UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
-				UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, 0, 0);
+				btn_border = unCap_colors.CaptionBk;
+				btn_bk = unCap_colors.CaptionBk;
+				btn_fore = unCap_colors.Img;
+				btn_bk_push = unCap_colors.ControlBkPush;
+				btn_bk_mouseover = unCap_colors.ControlBkMouseOver;
 			}
 			else {
-				UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
-				UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
-				UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.ControlTxt_Inactive, 0, 0);
+				btn_border = unCap_colors.CaptionBk_Inactive;
+				btn_bk = unCap_colors.CaptionBk_Inactive;
+				btn_fore = unCap_colors.Img_Inactive;
+				btn_bk_push = unCap_colors.ControlBkPush;
+				btn_bk_mouseover = unCap_colors.ControlBkMouseOver;
 			}
+			UNCAPBTN_set_brushes(state->btn_close, TRUE, btn_border, btn_bk, btn_fore, btn_bk_push, btn_bk_mouseover);
+			UNCAPBTN_set_brushes(state->btn_min, TRUE, btn_border, btn_bk, btn_fore, btn_bk_push, btn_bk_mouseover);
+			UNCAPBTN_set_brushes(state->btn_max, TRUE, btn_border, btn_bk, btn_fore, btn_bk_push, btn_bk_mouseover);
 		}
 
 		if (RECT menurc = UNCAPNC_calc_menu_rc(state); state->menu && rcs_overlap(menurc,ps.rcPaint)) {
@@ -373,15 +381,15 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state);
 		state->btn_min = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), state->wnd, (HMENU)UNCAPNC_MINIMIZE, 0, 0);
-		UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+		//UNCAPBTN_set_brushes(state->btn_min, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver); //NOTE: now I do this on WM_PAINT, commenting this actually introduces a bug for the first ms of execution where the button might draw with no brushes first and then be asked to redraw with the brushes loaded, introducing at least one frame of flicker
 
 		RECT btn_max_rc = UNCAPNC_calc_btn_max_rc(state);
 		state->btn_max = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_max_rc.left, btn_max_rc.top, RECTWIDTH(btn_max_rc), RECTHEIGHT(btn_max_rc), state->wnd, (HMENU)UNCAPNC_MAXIMIZE, 0, 0);
-		UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+		//UNCAPBTN_set_brushes(state->btn_max, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
 
 		RECT btn_close_rc = UNCAPNC_calc_btn_close_rc(state);
 		state->btn_close = CreateWindow(unCap_wndclass_button, TEXT(""), WS_CHILD | WS_VISIBLE | BS_BITMAP, btn_close_rc.left, btn_close_rc.top, RECTWIDTH(btn_close_rc), RECTHEIGHT(btn_close_rc), state->wnd, (HMENU)UNCAPNC_CLOSE, 0, 0);
-		UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
+		//UNCAPBTN_set_brushes(state->btn_close, TRUE, unCap_colors.CaptionBk, unCap_colors.CaptionBk, unCap_colors.ControlTxt, unCap_colors.ControlBkPush, unCap_colors.ControlBkMouseOver);
 
 		HBITMAP bCross = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_CLOSE));//TODO(fran): let the user set this guys, store them in state
 		HBITMAP bMax = LoadBitmap(GetModuleHandle(NULL), MAKEINTRESOURCE(UNCAP_BMP_MAX));
@@ -778,7 +786,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 								int bmp_align_width = item->rcItem.left + (img_max_x + x_pad - bmp_width) / 2;
 								int bmp_align_height = item->rcItem.top + (img_max_y - bmp_height) / 2;
 
-								//NOTE: for some insane and nonsensical reason we cant use MaskBlt here, so no urender::draw_mask
+								//NOTE: for some insane and nonsensical reason we cant use MaskBlt here, so no urender::draw_mask.
 								urender::draw_menu_mask(item->hDC, bmp_align_width, bmp_align_height, bmp_width, bmp_height, hbmp, 0, 0, bitmap.bmWidth, bitmap.bmHeight, unCap_colors.Img);//TODO(fran): parametric brush
 								//TODO(fran): clipping
 							}
@@ -854,7 +862,12 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			case MFT_SEPARATOR:
 			{
 				const int separator_x_padding = 3;
-				FillRect(item->hDC, &item->rcItem, unCap_colors.ControlBk);
+
+				MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
+				GetMenuInfo(state->menu, &mnfo);
+				HBRUSH bk_br = mnfo.hbrBack;
+
+				FillRect(item->hDC, &item->rcItem, bk_br);
 				RECT separator_rc;
 				separator_rc.top = item->rcItem.top + RECTHEIGHT(item->rcItem) / 2;
 				separator_rc.bottom = separator_rc.top + 1; //TODO(fran): fancier calc and position

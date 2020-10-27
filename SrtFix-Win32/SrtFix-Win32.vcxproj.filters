@@ -98,9 +98,6 @@
     <ClCompile Include="LANGUAGE_MANAGER.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>
-    <ClCompile Include="format.cc">
-      <Filter>Archivos de origen</Filter>
-    </ClCompile>
     <ClCompile Include="unCap_Main.cpp">
       <Filter>Archivos de origen</Filter>
     </ClCompile>

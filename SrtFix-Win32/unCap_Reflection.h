@@ -22,6 +22,8 @@
 
 #define _generate_member(type,name,...) type name {__VA_ARGS__};
 
+#define _generate_member_no_default_init(type,name,...) type name;
+
 #define _isvalid_enum_case(member,value) case member:return true;
 #define _string_enum_case(member,value) case member:return _t(#member);
 

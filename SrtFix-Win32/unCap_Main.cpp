@@ -64,14 +64,17 @@
 
 //BUGS
 //When the tab control is empty and you load the first file it doesnt seem to update the comment marker
+//On different colors the menus' images dont render correctly
+//Not every img is using uncap_colors.Img
+//The name of the application (unCap) does not show until you add a tab
+//Deserialization of unCap_colors seems to fail sometimes and have to go to defaults
+//Maximizing breaks everything
 
 //----------------------GLOBALS----------------------:
 i32 n_tabs = 0;//Needed for serialization
 
-//TCHAR appName[] = TEXT("unCap"); //Program name, to be displayed on the title of windows
-
-UNCAP_COLORS unCap_colors;
-UNCAP_FONTS unCap_fonts;
+UNCAP_COLORS unCap_colors{0};
+UNCAP_FONTS unCap_fonts{0};
 
 //Timing info for testing
 f64 GetPCFrequency() {
@@ -186,9 +189,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	urender::init(); defer{ urender::uninit(); };
 
 	//Initialization of common controls
-	INITCOMMONCONTROLSEX icc;
-
-	icc.dwSize = sizeof(icc);
+	INITCOMMONCONTROLSEX icc{ sizeof(icc) };
 	icc.dwICC = ICC_STANDARD_CLASSES;
 
 	BOOL comm_res = InitCommonControlsEx(&icc);
@@ -202,23 +203,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	freopen_s(&___s, "CONOUT$", "w", stderr);
 #endif
 
-	//TODO(fran): serialize
-	unCap_colors.ControlBk = CreateSolidBrush(RGB(40, 41, 35)); //TODO(fran): all this should come from the save file, maybe also font
-	unCap_colors.ControlBkPush = CreateSolidBrush(RGB(0, 110, 200));
-	unCap_colors.ControlBkMouseOver = CreateSolidBrush(RGB(0, 120, 215));
-	unCap_colors.ControlTxt = CreateSolidBrush(RGB(248, 248, 242));
-	unCap_colors.ControlTxt_Inactive = CreateSolidBrush(RGB(208, 208, 202));
-	unCap_colors.ControlMsg = CreateSolidBrush(RGB(248, 230, 0));
-	//Thanks to Windows' broken Static Control text color when disabled
-	unCap_colors.InitialFinalCharDisabled = CreateSolidBrush(RGB(128, 128, 128));
-	unCap_colors.Scrollbar = CreateSolidBrush(RGB(148, 148, 142));
-	unCap_colors.ScrollbarMouseOver = CreateSolidBrush(RGB(188, 188, 182));
-	unCap_colors.ScrollbarBk = CreateSolidBrush(RGB(50, 51, 45));
-	unCap_colors.Img = CreateSolidBrush(RGB(228, 228, 222));
-	unCap_colors.Img_Inactive = CreateSolidBrush(RGB(198, 198, 192));
-	unCap_colors.CaptionBk = CreateSolidBrush(RGB(20, 21, 15));
-	unCap_colors.CaptionBk_Inactive = CreateSolidBrush(RGB(60, 61, 65));
-	defer{ for (HBRUSH& b : unCap_colors.brushes) if (b) { DeleteBrush(b); b = NULL; } };
 
 	LOGFONT lf{0};
 	lf.lfQuality = CLEARTYPE_QUALITY;
@@ -234,14 +218,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	unCap_fonts.Menu = CreateFontIndirectW(&lf);
 	if (!unCap_fonts.Menu) MessageBoxW(NULL, RCS(LANG_FONT_ERROR), RCS(LANG_ERROR), MB_OK);
 
-	init_wndclass_unCap_uncap_cl(hInstance);
-
-	init_wndclass_unCap_uncap_nc(hInstance);
-
-	init_wndclass_unCap_scrollbar(hInstance);
-
-	init_wndclass_unCap_button(hInstance);
-
 	const str to_deserialize = load_file_serialized();
 
 	LANGUAGE_MANAGER& lang_mgr = LANGUAGE_MANAGER::Instance(); lang_mgr.SetHInstance(hInstance);
@@ -250,6 +226,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	_BeginDeserialize();
 	_deserialize_struct(lang_mgr, to_deserialize);
 	_deserialize_struct(uncap_cl, to_deserialize);
+	_deserialize_struct(unCap_colors, to_deserialize);
+	default_colors_if_not_set(&unCap_colors);
+	defer{ for (HBRUSH& b : unCap_colors.brushes) if (b) { DeleteBrush(b); b = NULL; } };
+
+	init_wndclass_unCap_uncap_cl(hInstance);
+
+	init_wndclass_unCap_uncap_nc(hInstance);
+
+	init_wndclass_unCap_scrollbar(hInstance);
+
+	init_wndclass_unCap_button(hInstance);
 
 	RECT uncapnc_rc = UNCAPNC_calc_nonclient_rc_from_client(uncap_cl.rc,TRUE);
 
@@ -290,6 +277,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	_BeginSerialize();
 	serialized += _serialize_struct(lang_mgr);
 	serialized += _serialize_struct(uncap_cl);
+	serialized += _serialize_struct(unCap_colors);
 
 	save_to_file_serialized(serialized);
 
