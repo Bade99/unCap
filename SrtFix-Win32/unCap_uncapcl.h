@@ -65,7 +65,6 @@ TAB_INFO GetTabExtraInfo(HWND tab, int index) {
 		if (ret) {
 			return item.extra_info;
 		}
-		//TODO(fran): error handling
 	}
 	TAB_INFO invalid = { 0 };
 	return invalid;
@@ -101,7 +100,7 @@ int AddTab(HWND TabControl, int position, LPWSTR TabName, TAB_INFO text_data) { 
 
 	HWND TextControl = CreateWindowExW(NULL, L"Edit", NULL, WS_CHILD | ES_MULTILINE | ES_AUTOVSCROLL | WS_CLIPCHILDREN //| WS_VSCROLL | WS_HSCROLL //|WS_VISIBLE
 		, text_rec.left, text_rec.top, text_rec.right - text_rec.left, text_rec.bottom - text_rec.top
-		, TabControl //IMPORTANT INFO TODO(fran): this is not right, the parent should be the individual tab not the whole control, not sure though if that control will show our edit control
+		, TabControl
 		, NULL, NULL, NULL);
 
 	SendMessageW(TextControl, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
@@ -186,17 +185,18 @@ struct unCapClProcState {
 
 TCHAR unCap_wndclass_uncap_cl[] = TEXT("unCap_wndclass_uncap_cl"); //Client uncap
 
-void DoBackup(const TCHAR* filepath) { //TODO(fran): option to change backup folder //TODO(fran): I feel backup is pretty pointless at this point, more confusing than anything else, REMOVE once I implement undo
+void DoBackup(const TCHAR* filepath) { //TODO(fran): I feel backup is pretty pointless, more confusing than anything else, REMOVE once I implement undo
 
 	std::wstring new_file = filepath;
 	size_t found = new_file.find_last_of(L"\\") + 1;
 	Assert(found != std::wstring::npos);
 	new_file.insert(found, L"SDH_");//TODO(fran): add SDH to resource file?
 
-	if (!CopyFileW(filepath, new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);; //TODO(fran): seems like CopyFile adds an extra null terminator to the saved file which isnt really needed and no other program adds
+	if (!CopyFileW(filepath, new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);
 }
 
 //TODO(fran): DoSave shouldnt add a final null terminator, no other program does that
+//TODO(fran): DoSave should receive the string, not have to call the HWND
 std::wstring DoSave(HWND textControl, std::wstring save_file) { //got to pass the encoding to the function too, and do proper conversion
 
 	//https://docs.microsoft.com/es-es/windows/desktop/api/commdlg/ns-commdlg-tagofna
@@ -210,9 +210,11 @@ std::wstring DoSave(HWND textControl, std::wstring save_file) { //got to pass th
 	std::wofstream new_file(save_file, std::ios::binary);
 	if (new_file.is_open()) {
 		new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::generate_header>));//TODO(fran): multiple options for save encoding
-		int text_length = GetWindowTextLengthW(textControl) + 1;
+		int text_length = GetWindowTextLengthW(textControl)+1;
 		std::wstring text(text_length, L'\0');
 		GetWindowTextW(textControl, &text[0], text_length);
+		//NOTE: the text control forcefully appends a null terminator, we gotta get rid of it
+		if (!text.empty() && text.back() == L'\0') text.erase(text.end() - 1);
 		new_file << text;
 		new_file.close();
 
@@ -1006,7 +1008,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		UNCAPCL_add_controls(state, (HINSTANCE)GetWindowLongPtr(state->wnd, GWLP_HINSTANCE));
 		UNCAPCL_add_menus(state);
 
-		SetWindowText(state->nc_parent, createnfo->lpszName);
+		SetText_file_app(state->nc_parent,nullptr, appName);
 
 		return 0;
 	} break;
@@ -1141,12 +1143,13 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		case ID_SAVE:
 		{
 			TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
-			if (state->settings->is_backup_enabled) DoBackup(tabnfo.filePath);
+			if (tabnfo.hText && tabnfo.filePath) {
+				if (state->settings->is_backup_enabled) DoBackup(tabnfo.filePath);
 
-			std::wstring filename_saved = DoSave(tabnfo.hText, tabnfo.filePath);
+				std::wstring filename_saved = DoSave(tabnfo.hText, tabnfo.filePath);
 
-			SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
-
+				if (filename_saved[0]) SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
+			}
 			return 0;
 		}
 		case SAVE_AS_FILE:
@@ -1154,24 +1157,27 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 		{
 			//TODO(fran): DoSaveAs allows for saving of file when no tab is created and sets all the controls but doesnt create an empty tab,
 			//should we create the tab or not allow to save?
-			std::wstring filename = GetSaveAsStr(state->settings->last_dir); //TODO(fran): get requested attributes
+			TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
+			if (tabnfo.hText) {
+				std::wstring filename = GetSaveAsStr(state->settings->last_dir); //TODO(fran): get requested attributes
+				if (filename != L"") {
+					//NOTE: No backup since the idea is the user saves to a new file obviously
+					std::wstring filename_saved = DoSave(tabnfo.hText, filename);
+					if (filename_saved[0]) {
 
-			//NOTE: No backup since the idea is the user saves to a new file obviously
-			std::wstring filename_saved = DoSave(GetCurrentTabExtraInfo(state->controls.tab).hText, filename);
-			if (filename_saved[0]) {
+						SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
+						//SetWindowTextW(hFile, filename_saved.c_str()); //Update filename viewer
+						SetText_file_app(state->nc_parent, filename_saved.c_str(), appName); //Update nc title
+						SetCurrentTabTitle(state->controls.tab, filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
 
-				SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
-				//SetWindowTextW(hFile, filename_saved.c_str()); //Update filename viewer
-				SetText_file_app(state->nc_parent, filename_saved.c_str(), appName); //Update nc title
-				SetCurrentTabTitle(state->controls.tab, filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
-
-				int tabindex = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
-				TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
-				wcsncpy_s(tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(tabnfo.filePath));//Update tab item's filepath
-				SetTabExtraInfo(state->controls.tab, tabindex, tabnfo);
-				//TODO(fran): update tab with new filepath
+						int tabindex = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
+						TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
+						wcsncpy_s(tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(tabnfo.filePath));//Update tab item's filepath
+						SetTabExtraInfo(state->controls.tab, tabindex, tabnfo);
+						//TODO(fran): update tab with new filepath
+					}
+				}
 			}
-
 			return 0;
 		}
 #define _generate_enum_cases(member,value_expr) case LANGUAGE::member:
