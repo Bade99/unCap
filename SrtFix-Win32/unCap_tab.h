@@ -27,6 +27,7 @@ struct TAB_INFO {
 	WCHAR initialChar = L'\0';
 	WCHAR finalChar = L'\0';
 	FILE_FORMAT fileFormat = FILE_FORMAT::SRT;
+	TXT_ENCODING fileEncoding = TXT_ENCODING::UTF8;
 };
 
 struct CUSTOM_TCITEM {

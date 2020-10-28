@@ -41,6 +41,26 @@ constexpr COMDLG_FILTERSPEC c_rgSaveTypes[] = //TODO(fran): this should go in re
 { L"All Documents (*.*)",         L"*.*" }
 };
 
+//NOTE: extension format should be ".txt"
+//NOTE: the function that needs this (SetFileTypeIndex) uses 1 based indexing, I know, insane, therefore we return a 1 based index too
+int getExtensionIdx(int types_cnt, const COMDLG_FILTERSPEC* save_types, std::wstring extension) {
+	//compare against valid extensions
+	for (int i = 0; i < types_cnt; i++) {
+		if (!extension.compare(save_types[i].pszSpec + 1)) {//TODO(fran): case insensitive comparison
+			return i+1;
+		}
+	}
+	//if not found look for "All documents" which should be *
+	std::wstring cmp{ L".*" };
+	for (int i = 0; i < types_cnt; i++) {
+		if (!cmp.compare(save_types[i].pszSpec + 1)) {//TODO(fran): case insensitive comparison
+			return i+1;
+		}
+	}
+	//if not found return 1
+	return 1;
+}
+
 constexpr int y_pad = 10;
 
 constexpr TCHAR appName[] = _t("unCap"); //Program name, to be displayed on the title of windows
@@ -195,21 +215,24 @@ void DoBackup(const TCHAR* filepath) { //TODO(fran): I feel backup is pretty poi
 	if (!CopyFileW(filepath, new_file.c_str(), FALSE)) MessageBoxW(NULL, L"The filename is probably too large", L"TODO(fran): Fix the program!", MB_ICONERROR);
 }
 
-//TODO(fran): DoSave shouldnt add a final null terminator, no other program does that
 //TODO(fran): DoSave should receive the string, not have to call the HWND
-std::wstring DoSave(HWND textControl, std::wstring save_file) { //got to pass the encoding to the function too, and do proper conversion
-
+//TODO(fran): NEVER should you write straight into the file already existing, write to a secondary and then rename
+std::wstring DoSave(HWND textControl, std::wstring save_file, TXT_ENCODING encoding) { //got to pass the encoding to the function too, and do proper conversion
+	printf("Encoding Written: %d\n", encoding);
 	//https://docs.microsoft.com/es-es/windows/desktop/api/commdlg/ns-commdlg-tagofna
 	//http://www.winprog.org/tutorial/app_two.html
 
-	//SEARCH(fran):	WideCharToMultiByte  :: Maps a UTF-16 (wide character) string to a new character string. 
+	//TODO(fran):	WideCharToMultiByte  :: Maps a UTF-16 (wide character) string to a new character string. 
 	//				The new character string is not necessarily from a multibyte character set.
 	std::wstring res;
-	//AnimateWindow
-	//TODO(fran): add ProgressBar hReadFile
 	std::wofstream new_file(save_file, std::ios::binary);
 	if (new_file.is_open()) {
-		new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::generate_header>));//TODO(fran): multiple options for save encoding
+		switch (encoding) {
+		case TXT_ENCODING::UTF8: new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::generate_header>)); break;//TODO(fran): I dont think I should generate the header, if I dont then Im free to treat it as both ansi and utf8 and remove the need for ansi
+		case TXT_ENCODING::UTF16: new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::generate_header>)); break;
+		//TODO(fran): what to do with ansi?
+		default:Assert(0);
+		}
 		int text_length = GetWindowTextLengthW(textControl)+1;
 		std::wstring text(text_length, L'\0');
 		GetWindowTextW(textControl, &text[0], text_length);
@@ -220,8 +243,6 @@ std::wstring DoSave(HWND textControl, std::wstring save_file) { //got to pass th
 
 		res = save_file;
 
-		//TODO(fran): this is a bit cheating since we are not actually showing the new file but the old one, so if there was some error or mismatch
-		//when saving the user wouldnt know
 	}
 	else MessageBoxW(NULL, RCS(LANG_SAVE_ERROR), RCS(LANG_ERROR), MB_ICONEXCLAMATION);
 	return res;
@@ -249,12 +270,12 @@ void UNCAPCL_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT fo
 	else {
 		SendMessage(state->controls.static_notify, WM_SETTEXT, 0, (LPARAM)RCS(LANG_COMMENTREMOVAL_NOTHINGTOREMOVE));
 	}
-	//ShowWindow(hRemoveProgress, SW_HIDE);
 }
 
-std::wstring GetSaveAsStr(std::wstring default_folder) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
+struct GetSaveAsStrResult { std::wstring savefile; TXT_ENCODING encoding; };
+GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default_ext, TXT_ENCODING default_encoding) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
 {
-	std::wstring res;
+	GetSaveAsStrResult res;
 	// CoCreate the File Open Dialog object.
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);//single threaded, @multi?
 	IFileSaveDialog *pfsd = NULL;
@@ -304,24 +325,36 @@ std::wstring GetSaveAsStr(std::wstring default_folder) //https://msdn.microsoft.
 			hr = pfdc->StartVisualGroup(CONTROL_GROUP, L"Encoding");
 
 			// Add a radio-button list.
-			hr = pfdc->AddRadioButtonList(CONTROL_RADIOBUTTONLIST);
+			hr = pfdc->AddRadioButtonList(RADIOBTNLIST_ENCODINGS);
 
 			// Set the state of the added radio-button list.
-			hr = pfdc->SetControlState(CONTROL_RADIOBUTTONLIST,
+			hr = pfdc->SetControlState(RADIOBTNLIST_ENCODINGS,
 				CDCS_VISIBLE | CDCS_ENABLED);
 
 			// Add individual buttons to the radio-button list.
-			hr = pfdc->AddControlItem(CONTROL_RADIOBUTTONLIST,
-				CONTROL_RADIOBUTTON1,
+			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
+				RADIOBTNUTF8,
 				L"UTF-8");
 
-			hr = pfdc->AddControlItem(CONTROL_RADIOBUTTONLIST,
-				CONTROL_RADIOBUTTON2,
+			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
+				RADIOBTNUTF16,
 				L"UTF-16");
 
-			// Set the default selection to option 1.
-			hr = pfdc->SetSelectedControlItem(CONTROL_RADIOBUTTONLIST,
-				CONTROL_RADIOBUTTON1);
+			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
+				RADIOBTNANSI,
+				L"ANSI");
+
+			// Set the default selection
+			{
+				DWORD encoding_selected_item;
+				switch (default_encoding) {
+				case TXT_ENCODING::UTF8: encoding_selected_item = RADIOBTNUTF8; break;
+				case TXT_ENCODING::UTF16: encoding_selected_item = RADIOBTNUTF16; break;
+				case TXT_ENCODING::ANSI: encoding_selected_item = RADIOBTNANSI; break;
+				default: Assert(0);
+				}
+				hr = pfdc->SetSelectedControlItem(RADIOBTNLIST_ENCODINGS, encoding_selected_item);
+			}
 
 			// End the visual group.
 			pfdc->EndVisualGroup();
@@ -362,11 +395,11 @@ std::wstring GetSaveAsStr(std::wstring default_folder) //https://msdn.microsoft.
 			hr = pfsd->SetFileTypes(ARRAYSIZE(c_rgSaveTypes), c_rgSaveTypes);
 
 			// Set default file index @@create function to translate file type to INDEX_...
-			hr = pfsd->SetFileTypeIndex(INDEX_SRT);
+			hr = pfsd->SetFileTypeIndex(getExtensionIdx(ARRAYSIZE(c_rgSaveTypes),c_rgSaveTypes,default_ext));
 
 			// Set def file type @@ again needs function
-			hr = pfsd->SetDefaultExtension(L"srt");//L"doc;docx"
-
+			hr = pfsd->SetDefaultExtension(default_ext.c_str());//L"doc;docx"
+			
 			if (default_folder != L"") {
 				IShellItem *defFolder;//@@shouldn't this be IShellFolder?
 				//does accepted_file_dir need to be converted to UTF-16 ?
@@ -418,14 +451,26 @@ std::wstring GetSaveAsStr(std::wstring default_folder) //https://msdn.microsoft.
 			if (SUCCEEDED(hr))//@here goes the code to handle the file received
 			{
 				//https://docs.microsoft.com/en-us/windows/desktop/api/shobjidl_core/nn-shobjidl_core-ifiledialog
-				IShellItem *file_handler;
+				IShellItem *file_handler; SFGAOF
 				hr = pfsd->GetResult(&file_handler);
 				LPWSTR filename_holder = NULL;
 				hr = file_handler->GetDisplayName(SIGDN_FILESYSPATH, &filename_holder); //@check other options for the flag
-				res = filename_holder;
+				res.savefile = filename_holder;
 
 				CoTaskMemFree(filename_holder);
 				file_handler->Release();
+
+				//Check the chosen encoding
+				IFileDialogCustomize *custom = NULL;
+				hr = pfsd->QueryInterface(IID_PPV_ARGS(&custom));
+				DWORD selected_encoding;
+				custom->GetSelectedControlItem(RADIOBTNLIST_ENCODINGS,&selected_encoding);
+				switch (selected_encoding) {
+				case (DWORD)RADIOBTNUTF8: res.encoding = TXT_ENCODING::UTF8; break;
+				case (DWORD)RADIOBTNUTF16:res.encoding = TXT_ENCODING::UTF16; break;
+				case (DWORD)RADIOBTNANSI: res.encoding = TXT_ENCODING::ANSI; break;
+				default:Assert(0);
+				}
 			}
 			// Unhook the event handler.
 			pfsd->Unadvise(dwCookie);
@@ -592,20 +637,22 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 
 	int pos = TAB_get_next_pos(state->controls.tab);//NOTE: careful with multithreading here
 
-	std::wstring text = ReadText(filename);
+	ReadTextResult text_res = ReadText(filename);
 
-	text_data.commentType = GetCommentType(text);
+	text_data.fileEncoding = text_res.encoding;
+
+	text_data.commentType = GetCommentType(text_res.text);
 
 	text_data.fileFormat = GetFileFormat(filename);
 
-	ProperLineSeparation(text);
+	ProperLineSeparation(text_res.text);
 
 	int res = AddTab(state->controls.tab, pos, (LPWSTR)accepted_file_name_with_ext.c_str(), text_data);
 	Assert(res != -1);
 
 	TAB_INFO new_text_data = GetTabExtraInfo(state->controls.tab, res);
 
-	SetWindowTextW(new_text_data.hText, text.c_str());
+	SetWindowTextW(new_text_data.hText, text_res.text.c_str());
 
 	//enable buttons and text editor
 	EnableWindow(state->controls.button_removecomment, TRUE); //TODO(fran): this could also be a saved parameter
@@ -1146,7 +1193,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			if (tabnfo.hText && tabnfo.filePath) {
 				if (state->settings->is_backup_enabled) DoBackup(tabnfo.filePath);
 
-				std::wstring filename_saved = DoSave(tabnfo.hText, tabnfo.filePath);
+				std::wstring filename_saved = DoSave(tabnfo.hText, tabnfo.filePath, tabnfo.fileEncoding);
 
 				if (filename_saved[0]) SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
 			}
@@ -1159,10 +1206,12 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			//should we create the tab or not allow to save?
 			TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
 			if (tabnfo.hText) {
-				std::wstring filename = GetSaveAsStr(state->settings->last_dir); //TODO(fran): get requested attributes
-				if (filename != L"") {
+				TXT_ENCODING og_encoding = tabnfo.fileEncoding;
+				std::wstring og_extension = (std::filesystem::path(tabnfo.filePath)).extension();//TODO(fran): should I use tabnfo.fileFormat?
+				GetSaveAsStrResult saveas_res = GetSaveAsStr(state->settings->last_dir, og_extension, og_encoding);
+				if (saveas_res.savefile != L"") {
 					//NOTE: No backup since the idea is the user saves to a new file obviously
-					std::wstring filename_saved = DoSave(tabnfo.hText, filename);
+					std::wstring filename_saved = DoSave(tabnfo.hText, saveas_res.savefile, saveas_res.encoding);
 					if (filename_saved[0]) {
 
 						SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
@@ -1172,9 +1221,9 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 						int tabindex = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
 						TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
+						tabnfo.fileEncoding = saveas_res.encoding;
 						wcsncpy_s(tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(tabnfo.filePath));//Update tab item's filepath
 						SetTabExtraInfo(state->controls.tab, tabindex, tabnfo);
-						//TODO(fran): update tab with new filepath
 					}
 				}
 			}

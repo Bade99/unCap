@@ -1193,6 +1193,10 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case WM_KEYDOWN://here we could parse keyboard shortcuts
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
 	case 49233:
 	case 49454:
 	case 49470:

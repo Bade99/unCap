@@ -66,9 +66,10 @@ private:
 
 //extra dialog controls
 #define CONTROL_GROUP           2000 //element that will contain all the other controls
-#define CONTROL_RADIOBUTTONLIST 1
-#define CONTROL_RADIOBUTTON1    1
-#define CONTROL_RADIOBUTTON2    2 
+#define RADIOBTNLIST_ENCODINGS 1
+#define RADIOBTNUTF8    1
+#define RADIOBTNUTF16    2 
+#define RADIOBTNANSI    3 
 
 #define OPENCHOICES 2 //this 3 would be only for an open dialog
 #define OPEN 0
@@ -143,19 +144,22 @@ HRESULT CDialogEventHandler::OnItemSelected(IFileDialogCustomize *pfdc, DWORD dw
 	HRESULT hr = pfdc->QueryInterface(&pfd);
 	if (SUCCEEDED(hr))
 	{
-		if (dwIDCtl == CONTROL_RADIOBUTTONLIST)
+		if (dwIDCtl == RADIOBTNLIST_ENCODINGS)
 		{
 			switch (dwIDItem)
 			{
-			case CONTROL_RADIOBUTTON1:
-				hr = pfd->SetTitle(L"UTF-8 Dialog");
+			case RADIOBTNUTF8:
+				//hr = pfd->SetTitle(L"UTF-8 Dialog");
 				break;
-
-			case CONTROL_RADIOBUTTON2:
-				hr = pfd->SetTitle(L"UTF-16 Dialog");
+			case RADIOBTNUTF16:
+				//hr = pfd->SetTitle(L"UTF-16 Dialog");
+				break;
+			case RADIOBTNANSI:
+				//hr = pfd->SetTitle(L"ANSI Dialog");
 				break;
 			}
 		}
+		
 		pfd->Release();
 	}
 	return hr;

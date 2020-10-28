@@ -2,9 +2,11 @@
 #include <string>
 #include "unCap_Platform.h"
 #include <sstream>
+#include <locale>
+#include <codecvt>
 
 enum TXT_ENCODING {
-	ANSI = 1,
+	ANSI = 1, //TODO(fran): ansi may be too generic
 	UTF8,
 	UTF16, //Big endian or Little endian
 	//ASCII is easily encoded in utf8 without problems
@@ -71,27 +73,28 @@ TXT_ENCODING GetTextEncoding(std::wstring filename) {
 	}
 }
 
-std::wstring ReadText(std::wstring filepath) {
-	std::wstring res;
+struct ReadTextResult { std::wstring text; TXT_ENCODING encoding; };
+ReadTextResult ReadText(std::wstring filepath) {
+	ReadTextResult res;
 
-	TXT_ENCODING encoding = GetTextEncoding(filepath);
+	res.encoding = GetTextEncoding(filepath);//TODO(fran): this begins stupid, I need the bytes in ram first, then I can analyze all I want, right now Im doing two reads from disk of the same file
+	printf("Encoding Read: %d\n", res.encoding);
 
 	std::wifstream file(filepath, std::ios::binary);
 
 	if (file.is_open()) {
 
 		//set encoding for getline
-		if (encoding == TXT_ENCODING::UTF8)
-			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));
-		//int a;
-		//maybe the only thing needed when utf8 is detectedd is to remove the BOM if it is there
-		else if (encoding == TXT_ENCODING::UTF16)
+		if (res.encoding == TXT_ENCODING::UTF8)
+			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));//TODO(fran): shouldnt I use codecvt_utf8_utf16?
+		//maybe the only thing needed when utf8 is detected is to remove the BOM if it is there
+		else if (res.encoding == TXT_ENCODING::UTF16)
 			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::consume_header>));
-		//if encoding is ANSI we do nothing
+		//if encoding is ANSI we do nothing <-TODO(fran): is this correct?
 
 		std::wstringstream buffer;
 		buffer << file.rdbuf(); //TODO(fran): this is horribly slow, just useless
-		res = buffer.str();
+		res.text = buffer.str();
 
 		file.close();
 	}

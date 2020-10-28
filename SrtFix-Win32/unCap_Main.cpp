@@ -18,7 +18,6 @@
 #include <Windowsx.h> //GET_X_LPARAM GET_Y_LPARAM
 #include "Open_Save_FileHandler.h"
 #include <string>
-#include <filesystem>
 #include <fstream>
 #include <propvarutil.h>
 #include <Propsys.h>
@@ -69,6 +68,7 @@
 //The name of the application (unCap) does not show until you add a tab
 //Deserialization of unCap_colors seems to fail sometimes and have to go to defaults
 //Maximizing breaks everything
+//Keyboard shorcuts not received if the user is inside the text editor, they cant ctrl+s!
 
 //----------------------GLOBALS----------------------:
 i32 n_tabs = 0;//Needed for serialization
