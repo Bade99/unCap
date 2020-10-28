@@ -15,24 +15,15 @@
 
 #include "resource.h"
 #include <Windows.h>
-#include <Windowsx.h> //GET_X_LPARAM GET_Y_LPARAM
-#include "Open_Save_FileHandler.h"
 #include <string>
-#include <fstream>
-#include <propvarutil.h>
-#include <Propsys.h>
-#include <propkey.h>
-#include <Commdlg.h>
 #include <Commctrl.h>
-#include <Shellapi.h>
 #include "LANGUAGE_MANAGER.h"
-#include <Shlobj.h>//SHGetKnownFolderPath
 #include "utf8.h" //Thanks to http://utfcpp.sourceforge.net/
 #include "text_encoding_detect.h" //Thanks to https://github.com/AutoItConsulting/text-encoding-detect
 #include "fmt.h"
 #include "unCap_Helpers.h"
 #include "unCap_Global.h"
-#include "unCap_math.h"
+//#include "unCap_math.h"
 #include "unCap_uncapnc.h"
 #include "unCap_scrollbar.h"
 #include "unCap_button.h"
@@ -63,10 +54,6 @@
 
 //BUGS
 //When the tab control is empty and you load the first file it doesnt seem to update the comment marker
-//On different colors the menus' images dont render correctly
-//Not every img is using uncap_colors.Img
-//The name of the application (unCap) does not show until you add a tab
-//Deserialization of unCap_colors seems to fail sometimes and have to go to defaults
 //Maximizing breaks everything
 //Keyboard shorcuts not received if the user is inside the text editor, they cant ctrl+s!
 
@@ -230,9 +217,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	default_colors_if_not_set(&unCap_colors);
 	defer{ for (HBRUSH& b : unCap_colors.brushes) if (b) { DeleteBrush(b); b = NULL; } };
 
-	init_wndclass_unCap_uncap_cl(hInstance);
+	init_wndclass_unCap_uncapcl(hInstance);
 
-	init_wndclass_unCap_uncap_nc(hInstance);
+	init_wndclass_unCap_uncapnc(hInstance);
 
 	init_wndclass_unCap_scrollbar(hInstance);
 

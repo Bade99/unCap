@@ -1221,7 +1221,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	return 0;
 }
 
-ATOM init_wndclass_unCap_uncap_nc(HINSTANCE inst) {
+ATOM init_wndclass_unCap_uncapnc(HINSTANCE inst) {
 	WNDCLASSEXW wcex;
 
 	wcex.cbSize = sizeof(WNDCLASSEX);

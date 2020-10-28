@@ -16,6 +16,8 @@
 #include "unCap_tab.h"
 #include "unCap_notify.h"
 #include "unCap_edit.h"
+#include <Commdlg.h> //OPENFILENAME
+#include <Shellapi.h> //HDROP
 
 #define OPEN_FILE 11
 #define COMBO_BOX 12
@@ -1384,7 +1386,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	return 0;
 }
 
-ATOM init_wndclass_unCap_uncap_cl(HINSTANCE inst) {
+ATOM init_wndclass_unCap_uncapcl(HINSTANCE inst) {
 	WNDCLASSEXW wcex{ sizeof(wcex) };
 	wcex.style = CS_HREDRAW | CS_VREDRAW;
 	wcex.lpfnWndProc = UncapClProc;

@@ -4,6 +4,7 @@
 #include <sstream>
 #include <locale>
 #include <codecvt>
+#include <fstream>
 
 enum TXT_ENCODING {
 	ANSI = 1, //TODO(fran): ansi may be too generic
