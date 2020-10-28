@@ -23,11 +23,10 @@
 #include "fmt.h"
 #include "unCap_Helpers.h"
 #include "unCap_Global.h"
-//#include "unCap_math.h"
 #include "unCap_uncapnc.h"
 #include "unCap_scrollbar.h"
 #include "unCap_button.h"
-#include"unCap_Renderer.h"
+#include "unCap_Renderer.h"
 #include "unCap_Core.h"
 #include "unCap_combobox.h"
 #include "unCap_Reflection.h"
@@ -49,8 +48,8 @@
 //Paint Initial char and Final char wnds to look like the rest, add white border so they are more easily noticeable
 //Parametric sizes for everything, and DPI awareness for controls
 //Move error messages from a separate dialog window into the space on the right of the Remove controls
-//Option to retain original file encoding on save, otherwise utf8/user defined default
 //Additional File Format support?: webvtt,microdvd,subviewer,ttml,sami,mpsub,ttxt
+//Process double click on the border of the nc and expand in the requested axis
 
 //BUGS
 //When the tab control is empty and you load the first file it doesnt seem to update the comment marker
@@ -62,24 +61,6 @@ i32 n_tabs = 0;//Needed for serialization
 
 UNCAP_COLORS unCap_colors{0};
 UNCAP_FONTS unCap_fonts{0};
-
-//Timing info for testing
-f64 GetPCFrequency() {
-	LARGE_INTEGER li;
-	QueryPerformanceFrequency(&li);
-	return f64(li.QuadPart) / 1000.0; //milliseconds
-}
-inline i64 StartCounter() {
-	LARGE_INTEGER li;
-	QueryPerformanceCounter(&li);
-	return li.QuadPart;
-}
-inline f64 EndCounter(i64 CounterStart, f64 PCFreq = GetPCFrequency())
-{
-	LARGE_INTEGER li;
-	QueryPerformanceCounter(&li);
-	return double(li.QuadPart - CounterStart) / PCFreq;
-}
 
 //The dc is passed to EnumFontFamiliesEx, you can just pass the desktop dc for example //TODO(fran): can we guarantee which dc we use doesnt matter? in that case dont ask the user for a dc and do it myself
 BOOL hasFontFace(HDC dc, const TCHAR* facename) {
@@ -168,11 +149,10 @@ v2 GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/
 	return dpi;
 }
 
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
+int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
-	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
-
+	UNREFERENCED_PARAMETER(lpCmdLine);//TODO(fran): get dropped files (CommandLineToArgvW)
+	
 	urender::init(); defer{ urender::uninit(); };
 
 	//Initialization of common controls
@@ -231,7 +211,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	nclpparam.client_class_name = unCap_wndclass_uncap_cl;
 	nclpparam.client_lp_param = &uncap_cl;
 
-	//TODO(fran): I think the problem I get that someone else is drawing my nc area is because I ask for OVERLAPPED_WINDOW when I create the window, so it takes care of doing that, which I dont want, REMOVE IT
+	//NOTE(fran): if you ask for OVERLAPPEDWINDOW someone else draws your nc area
 	HWND uncapnc = CreateWindowEx(WS_EX_CONTROLPARENT/*|WS_EX_ACCEPTFILES*/, unCap_wndclass_uncap_nc, NULL, WS_THICKFRAME | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
 		uncapnc_rc.left, uncapnc_rc.top, RECTWIDTH(uncapnc_rc), RECTHEIGHT(uncapnc_rc), nullptr, nullptr, hInstance, &nclpparam);
 

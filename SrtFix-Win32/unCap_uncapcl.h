@@ -499,7 +499,7 @@ void UNCAPCL_ResizeWindows(unCapClProcState* state) {
 	//@No se si actualizar las demas
 	int txtcont_top = y_pad + 104;
 	MoveWindow(state->controls.tab, 10, txtcont_top, RECTWIDTH(rect) - 20, RECTHEIGHT(rect) - txtcont_top - 10, TRUE);
-	SendMessage(state->controls.tab, TCM_RESIZETABS, 0, 0);
+	PostMessage(state->controls.tab, TCM_RESIZETABS, 0, 0);
 }
 
 void UNCAPCL_custom_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT format) {
@@ -1063,8 +1063,9 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	} break;
 	case WM_SIZE:
 	{
+		LRESULT res = DefWindowProc(hwnd, msg, wparam, lparam);
 		UNCAPCL_ResizeWindows(state);
-		return DefWindowProc(hwnd, msg, wparam, lparam);
+		return res;
 	} break;
 	case WM_NCDESTROY:
 	{
@@ -1222,10 +1223,10 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 						SetCurrentTabTitle(state->controls.tab, filename_saved.substr(filename_saved.find_last_of(L"\\") + 1)); //Update tab name
 
 						int tabindex = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
-						TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
-						tabnfo.fileEncoding = saveas_res.encoding;
-						wcsncpy_s(tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(tabnfo.filePath));//Update tab item's filepath
-						SetTabExtraInfo(state->controls.tab, tabindex, tabnfo);
+						TAB_INFO new_tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
+						new_tabnfo.fileEncoding = saveas_res.encoding;
+						wcsncpy_s(new_tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(new_tabnfo.filePath));//Update tab item's filepath
+						SetTabExtraInfo(state->controls.tab, tabindex, new_tabnfo);
 					}
 				}
 			}

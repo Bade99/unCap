@@ -192,7 +192,7 @@ LRESULT CALLBACK TabProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam, UINT
 					control_size.cy = RECTHEIGHT(rc);
 					//SendMessage(item.extra_info.hText, TCM_RESIZE, (WPARAM)&control_size, 0);
 
-					MoveWindow(hwnd, TabOffset.leftOffset, TabOffset.topOffset, control_size.cx - TabOffset.rightOffset - TabOffset.leftOffset, control_size.cy - TabOffset.bottomOffset - TabOffset.topOffset, TRUE);
+					MoveWindow(item.extra_info.hText, TabOffset.leftOffset, TabOffset.topOffset, control_size.cx - TabOffset.rightOffset - TabOffset.leftOffset, control_size.cy - TabOffset.bottomOffset - TabOffset.topOffset, TRUE);
 
 				}
 			}

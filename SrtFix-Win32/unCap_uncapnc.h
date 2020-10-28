@@ -36,10 +36,20 @@ struct unCapNcLpParam {//NOTE: pass a pointer to unCapNcLpParam to set up the cl
 	void* client_lp_param;
 };
 
+struct MY_MARGINS
+{
+	int cxLeftWidth;
+	int cxRightWidth;
+	int cyTopHeight;
+	int cyBottomHeight;
+};
+
 struct unCapNcProcState {
 	HWND wnd;
 	HWND client;
 	//TODO(fran): might be good to store client and wnd rect, find the one place where we get this two. Then we wont have the code littered with those two calls
+
+	MY_MARGINS nc;
 
 	HWND btn_min, btn_max, btn_close;
 
@@ -200,6 +210,30 @@ void UNCAPNC_show_rclickmenu(unCapNcProcState* state, POINT mouse) {
 	DestroyMenu(m);
 }
 
+void UNCAPNC_manual_maximize(unCapNcProcState* state) {//Maximize only works correctly for WM_OVERLAPPEDWINDOW, we gotta do it by hand
+	WINDOWPLACEMENT old_placement; GetWindowPlacement(state->wnd, &old_placement);
+	HMONITOR mon = MonitorFromWindow(state->wnd, MONITOR_DEFAULTTOPRIMARY);
+	MONITORINFO monnfo{sizeof(monnfo)};
+	BOOL res = GetMonitorInfo(mon, &monnfo);
+	Assert(res);
+	RECT work_rc = monnfo.rcWork;//NOTE: im in a 1 monitor setup and it's exactly the same as the other rc so idk when it's different. Strangely enough it still doesnt go over the taskbar area, so I guess there's a check inside the resizing code done by windows somewhere
+
+	//TODO(fran):we're gonna have to store our current size to be able to manually restore if the user tries to move us or presses maximize again. SetWindowPlacement?
+	//TODO(fran): gotta decide what we want to do with the resizing borders, the top and bottom ones are still user reachable, both visual studio and chrome dont allow resizing but chrome developers where a little lazy and didnt update the margins of the window, therefore on the bottom the mouse still changes to the resizing one even though they dont allow the resize
+	work_rc.left -= state->nc.cxLeftWidth;
+	work_rc.right += state->nc.cxRightWidth;
+	work_rc.top -= state->nc.cyTopHeight;
+	work_rc.bottom += state->nc.cyBottomHeight;
+	MoveWindow(state->wnd, work_rc.left, work_rc.top, RECTWIDTH(work_rc), RECTHEIGHT(work_rc),TRUE);
+	WINDOWPLACEMENT placement{ sizeof(placement) };
+	placement.showCmd = SW_MAXIMIZE;
+	placement.flags = WPF_ASYNCWINDOWPLACEMENT;
+	placement.ptMaxPosition.x = work_rc.left;
+	placement.ptMaxPosition.y = work_rc.top;
+	placement.rcNormalPosition = old_placement.rcNormalPosition;//TODO(fran): for non WS_EX_TOOLWINDOW windows all this should be in workspace coords
+	SetWindowPlacement(state->wnd, &placement);//TODO(fran): I just wanted to set the placement, not ask this guy to update my window too (maybe I can do some extra resizing to adjust the situation)
+}
+
 //TODO(fran): add & at the beginning of menu string names, that's how you trigger them by pressing Alt+key https://stackoverflow.com/questions/38338426/meaning-of-ampersand-in-rc-files
 //TODO(fran): it'd also be interesting to see how it goes if we do SetMenu on the client
 //TODO(fran): UNDO support for comment removal
@@ -209,6 +243,11 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	//printf(msgToString(msg)); printf("\n");
 	unCapNcProcState* state = UNCAPNC_get_state(hwnd);
+
+	{
+		RECT rw; GetWindowRect(hwnd, &rw);
+		printf("left %d top %d right %d bottom %d width %d height %d\n", rw.left, rw.top, rw.right, rw.bottom, RECTWIDTH(rw), RECTHEIGHT(rw));
+	}
 
 	constexpr int menu_delay_ms = 100;
 
@@ -422,7 +461,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
 
 			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
-			else ShowWindow(state->wnd, SW_MAXIMIZE);
+			else /*ShowWindow(state->wnd, SW_MAXIMIZE);*/ UNCAPNC_manual_maximize(state);
 		}
 		return 0;
 	} break;
@@ -463,18 +502,14 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 		UNCAPNC_calc_caption(state);//TODO(fran): find out which is the one and only magical msg where this can be put in
 
-		struct MY_MARGINS
-		{
-			int cxLeftWidth;
-			int cxRightWidth;
-			int cyTopHeight;
-			int cyBottomHeight;
-		} margins;
+		MY_MARGINS margins;
 
 		margins.cxLeftWidth = distance(testrc.left, ncrc.left);
 		margins.cxRightWidth = distance(testrc.right, ncrc.right);
 		margins.cyBottomHeight = distance(testrc.bottom, ncrc.bottom);
 		margins.cyTopHeight = 0;
+
+		state->nc = margins;
 
 		if ((BOOL)wparam == TRUE) {
 			//IMPORTANT: absolutely _everything_ is in screen coords

@@ -18,6 +18,24 @@
 #define to_str(v) std::to_string(v)
 #endif
 
+//Timing info for testing
+static f64 GetPCFrequency() {
+	LARGE_INTEGER li;
+	QueryPerformanceFrequency(&li);
+	return f64(li.QuadPart) / 1000.0; //milliseconds
+}
+static i64 StartCounter() {
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	return li.QuadPart;
+}
+static f64 EndCounter(i64 CounterStart, f64 PCFreq = GetPCFrequency())
+{
+	LARGE_INTEGER li;
+	QueryPerformanceCounter(&li);
+	return double(li.QuadPart - CounterStart) / PCFreq;
+}
+
 static bool str_found(size_t p) {
 	return p != str::npos;
 }

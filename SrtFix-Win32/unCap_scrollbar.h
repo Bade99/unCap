@@ -34,9 +34,9 @@ struct ScrollProcState { //NOTE: must be initialized to zero
 	bool OnMouseTrackingSb; //Left click was pressed in our bar and now is still being held, the user will probably be moving the mouse around, so we want to track it to move the scrollbar
 	//NOTE: we'll probably also need a onMouseOverBk or just general mouseOver
 
-	bool fullBkRepaint;
-	int oldSb_idx;
-	RECT oldSb[3]; //WM_PAINT will annotate where it painted the scrollbar so WM_ERASEBACKGROUND can clean only those parts //TODO(fran): Im not sure we really need to store more than one, if we always ask for bk erasing on InvalidateRect
+	//bool fullBkRepaint;
+	//int oldSb_idx;
+	//RECT oldSb[3]; //WM_PAINT will annotate where it painted the scrollbar so WM_ERASEBACKGROUND can clean only those parts //TODO(fran): Im not sure we really need to store more than one, if we always ask for bk erasing on InvalidateRect
 };
 
 #define U_SB_AUTORESIZE (WM_USER + 300) /*Auto resize and reposition*/
@@ -76,7 +76,7 @@ static void SCROLL_resize(ScrollProcState* state, int scrollbar_thickness) {
 
 	}break;
 	}
-	state->fullBkRepaint = true;
+	//state->fullBkRepaint = true;
 }
 
 static bool is_vertical(ScrollBarPlacement place) {
@@ -116,7 +116,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CREATESTRUCT* creation_nfo =(CREATESTRUCT*)lparam;
 		state->parent = creation_nfo->hwndParent;
 		state->wnd = hwnd;
-		state->fullBkRepaint = true;
+		//state->fullBkRepaint = true;
 		return 0;
 	}
 	
@@ -340,17 +340,17 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		//TODO(fran): look at https://docs.microsoft.com/en-us/windows/win32/gdi/drawing-a-custom-window-background and SetMapModek, allows for transforms
 
 		//TODO(fran): see what we do on resize
-		if (state->fullBkRepaint) {
-			state->fullBkRepaint = false;
-			RECT r;
-			GetClientRect(hwnd, &r);
-			FillRect(dc, &r, unCap_colors.ScrollbarBk);
-		}
-		else {
-			for(int i=0; i < state->oldSb_idx; i++)
-				FillRect(dc, &state->oldSb[i], unCap_colors.ScrollbarBk);
-		}
-		state->oldSb_idx = 0;
+		//if (state->fullBkRepaint) {
+		//	state->fullBkRepaint = false;
+		//	RECT r;
+		//	GetClientRect(hwnd, &r);
+		//	FillRect(dc, &r, unCap_colors.ScrollbarBk);
+		//}
+		//else {
+		//	for(int i=0; i < state->oldSb_idx; i++)
+		//		FillRect(dc, &state->oldSb[i], unCap_colors.ScrollbarBk);
+		//}
+		//state->oldSb_idx = 0;
 
 		return 1; //If you return 0 then on WM_PAINT fErase will be true, aka paint it there
 	} break;
@@ -422,7 +422,7 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_PAINT:
 	{
 		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(state->wnd, &ps);
+		HDC dc = BeginPaint(state->wnd, &ps);
 
 		{//TEST
 #if 0
@@ -436,20 +436,32 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		//Calculate new bar rc
 		RECT sb_rc = SCROLL_calc_scrollbar(state);
 		//Check that we are going to paint a new rc
-		if (!state->oldSb_idx || !sameRc(sb_rc, state->oldSb[state->oldSb_idx])) { //TODO(fran): this should check for the color that was used, since it does happen that the bar stays in the same place but changes color, that would allow for not always asking InvalidateRect to send wm_erasebk
+		//if (!state->oldSb_idx || !sameRc(sb_rc, state->oldSb[state->oldSb_idx])) { //TODO(fran): this should check for the color that was used, since it does happen that the bar stays in the same place but changes color, that would allow for not always asking InvalidateRect to send wm_erasebk
 			//Decide bar color
 			HBRUSH sb_br;
 			if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
 			else sb_br = unCap_colors.Scrollbar;
 
 			//Annotate bar RECT for WM_ERASEBK to remove next time
-			state->oldSb[state->oldSb_idx++] = sb_rc;
-			Assert(state->oldSb_idx < ARRAYSIZE(state->oldSb));
+			//state->oldSb[state->oldSb_idx++] = sb_rc;
+			//printf("SB IDX: %d\n", state->oldSb_idx);
+			//Assert(state->oldSb_idx < ARRAYSIZE(state->oldSb));
 			//TODO(fran): check that we are painting at a new position, if not do not paint
 
 			//Paint the bar
-			FillRect(hdc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
-		}
+			FillRect(dc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
+		//}
+
+			//Clip the drawing region
+			HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(dc, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
+			ExcludeClipRect(dc, sb_rc.left, sb_rc.top, sb_rc.right, sb_rc.bottom);
+			//Draw
+			RECT rc;
+			GetClientRect(state->wnd, &rc);
+			FillRect(dc, &rc, unCap_colors.ScrollbarBk);
+			//Restore old region
+			SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion);
+
 		EndPaint(state->wnd, &ps);
 		return 0;
 	} break;
