@@ -245,8 +245,10 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	unCapNcProcState* state = UNCAPNC_get_state(hwnd);
 
 	{
+#if 0
 		RECT rw; GetWindowRect(hwnd, &rw);
 		printf("left %d top %d right %d bottom %d width %d height %d\n", rw.left, rw.top, rw.right, rw.bottom, RECTWIDTH(rw), RECTHEIGHT(rw));
+#endif
 	}
 
 	constexpr int menu_delay_ms = 100;
@@ -412,6 +414,13 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	case WM_CREATE:
 	{
 
+#if 1
+		//NOTE: we want WS_OVERLAPPEDWINDOW for the niceties on resizing, maximizing not obstructing the taskbar, scaling the window in the y axis when double clicking the top/bottom resizing border (unfortunately doesnt do the same for left and right <-TODO(fran): also it doesnt do it for top and bottom, is this done by hand by every program?), and similar. The one problem is that we'll need to draw differently when maximized, everything will have to be moved down a little
+		//TODO(fran): check no strange things happen now we re-enabled OVERLAPPEDWINDOW, at least it doesnt seem to be creating the horrible max/min etc buttons now we dont use WS_OVERLAPPEDWINDOW in CreateWindow
+		LONG_PTR  dwStyle = GetWindowLongPtr(state->wnd, GWL_STYLE);
+		SetWindowLongPtr(state->wnd, GWL_STYLE, dwStyle | WS_OVERLAPPEDWINDOW);
+#endif
+
 		CREATESTRUCT* createnfo = (CREATESTRUCT*)lparam;
 
 		unCapNcLpParam* lpParam = (unCapNcLpParam*)createnfo->lpCreateParams;
@@ -461,7 +470,15 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
 
 			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
-			else /*ShowWindow(state->wnd, SW_MAXIMIZE);*/ UNCAPNC_manual_maximize(state);
+			else {
+#if 1
+				//LONG_PTR  dwStyle = GetWindowLongPtr(state->wnd, GWL_STYLE);
+				//SetWindowLongPtr(state->wnd, GWL_STYLE, dwStyle | WS_OVERLAPPEDWINDOW);//TODO(fran): now im REALLY confused, I had to specifically take out WS_OVERLAPPEDWINDOW so it wouldnt paint over me and now it doesnt seem to, test more thoroughly //still though sizing isnt perfect, the top is still cut off
+				ShowWindow(state->wnd, SW_MAXIMIZE);
+#else
+				UNCAPNC_manual_maximize(state);
+#endif
+			}
 		}
 		return 0;
 	} break;
@@ -942,7 +959,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			WINDOWPLACEMENT p{ sizeof(p) }; GetWindowPlacement(state->wnd, &p);
 
 			if (p.showCmd == SW_SHOWMAXIMIZED) ShowWindow(state->wnd, SW_RESTORE);
-			else ShowWindow(state->wnd, SW_MAXIMIZE); //TODO(fran): maximize covers the whole screen, I dont want that, I want to live the navbar visible. For this to be done automatically by windows we need the WS_MAXIMIZEBOX style, which decides to draw a maximize box when pressed, if we can hide that we are all set
+			else ShowWindow(state->wnd, SW_MAXIMIZE); //TODO(fran): maximize covers the whole screen, I dont want that, I want to leave the navbar visible. For this to be done automatically by windows we need the WS_MAXIMIZEBOX style, which decides to draw a maximize box when pressed, if we can hide that we are all set
 			return 0;
 		} break;
 		case UNCAPNC_CLOSE:
@@ -957,8 +974,38 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		PostQuitMessage(0);
 		break;
 	case WM_GETMINMAXINFO:
+		//FIRST msg sent to the window
+		//Sent when size or position are about to change
+		//Can override default maximized size and position, and the tracking size which sets the limit for the minimum & max size your window can be resized to, NOTE: the sizes/positions are relative to the primary monitor, windows automatically adjusts this values for secondary ones
 	{
+#if 0
+		RECT testrc{ 0,0,100,100 };//TODO(fran): since clearly this msg needed to be sent before WM_CREATE or WM_NCCREATE we dont have our state allocated yet, thanks to that and the fact this msg is called all the time afterwards we cant allocate here unless we add a boolean "initialized" or smth the like. For now we are gonna duplicate this code again, for the third time, ugly but we gotta do it
+		RECT ncrc = testrc;
+		AdjustWindowRect(&ncrc, WS_OVERLAPPEDWINDOW, FALSE);
+		MY_MARGINS margins;
+		margins.cxLeftWidth = distance(testrc.left, ncrc.left);
+		margins.cxRightWidth = distance(testrc.right, ncrc.right);
+		margins.cyBottomHeight = distance(testrc.bottom, ncrc.bottom);
+		margins.cyTopHeight = 0;
+
+		//INFO: for OVERLAPPEDWINDOWs any value of minmax->ptMaxPosition.y above or equal to 1 means let me handle it, if 0 or negative windows hardcodes whatever it wants and takes into account the taskbar
+		// for NON OVERLAPPEDWINDOWs you can set whatever you want but windows doesnt help, in this case you'll need to take into account the taskbar by hand
+
+		//INFO: even though the sizing box for the top part of the window is embedded inside the caption area windows adds and offset of, for example, -8 on the top part too (minmax->ptMaxPosition.y) and actually everybody draws differently when maximized, eg by default the buttons are shorter, the title and menu seem to get a little closer, others like chrome draw the buttons a little bit below but dont bother with the tabs, they dont change the size of the caption area, maybe they make the tab shorter but still it goes up to the last pixel. In summary, we got a couple options
+
+		//INFO: the plot thickens, as with all the very typical windows hackery you dont get all the info you need and thanks to that even programs like chrome do this wrong, if we put the taskbar on top chrome will still show the resizing mouse even though it doesnt allow for resizing, but the worst thing is that it shows ABOVE the taskbar, you can see the extra pixels cover part of the taskbar, visual studio on the other hand handles all this perfectly
+
+		//INFO: the fact that you cant use the resize borders when maximized is cause the window is actually over sized, that's strange for two reasons, first what happens on multiple monitors? shouldnt the extra size show up in the others?, second is that the size offset is applied to every border, now one of those four is gonna clash with the taskbar, is the taskbar just hiding the fact that the window is below by forcing itself on top?
+
+		printf("WM_GETMINMAXINFO\n");
+		MINMAXINFO* minmax = (MINMAXINFO*)lparam;
+		minmax->ptMaxPosition.y = 0;
+		minmax->ptMaxSize.y -= 16;
+		printf("left %d top %d right %d bottom %d width %d height %d\n",minmax->ptMaxPosition.x, minmax->ptMaxPosition.y, minmax->ptMaxSize.x, minmax->ptMaxSize.y, distance(minmax->ptMaxPosition.x, minmax->ptMaxSize.x), distance(minmax->ptMaxPosition.y, minmax->ptMaxSize.y));
+		return 0;
+#else
 		return DefWindowProc(hwnd, msg, wparam, lparam);
+#endif
 	} break;
 	case WM_STYLECHANGING:
 	{
@@ -1229,6 +1276,11 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_KEYDOWN://here we could parse keyboard shortcuts
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_SETTINGCHANGE://also WM_WININICHANGE for older things (yes, same msg, slightly different params)
+		//Sent to all top level windows after someone changes some windows settings with SystemParametersInfo
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
