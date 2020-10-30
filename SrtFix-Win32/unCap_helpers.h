@@ -18,6 +18,49 @@
 #define to_str(v) std::to_string(v)
 #endif
 
+//Thanks to https://handmade.network/forums/t/1273-post_your_c_c++_macro_tricks/3
+template <typename F> struct Defer { Defer(F f) : f(f) {} ~Defer() { f(); } F f; };
+template <typename F> Defer<F> makeDefer(F f) { return Defer<F>(f); };
+#define __defer( line ) defer_ ## line
+#define _defer( line ) __defer( line )
+struct defer_dummy { };
+template<typename F> Defer<F> operator+(defer_dummy, F&& f) { return makeDefer<F>(std::forward<F>(f)); }
+//usage: defer{block of code;}; //the last defer in a scope gets executed first (LIFO)
+#define defer auto _defer( __LINE__ ) = defer_dummy( ) + [ & ]( )
+
+static u32 safe_u64_to_u32(u64 n) {
+	Assert(n <= 0xFFFFFFFF); //TODO(fran): u32_max and _min
+	return (u32)n;
+}
+
+static void free_file_memory(void* memory) {
+	if (memory) VirtualFree(memory, 0, MEM_RELEASE);
+}
+struct read_entire_file_res { void* mem; u32 sz;/*bytes*/ };
+//NOTE: free the memory with free_file_memory()
+static read_entire_file_res read_entire_file(const cstr* filename) {
+	read_entire_file_res res{ 0 };
+	HANDLE hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+	if (hFile != INVALID_HANDLE_VALUE) {
+		defer{ CloseHandle(hFile); };
+		if (LARGE_INTEGER sz; GetFileSizeEx(hFile, &sz)) {
+			u32 sz32 = safe_u64_to_u32(sz.QuadPart);
+			void* mem = VirtualAlloc(0, sz32, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);//TOOD(fran): READONLY?
+			if (mem) {
+				if (DWORD bytes_read; ReadFile(hFile, mem, sz32, &bytes_read, 0) && sz32 == bytes_read) {
+					//SUCCESS
+					res.mem = mem;
+					res.sz = sz32;
+				}
+				else {
+					free_file_memory(mem);
+				}
+			}
+		}
+	}
+	return res;
+}
+
 //Timing info for testing
 static f64 GetPCFrequency() {
 	LARGE_INTEGER li;
@@ -68,16 +111,6 @@ static size_t find_till_no_match(str s, size_t offset, str match) {
 	}
 	return p;
 }
-
-//Thanks to https://handmade.network/forums/t/1273-post_your_c_c++_macro_tricks/3
-template <typename F> struct Defer { Defer(F f) : f(f) {} ~Defer() { f(); } F f; };
-template <typename F> Defer<F> makeDefer(F f) { return Defer<F>(f); };
-#define __defer( line ) defer_ ## line
-#define _defer( line ) __defer( line )
-struct defer_dummy { };
-template<typename F> Defer<F> operator+(defer_dummy, F&& f) { return makeDefer<F>(std::forward<F>(f)); }
-//usage: defer{block of code;}; //the last defer in a scope gets executed first (LIFO)
-#define defer auto _defer( __LINE__ ) = defer_dummy( ) + [ & ]( )
 
 //RECT related
 

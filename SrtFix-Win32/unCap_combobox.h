@@ -16,7 +16,6 @@ struct ComboProcState {
 LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 
 	//printf(msgToString(msg)); printf("\n");
-	//TODO(fran): there's a small bug, when opening the list box sometimes the text for the previously selected item changes without the user pressing anything
 
 	//INFO: we require GetWindowLongPtr at "position" GWLP_USERDATA to be left for us to use
 	//NOTE: Im pretty sure that "position" 0 is already in use
@@ -157,17 +156,6 @@ LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UI
 			delete[]buf;
 		}
 
-
-		//HINSTANCE hInstance = (HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE);
-		//LONG icon_id = GetWindowLongPtr(hwnd, GWL_USERDATA);
-		//TODO(fran): we could set the icon value on control creation, use GWL_USERDATA
-		//HICON combo_dropdown_icon = (HICON)LoadImage(hInstance, MAKEINTRESOURCE(COMBO_ICON), IMAGE_ICON, icon_size.cx, icon_size.cy, LR_SHARED);
-
-		//if (combo_dropdown_icon) {
-		//	DrawIconEx(hdc, r.right - r.left - icon_size.cx - DISTANCE_TO_SIDE, ((r.bottom - r.top) - icon_size.cy) / 2,
-		//		combo_dropdown_icon, icon_size.cx, icon_size.cy, 0, NULL, DI_NORMAL);//INFO: changing that NULL gives the option of "flicker free" icon drawing, if I need
-		//	DestroyIcon(combo_dropdown_icon);
-		//}
 		if (state->dropdown) {//TODO(fran): flicker free
 			HBITMAP bmp = state->dropdown;
 			BITMAP bitmap; GetObject(bmp, sizeof(bitmap), &bitmap);

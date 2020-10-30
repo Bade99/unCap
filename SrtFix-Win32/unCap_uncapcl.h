@@ -265,7 +265,7 @@ void UNCAPCL_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT fo
 	}
 
 	if (comment_count) {
-		SetWindowTextW(hText, text.c_str()); //TODO(fran): add message for number of comments removed
+		SetWindowTextW(hText, text.c_str());
 		std::wstring comment_count_str = fmt::format(RS(LANG_CONTROL_TIMEDMESSAGES), comment_count);
 		SetWindowText(state->controls.static_notify, comment_count_str.c_str());
 	}
@@ -275,6 +275,7 @@ void UNCAPCL_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT fo
 }
 
 struct GetSaveAsStrResult { std::wstring savefile; TXT_ENCODING encoding; };
+//TODO(fran): the default folder is getting here correclty but the function doesnt seems to care, maybe some extra \\ or smth the like
 GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default_ext, TXT_ENCODING default_encoding) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
 {
 	GetSaveAsStrResult res;
@@ -327,11 +328,15 @@ GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default
 			hr = pfdc->StartVisualGroup(CONTROL_GROUP, L"Encoding");
 
 			// Add a radio-button list.
-			hr = pfdc->AddRadioButtonList(RADIOBTNLIST_ENCODINGS);
+			//hr = pfdc->AddRadioButtonList(RADIOBTNLIST_ENCODINGS);
+
+			pfdc->AddComboBox(RADIOBTNLIST_ENCODINGS);//TODO(fran): rename macros to combobox
 
 			// Set the state of the added radio-button list.
 			hr = pfdc->SetControlState(RADIOBTNLIST_ENCODINGS,
 				CDCS_VISIBLE | CDCS_ENABLED);
+
+			//TODO(fran): add utf8bom, utf16 le and be
 
 			// Add individual buttons to the radio-button list.
 			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
@@ -542,15 +547,10 @@ int UNCAPCL_enable_tab(unCapClProcState* state, const TAB_INFO& text_data) {
 	temp[0] = text_data.finalChar;
 	SetWindowText(state->controls.edit_commentend, temp);
 
-	return 1;//TODO(fran): proper return
+	return 1;
 }
 
 void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
-	//hFile = CreateWindowW(L"Static", L"", /*WS_VISIBLE |*/ WS_CHILD | WS_BORDER//| SS_WHITERECT
-	//		| ES_AUTOHSCROLL | SS_CENTERIMAGE
-	//		, 10, y_pad, 664, 20, hwnd, NULL, NULL, NULL);
-	//ChangeWindowMessageFilterEx(hFile, WM_DROPFILES, MSGFLT_ADD,NULL); y mas que habia
-
 	//TODO(fran): add more interesting progress bar
 	//hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
 	//	, 10, y_pad, 664, 20, hwnd, (HMENU)NULL, NULL, NULL);
@@ -639,7 +639,7 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 
 	int pos = TAB_get_next_pos(state->controls.tab);//NOTE: careful with multithreading here
 
-	ReadTextResult text_res = ReadText(filename);
+	ReadTextResult text_res = ReadText(filename.c_str());
 
 	text_data.fileEncoding = text_res.encoding;
 
@@ -647,7 +647,7 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 
 	text_data.fileFormat = GetFileFormat(filename);
 
-	ProperLineSeparation(text_res.text);
+	FixLineEndings(text_res.text);
 
 	int res = AddTab(state->controls.tab, pos, (LPWSTR)accepted_file_name_with_ext.c_str(), text_data);
 	Assert(res != -1);

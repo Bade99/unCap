@@ -20,6 +20,8 @@ typedef char32_t utf32;
 
 #ifdef UNICODE
 typedef std::wstring str;
+typedef wchar_t cstr;
 #else
 typedef std::string str;
+typedef char cstr;
 #endif

@@ -5,6 +5,7 @@
 #include <locale>
 #include <codecvt>
 #include <fstream>
+#include <intrin.h>
 
 enum TXT_ENCODING {
 	ANSI = 1, //TODO(fran): ansi may be too generic
@@ -74,8 +75,67 @@ TXT_ENCODING GetTextEncoding(std::wstring filename) {
 	}
 }
 
+struct GetTextEncodingResult { TXT_ENCODING encoding; bool is_big_endian; bool has_bom; };
+//NOTE: intel is little endian
+GetTextEncodingResult GetTextEncoding(const u8* buf, u32 sz) {
+	GetTextEncodingResult res;
+	using AutoIt::Common::TextEncodingDetect;
+	TextEncodingDetect txtinspect; 
+	TextEncodingDetect::Encoding enc = txtinspect.DetectEncoding(buf,sz);
+	switch (enc) {
+	case TextEncodingDetect::Encoding::None:
+	case TextEncodingDetect::Encoding::ANSI:
+	case TextEncodingDetect::Encoding::ASCII:
+	case TextEncodingDetect::Encoding::UTF8_BOM:
+	case TextEncodingDetect::Encoding::UTF8_NOBOM:
+	{
+		res.encoding = TXT_ENCODING::UTF8;
+	} break;
+	case TextEncodingDetect::Encoding::UTF16_LE_BOM:
+	case TextEncodingDetect::Encoding::UTF16_LE_NOBOM:
+	case TextEncodingDetect::Encoding::UTF16_BE_BOM:
+	case TextEncodingDetect::Encoding::UTF16_BE_NOBOM:
+	{
+		res.encoding = TXT_ENCODING::UTF16;
+	} break;
+	default: 
+	{
+		Assert(0);
+	} break;
+	}//NOTE: we wont be needing ansi, we simply use utf8
+	switch (enc) {
+	case TextEncodingDetect::Encoding::UTF8_BOM:
+	case TextEncodingDetect::Encoding::UTF16_LE_BOM:
+	case TextEncodingDetect::Encoding::UTF16_BE_BOM:
+	{
+		res.has_bom = true;
+	} break;
+	default:
+	{
+		res.has_bom = false;
+	} break;
+	}
+	switch (enc) {
+	case TextEncodingDetect::Encoding::UTF16_BE_BOM:
+	case TextEncodingDetect::Encoding::UTF16_BE_NOBOM:
+	{
+		res.is_big_endian = true;
+	} break;
+	default:
+	{
+		res.is_big_endian = false;
+	} break;
+	}
+	return res;
+}
+
 struct ReadTextResult { std::wstring text; TXT_ENCODING encoding; };
-ReadTextResult ReadText(std::wstring filepath) {
+#if 0
+ReadTextResult ReadText(const cstr* filepath) {
+	//NOTE: on debug mode it takes 480ms!! to execute this whole function to process the 108KB subtitle for Amadeus, simply pathetic
+	//on release it goes down to 10ms, still no good
+	i64 cnt = StartCounter(); defer{ printf("READ ELAPSED: %f ms\n",EndCounter(cnt)); };
+
 	ReadTextResult res;
 
 	res.encoding = GetTextEncoding(filepath);//TODO(fran): this begins stupid, I need the bytes in ram first, then I can analyze all I want, right now Im doing two reads from disk of the same file
@@ -101,6 +161,56 @@ ReadTextResult ReadText(std::wstring filepath) {
 	}
 	return res;
 }
+#else
+//NOTE: thanks to being on windows we normalize to utf16/ucs2
+//TODO(fran): we're very close to not needing string, we still have FixLineEndings
+ReadTextResult ReadText(const cstr* filepath) {
+	//TODO(fran): look at https://docs.microsoft.com/en-us/windows/win32/intl/using-unicode-normalization-to-represent-strings
+	//NOTE: on debug mode it takes 1ms!!!! to execute this whole function to process the 108KB subtitle for Amadeus, simply amazing compared to the other garbage, 480 times faster and we are running MultiByteToWideChar twice, we could preallocate say twice the original sz which would cover us 99% of the times
+	//on release it goes a little faster 0.9ms - 0.7ms
+	i64 cnt = StartCounter(); defer{ printf("READ ELAPSED: %f ms\n",EndCounter(cnt)); };
+
+	ReadTextResult res;
+
+	auto read_res = read_entire_file(filepath);
+
+	if (read_res.mem) {
+
+		GetTextEncodingResult enc_res = GetTextEncoding((u8*)read_res.mem, read_res.sz);
+		res.encoding = enc_res.encoding;
+		printf("Encoding Read: %d\n", res.encoding);
+
+		//TODO(fran): consume BOM if present
+		//TODO(fran): big vs little endian utf16
+
+		if (res.encoding == TXT_ENCODING::UTF8) {
+			//INFO: MultiByteToWideChar already takes care of removing the BOM
+			int sz_char = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)read_res.mem, read_res.sz, 0, 0);//NOTE: pre windows vista this may need a change
+				if (sz_char) {
+					void* mem = VirtualAlloc(0, sz_char * sizeof(WCHAR), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+					if (mem) {
+						MultiByteToWideChar(CP_UTF8, 0, (LPCCH)read_res.mem, read_res.sz, (LPWSTR)mem, sz_char);
+						res.text = (WCHAR*)mem;
+						VirtualFree(mem, 0, MEM_RELEASE);
+					}
+				}
+		}
+		else if (res.encoding == TXT_ENCODING::UTF16) {
+			if (enc_res.is_big_endian) {//gotta convert to little endian on windows
+				for (u32 i = 0, sz_char= read_res.sz/sizeof(WCHAR); i < sz_char; i++) {//TODO(fran):faster!!
+					((WCHAR*)read_res.mem)[i] = _byteswap_ushort(((WCHAR*)read_res.mem)[i]);
+				}
+			}
+			res.text = (WCHAR*)read_res.mem;//INFO: strangely enough std::wstring also takes care of removing the BOM, even though they dont handle loading big endian format
+		}
+		else {
+			res.text = (WCHAR*)read_res.mem;
+		}
+		free_file_memory(read_res.mem);
+	}
+	return res;
+}
+#endif
 
 enum FILE_FORMAT {
 	SRT = 1, //This can also be used for any format that doesnt use in its sintax any of the characters detected as "begin comment" eg [ { (
@@ -267,7 +377,7 @@ size_t CommentRemovalSSA(std::wstring& text, utf16 start, utf16 end) {
 }
 
 ///Every line separation(\r or \n or \r\n) will be transformed into \r\n
-void ProperLineSeparation(std::wstring &text) {
+void FixLineEndings(std::wstring &text) {
 	unsigned int pos = 0;
 
 	while (pos <= text.length()) {//length doesnt include \0

@@ -224,11 +224,10 @@ static LRESULT CALLBACK ButtonProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_ERASEBKGND:
 	{
 		//You receive this msg if you didnt specify hbrBackground  when you registered the class, now it's up to you to draw the background
-		//TODO(fran): some guy said this is old stuff to try to reduce calls to WM_PAINT and not needed anymore, so maybe I should just do the background in WM_PAINT
 		HDC dc = (HDC)wparam;
 		//TODO(fran): look at https://docs.microsoft.com/en-us/windows/win32/gdi/drawing-a-custom-window-background and SetMapModek, allows for transforms
 
-		return 0; //If you return 0 then on WM_PAINT fErase will be true, aka paint the background it there
+		return 0; //If you return 0 then on WM_PAINT fErase will be true, aka paint the background there
 	} break;
 	case WM_NCPAINT:
 	{

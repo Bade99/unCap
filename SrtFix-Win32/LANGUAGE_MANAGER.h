@@ -139,7 +139,7 @@ private:
 	LANGUAGE_MANAGER();
 	~LANGUAGE_MANAGER();
 
-	HINSTANCE hInstance = NULL;//TODO(fran): should we ask for the instance to each control? for now we dont really need it
+	HINSTANCE hInstance = NULL;
 
 	std::map<HWND, UINT> Hwnds;
 	std::map<HWND, UINT> DynamicHwnds;
@@ -159,10 +159,8 @@ private:
 	LANGID GetLANGID(LANGUAGE lang);
 };
 
-//_add_struct_to_serialization_namespace(LANGUAGE_MANAGER) /* TODO(fran): Im pretty sure I've got to do this by hand, I dont think we can create an instance of LANGUAGE_MANAGER, we only accept LANGUAGE_MANAGER& */
-
 namespace userial {
-	static str serialize(LANGUAGE_MANAGER& var) {
+	static str serialize(LANGUAGE_MANAGER& var) {//NOTE: we gotta add this manually cause when need a reference since the lang mgr is a singleton and doesnt allow for instancing
 		return var.serialize();
 	}
 	static bool deserialize(LANGUAGE_MANAGER& var, str name, const str& content) {

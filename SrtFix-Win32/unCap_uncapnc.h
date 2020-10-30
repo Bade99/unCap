@@ -280,7 +280,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		UNCAPNC_calc_caption(state);
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_PAINT:
+	case WM_PAINT://TODO(fran): we gotta offset the painting a few pixels down when maximized, the amount of things that will need an extra condition on calculation is pretty awful, maybe we should just handle maximizing ourselves
 	{
 		PAINTSTRUCT ps;
 		HDC dc = BeginPaint(state->wnd, &ps);
@@ -450,7 +450,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 		if (lpParam->client_class_name) {
 			RECT rc = UNCAPNC_calc_client_rc(state);
-			state->client = CreateWindow(lpParam->client_class_name, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, lpParam->client_lp_param);//TODO(fran): client class must be parameterized
+			state->client = CreateWindow(lpParam->client_class_name, TEXT(""), WS_CHILD | WS_VISIBLE, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), state->wnd, 0, 0, lpParam->client_lp_param);
 		}
 		return 0;
 	} break;
@@ -462,7 +462,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			POINT mouse{ GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };
 			POINT cl_mouse = mouse; ScreenToClient(state->wnd, &cl_mouse);
 
-			if (test_pt_rc(cl_mouse, state->rc_icon)) { //TODO(fran): I cant get to here, menu shows straight away
+			if (test_pt_rc(cl_mouse, state->rc_icon)) {
 				PostMessage(state->wnd, WM_COMMAND, (WPARAM)MAKELONG(UNCAPNC_CLOSE, 0), (LPARAM)state->btn_close);//TODO(fran): should I use WM_CLOSE?
 				return 0;
 			}
@@ -561,7 +561,6 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	} break;
 	case WM_SIZE:
 	{
-		//TODO(fran):resize buttons
 		RECT rc = UNCAPNC_calc_client_rc(state); MoveWindow(state->client, rc.left, rc.top, RECTWIDTH(rc), RECTHEIGHT(rc), TRUE);
 
 		RECT btn_min_rc = UNCAPNC_calc_btn_min_rc(state); MoveWindow(state->btn_min, btn_min_rc.left, btn_min_rc.top, RECTWIDTH(btn_min_rc), RECTHEIGHT(btn_min_rc), TRUE);//TODO(fran): I dont really need to ask for repaint do I?
@@ -623,7 +622,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			SetMenuInfo(state->menu, &mi);
 		}
 
-		RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE); //TODO(fran): we should draw here, so we can show a different color for deactivated
+		RedrawWindow(hwnd, NULL, NULL, RDW_INVALIDATE);
 		return TRUE; //NOTE: it says we can return FALSE to "prevent the change"
 	} break;
 	//NOTE: WM_NCPAINT: check https://chromium.googlesource.com/chromium/chromium/+/5db69ae220c803e9c1675219b5cc5766ea3bb698/chrome/views/window.cc they block drawing so windows doesnt draw on top of them, cause the non client area is also painted in other msgs like settext
@@ -673,7 +672,6 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				ReleaseDC(hwnd, dc);
 				free(menu_str);
 				//
-				//TODO(fran): UNCAPNC_is_on_menu_bar(state,item->itemID)
 				//printf("MEASURE: item->itemID=%#016x\n", item->itemID);
 				//if (item->itemID == ((UINT)HACK_toplevelmenu & 0xFFFFFFFF)) { //Check if we are a "top level" menu
 				//if (UNCAPNC_is_on_menu_bar(state, item->itemID)) { //Check if we are a "top level" menu
@@ -728,7 +726,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				//NOTE: MFT_BITMAP, MFT_SEPARATOR, and MFT_STRING cannot be combined with one another, so we know those are separate types
 			case MFT_STRING: //Text menu
 			{//NOTE: we render the bitmaps inverted, cause I find it easier to edit on external programs, this may change later, not a hard change
-				//TODO(fran): we should just do 1 channel bmps, easier to edit, we can precalculate all each time the color changes and that's it
+				
 				COLORREF clrPrevText, clrPrevBkgnd;
 				HFONT hfntPrev;
 				int x, y;
@@ -776,7 +774,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 					menu_nfo.cbSize = sizeof(menu_nfo);
 					menu_nfo.fMask = MIIM_STRING;
 					menu_nfo.dwTypeData = NULL;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
 					//Get actual text
 					UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
 					menu_nfo.cch = menu_str_character_cnt;
@@ -805,7 +803,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				}
 				else {
 
-					//Render img on the left //TODO(fran): there seems to be a bug somewhere, the img isnt shown till the user moves the mouse on top of the item, maybe Im not checking some state
+					//Render img on the left
 					{
 						MENUITEMINFO menu_img;
 						menu_img.cbSize = sizeof(menu_img);
@@ -855,7 +853,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 					menu_nfo.cbSize = sizeof(menu_nfo);
 					menu_nfo.fMask = MIIM_STRING;
 					menu_nfo.dwTypeData = NULL;
-					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo); //TODO(fran): check about that 3rd param, there are 2 different ways of addressing menus
+					GetMenuItemInfo((HMENU)item->hwndItem, item->itemID, FALSE, &menu_nfo);
 					//Get actual text
 					UINT menu_str_character_cnt = menu_nfo.cch + 1; //includes null terminator
 					menu_nfo.cch = menu_str_character_cnt;
@@ -1156,7 +1154,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		if (wparam == HTMENU || wparam == HTSYSMENU) {//The menu was clicked, NOTE: for menus we dont wait for buttonup
 			if (!state->menu_on_delay) {
 				for (int i = 0; i < state->menubar_itemcnt; i++) {
-					//TODO(fran): if the user selects the menu item, and then to try to close the submenu selects the menu item again it will re open the half a second ago closed menu, so you cant close it. It actually works correctly if the user presses and almost instantly presses again, if some time passes after the menu is show it doesnt work no more
+
 					if (test_pt_rc(cl_mouse, state->menubar_items[i])) {
 						HMENU submenu = GetSubMenu(state->menu, i);
 						if (submenu) {
@@ -1284,21 +1282,14 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case 49233:
-	case 49454:
-	case 49470:
-	case 49467:
-	case 49488: //TaskbarButtonCreated, seems like the same string changes ids
-	case 49558: //TaskbarButtonCreated, generated when you open an explorer window for some reason, wtf
-	case 49566:
-	case 49707:
-	case 49895:
-	{
-		TCHAR arr[256];
-		int res = GetClipboardFormatName(msg, arr, 256); //IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages, these are: "String messages for use by applications."
-		return DefWindowProc(hwnd, msg, wparam, lparam);
-	} break;
 	default:
+		if (msg >= 0xC000 && msg <= 0xFFFF) {//String messages for use by applications  
+			//IMPORTANT: a way to find out the name of 0xC000 through 0xFFFF messages
+			//NOTE: the only one I see often is TaskbarButtonCreated, with a different id each time
+			TCHAR arr[256];
+			int res = GetClipboardFormatName(msg, arr, 256);
+			return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
 #ifdef _DEBUG
 		Assert(0);
 #else 
