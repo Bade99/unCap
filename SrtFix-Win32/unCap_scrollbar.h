@@ -380,8 +380,8 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_MOVE: //Sent on startup after WM_SIZE, although possibly sent by DefWindowProc after I let it process WM_SIZE, not sure
 	{
 		//This msg is received _after_ the window was moved
-		//Here you can obtain x and y of your window's client area
-		return DefWindowProc(hwnd, msg, wparam, lparam);
+//Here you can obtain x and y of your window's client area
+return DefWindowProc(hwnd, msg, wparam, lparam);
 	}
 	case WM_SIZE: {
 		//NOTE: neat, here you resize your render target, if I had one or cared to resize windows' https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-size
@@ -438,29 +438,29 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		//Check that we are going to paint a new rc
 		//if (!state->oldSb_idx || !sameRc(sb_rc, state->oldSb[state->oldSb_idx])) { //TODO(fran): this should check for the color that was used, since it does happen that the bar stays in the same place but changes color, that would allow for not always asking InvalidateRect to send wm_erasebk
 			//Decide bar color
-			HBRUSH sb_br;
-			if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
-			else sb_br = unCap_colors.Scrollbar;
+		HBRUSH sb_br;
+		if (state->onMouseOverSb || state->OnMouseTrackingSb) sb_br = unCap_colors.ScrollbarMouseOver;
+		else sb_br = unCap_colors.Scrollbar;
 
-			//Annotate bar RECT for WM_ERASEBK to remove next time
-			//state->oldSb[state->oldSb_idx++] = sb_rc;
-			//printf("SB IDX: %d\n", state->oldSb_idx);
-			//Assert(state->oldSb_idx < ARRAYSIZE(state->oldSb));
-			//TODO(fran): check that we are painting at a new position, if not do not paint
+		//Annotate bar RECT for WM_ERASEBK to remove next time
+		//state->oldSb[state->oldSb_idx++] = sb_rc;
+		//printf("SB IDX: %d\n", state->oldSb_idx);
+		//Assert(state->oldSb_idx < ARRAYSIZE(state->oldSb));
+		//TODO(fran): check that we are painting at a new position, if not do not paint
 
-			//Paint the bar
-			FillRect(dc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
-		//}
+		//Paint the bar
+		FillRect(dc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
+	//}
 
-			//Clip the drawing region
-			HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(dc, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
-			ExcludeClipRect(dc, sb_rc.left, sb_rc.top, sb_rc.right, sb_rc.bottom);
-			//Draw
-			RECT rc;
-			GetClientRect(state->wnd, &rc);
-			FillRect(dc, &rc, unCap_colors.ScrollbarBk);
-			//Restore old region
-			SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion);
+		//Clip the drawing region
+		HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(dc, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
+		ExcludeClipRect(dc, sb_rc.left, sb_rc.top, sb_rc.right, sb_rc.bottom);
+		//Draw
+		RECT rc;
+		GetClientRect(state->wnd, &rc);
+		FillRect(dc, &rc, unCap_colors.ScrollbarBk);
+		//Restore old region
+		SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion);
 
 		EndPaint(state->wnd, &ps);
 		return 0;
@@ -478,6 +478,10 @@ static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_DESTROY:
 	{
 		free(state);
+	}break;
+	case WM_INPUTLANGCHANGE://For some reason the scrollbar also gets this
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
 	}break;
 	default:
 #ifdef _DEBUG

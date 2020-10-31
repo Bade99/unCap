@@ -60,6 +60,36 @@ static read_entire_file_res read_entire_file(const cstr* filename) {
 	}
 	return res;
 }
+static bool write_entire_file(const cstr* filename, void* memory, u32 mem_sz) {
+	bool res = false;
+	HANDLE hFile = CreateFile(filename, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+	if (hFile != INVALID_HANDLE_VALUE) {
+		defer{ CloseHandle(hFile); };
+		if (DWORD bytes_written; WriteFile(hFile, memory, mem_sz, &bytes_written, 0)) {
+			//SUCCESS
+			res = mem_sz == bytes_written;
+		}
+		else {
+			//TODO(fran): log
+		}
+	}
+	return res;
+}
+static bool append_to_file(const cstr* filename, void* memory, u32 mem_sz) {
+	bool res = false;
+	HANDLE hFile = CreateFile(filename, FILE_APPEND_DATA, FILE_SHARE_READ, 0, OPEN_ALWAYS, 0, 0);
+	if (hFile != INVALID_HANDLE_VALUE) {
+		defer{ CloseHandle(hFile); };
+		if (DWORD bytes_written; WriteFile(hFile, memory, mem_sz, &bytes_written, 0)) {
+			//SUCCESS
+			res = mem_sz == bytes_written;
+		}
+		else {
+			//TODO(fran): log
+		}
+	}
+	return res;
+}
 
 //Timing info for testing
 static f64 GetPCFrequency() {

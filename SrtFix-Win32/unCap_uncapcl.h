@@ -219,6 +219,7 @@ void DoBackup(const TCHAR* filepath) { //TODO(fran): I feel backup is pretty poi
 
 //TODO(fran): DoSave should receive the string, not have to call the HWND
 //TODO(fran): NEVER should you write straight into the file already existing, write to a secondary and then rename
+#if 0
 std::wstring DoSave(HWND textControl, std::wstring save_file, TXT_ENCODING encoding) { //got to pass the encoding to the function too, and do proper conversion
 	printf("Encoding Written: %d\n", encoding);
 	//https://docs.microsoft.com/es-es/windows/desktop/api/commdlg/ns-commdlg-tagofna
@@ -249,6 +250,101 @@ std::wstring DoSave(HWND textControl, std::wstring save_file, TXT_ENCODING encod
 	else MessageBoxW(NULL, RCS(LANG_SAVE_ERROR), RCS(LANG_ERROR), MB_ICONEXCLAMATION);
 	return res;
 }
+#else
+str DoSave(HWND textControl, str save_file, text_encoding_nfo nfo) { //got to pass the encoding to the function too, and do proper conversion
+	printf("Encoding Written: %s%s %s\n", DEBUG_get_txt_encoding_str(nfo.encoding).c_str(), nfo.encoding == TXT_ENCODING::UTF16 ? nfo.is_big_endian ? "BE" : "LE" : "", nfo.has_bom ? "BOM" : "");
+	str res;
+
+	//NOTE: widechartomultibyte also converts the bom if it is present
+
+	int sz_char = GetWindowTextLengthW(textControl) + 1;//TODO(fran): should we bother with ansi?, maybe force the control to always work with unicode
+
+	void* mem = VirtualAlloc(0, sz_char * sizeof(WCHAR), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); defer{ if (mem) VirtualFree(mem, 0, MEM_RELEASE); };
+	//TODO(fran): other encodings
+	if (mem) {
+		GetWindowTextW(textControl, (WCHAR*)mem, sz_char);
+
+		//Stop before null terminator
+		if (sz_char >= 1 && ((WCHAR*)mem)[sz_char - 1] == (WCHAR)0)sz_char -= 1;
+
+		//Go past the BOM if present
+		bool already_has_bom = (sz_char >= 1) && (((WCHAR*)mem)[0] == (WCHAR)0xfeff || ((WCHAR*)mem)[0] == (WCHAR)0xfffe);
+		WCHAR* utf16_str = (WCHAR*)mem + (already_has_bom ? 1:0);
+		if (already_has_bom)sz_char -= 1;
+
+		if (nfo.encoding == TXT_ENCODING::UTF8) {
+			int sz = WideCharToMultiByte(CP_UTF8, 0/*TODO(fran): see flags*/, utf16_str, sz_char, 0, 0, 0/*NOTE: we can specify default char*/, 0);
+			int alloc_sz = sz;
+			if (nfo.has_bom) { alloc_sz += 3;}
+
+			void* to_save = VirtualAlloc(0, alloc_sz, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); defer{ if (to_save) VirtualFree(to_save, 0, MEM_RELEASE); };
+			if (to_save) {
+				if (nfo.has_bom) { ((u8*)to_save)[0] = 0xEF; ((u8*)to_save)[1] = 0xBB; ((u8*)to_save)[2] = 0xBF; }//append BOM
+				int sz_res = WideCharToMultiByte(CP_UTF8, 0, (WCHAR*)utf16_str, sz_char, (LPSTR)to_save + ((nfo.has_bom) ? 3:0), sz, 0, 0);
+				bool write_res = write_entire_file(save_file.c_str(), to_save, alloc_sz);
+				if (write_res) res = save_file;
+			}
+		}
+		else if (nfo.encoding == TXT_ENCODING::UTF16) {
+			WCHAR BOM{0xfeff};
+			if (nfo.is_big_endian) {
+				//We know that controls in windows use utf16le, therefore we need to flip the bytes for big endian
+				BOM = _byteswap_ushort(BOM);
+				for (int i = 0; i < sz_char; i++) {//TODO(fran):faster!!
+					((WCHAR*)utf16_str)[i] = _byteswap_ushort(((WCHAR*)utf16_str)[i]);
+				}
+			}
+			if (nfo.has_bom) {
+				bool write_res = write_entire_file(save_file.c_str(), &BOM, 2);
+				if (write_res) {
+					write_res = append_to_file(save_file.c_str(), utf16_str, sz_char * sizeof(WCHAR));
+					if (write_res) res = save_file;
+				}
+			}
+			else {
+				bool write_res = write_entire_file(save_file.c_str(), utf16_str, sz_char * sizeof(WCHAR));
+				if (write_res) res = save_file;
+			}
+		}
+		else if (nfo.encoding == TXT_ENCODING::ANSI) {
+			//TODO(fran): sublime allows for choosing the ansi codepage, that may be more intelligent than just guessing
+
+			int sz = WideCharToMultiByte(CP_ACP, 0/*TODO(fran): see flags*/, utf16_str, sz_char, 0, 0, 0/*NOTE: we can specify default char*/, 0);
+
+			void* to_save = VirtualAlloc(0, sz, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE); defer{ if (to_save) VirtualFree(to_save, 0, MEM_RELEASE); };
+			if (to_save) {
+				int sz_res = WideCharToMultiByte(CP_ACP, 0, (WCHAR*)utf16_str, sz_char, (LPSTR)to_save, sz, 0, 0/*TODO(fran): here we can check if some character could not be represented in the converted format, sublime tells you it cant do it and saves it as utf8*/);
+				bool write_res = write_entire_file(save_file.c_str(), to_save, sz);
+				if (write_res) res = save_file;
+			}
+		}
+	}
+	return res;
+	
+	//std::wstring res;
+	//std::wofstream new_file(save_file, std::ios::binary);
+	//if (new_file.is_open()) {
+	//	switch (encoding) {
+	//	case TXT_ENCODING::UTF8: new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::generate_header>)); break;//TODO(fran): I dont think I should generate the header, if I dont then Im free to treat it as both ansi and utf8 and remove the need for ansi
+	//	case TXT_ENCODING::UTF16: new_file.imbue(std::locale(new_file.getloc(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::generate_header>)); break;
+	//		//TODO(fran): what to do with ansi?
+	//	default:Assert(0);
+	//	}
+	//	int text_length = GetWindowTextLengthW(textControl) + 1;
+	//	std::wstring text(text_length, L'\0');
+	//	GetWindowTextW(textControl, &text[0], text_length);
+	//	//NOTE: the text control forcefully appends a null terminator, we gotta get rid of it
+	//	if (!text.empty() && text.back() == L'\0') text.erase(text.end() - 1);
+	//	new_file << text;
+	//	new_file.close();
+
+	//	res = save_file;
+
+	//}
+	//else MessageBoxW(NULL, RCS(LANG_SAVE_ERROR), RCS(LANG_ERROR), MB_ICONEXCLAMATION);
+	//return res;
+}
+#endif
 
 //si hay /n antes del corchete que lo borre tmb (y /r tmb)
 void UNCAPCL_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT format, WCHAR start, WCHAR end) {//TODO(fran): Should we give the option to detect for more than one char?
@@ -274,11 +370,11 @@ void UNCAPCL_comment_removal(unCapClProcState* state, HWND hText, FILE_FORMAT fo
 	}
 }
 
-struct GetSaveAsStrResult { std::wstring savefile; TXT_ENCODING encoding; };
+struct GetSaveAsStrResult { std::wstring savefile; text_encoding_nfo encoding_nfo; };
 //TODO(fran): the default folder is getting here correclty but the function doesnt seems to care, maybe some extra \\ or smth the like
-GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default_ext, TXT_ENCODING default_encoding) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
+GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default_ext, text_encoding_nfo default_encoding) //https://msdn.microsoft.com/en-us/library/windows/desktop/bb776913(v=vs.85).aspx
 {
-	GetSaveAsStrResult res;
+	GetSaveAsStrResult res{}; ZeroMemory(&res.encoding_nfo, sizeof(res.encoding_nfo));
 	// CoCreate the File Open Dialog object.
 	HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);//single threaded, @multi?
 	IFileSaveDialog *pfsd = NULL;
@@ -330,37 +426,55 @@ GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default
 			// Add a radio-button list.
 			//hr = pfdc->AddRadioButtonList(RADIOBTNLIST_ENCODINGS);
 
-			pfdc->AddComboBox(RADIOBTNLIST_ENCODINGS);//TODO(fran): rename macros to combobox
+			pfdc->AddComboBox(LIST_ENCODINGS);//TODO(fran): rename macros to combobox
 
 			// Set the state of the added radio-button list.
-			hr = pfdc->SetControlState(RADIOBTNLIST_ENCODINGS,
+			hr = pfdc->SetControlState(LIST_ENCODINGS,
 				CDCS_VISIBLE | CDCS_ENABLED);
 
-			//TODO(fran): add utf8bom, utf16 le and be
-
 			// Add individual buttons to the radio-button list.
-			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
-				RADIOBTNUTF8,
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_UTF8,
 				L"UTF-8");
 
-			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
-				RADIOBTNUTF16,
-				L"UTF-16");
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_UTF8BOM,
+				L"UTF-8 BOM");
 
-			hr = pfdc->AddControlItem(RADIOBTNLIST_ENCODINGS,
-				RADIOBTNANSI,
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_UTF16LE,
+				L"UTF-16LE");
+
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_UTF16LEBOM,
+				L"UTF-16LE BOM");
+
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_UTF16BE,
+				L"UTF-16BE");
+
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_UTF16BEBOM,
+				L"UTF-16BE BOM");
+
+			hr = pfdc->AddControlItem(LIST_ENCODINGS,
+				LIST_ENCODINGS_ANSI,
 				L"ANSI");
 
 			// Set the default selection
 			{
 				DWORD encoding_selected_item;
-				switch (default_encoding) {
-				case TXT_ENCODING::UTF8: encoding_selected_item = RADIOBTNUTF8; break;
-				case TXT_ENCODING::UTF16: encoding_selected_item = RADIOBTNUTF16; break;
-				case TXT_ENCODING::ANSI: encoding_selected_item = RADIOBTNANSI; break;
+				switch (default_encoding.encoding) {
+				case TXT_ENCODING::UTF8: encoding_selected_item = (default_encoding.has_bom) ? LIST_ENCODINGS_UTF8BOM : LIST_ENCODINGS_UTF8; break;
+				case TXT_ENCODING::UTF16:
+					encoding_selected_item = (default_encoding.is_big_endian) ? 
+						  (default_encoding.has_bom ? LIST_ENCODINGS_UTF16BEBOM:LIST_ENCODINGS_UTF16BE) 
+						: (default_encoding.has_bom ? LIST_ENCODINGS_UTF16LEBOM:LIST_ENCODINGS_UTF16LE);
+					break;
+				case TXT_ENCODING::ANSI: encoding_selected_item = LIST_ENCODINGS_ANSI; break;
 				default: Assert(0);
 				}
-				hr = pfdc->SetSelectedControlItem(RADIOBTNLIST_ENCODINGS, encoding_selected_item);
+				hr = pfdc->SetSelectedControlItem(LIST_ENCODINGS, encoding_selected_item);
 			}
 
 			// End the visual group.
@@ -471,11 +585,34 @@ GetSaveAsStrResult GetSaveAsStr(std::wstring default_folder,std::wstring default
 				IFileDialogCustomize *custom = NULL;
 				hr = pfsd->QueryInterface(IID_PPV_ARGS(&custom));
 				DWORD selected_encoding;
-				custom->GetSelectedControlItem(RADIOBTNLIST_ENCODINGS,&selected_encoding);
+				custom->GetSelectedControlItem(LIST_ENCODINGS,&selected_encoding);
 				switch (selected_encoding) {
-				case (DWORD)RADIOBTNUTF8: res.encoding = TXT_ENCODING::UTF8; break;
-				case (DWORD)RADIOBTNUTF16:res.encoding = TXT_ENCODING::UTF16; break;
-				case (DWORD)RADIOBTNANSI: res.encoding = TXT_ENCODING::ANSI; break;
+				case (DWORD)LIST_ENCODINGS_UTF8: 
+					res.encoding_nfo.encoding = TXT_ENCODING::UTF8; 
+					break;
+				case (DWORD)LIST_ENCODINGS_UTF8BOM:
+					res.encoding_nfo.encoding = TXT_ENCODING::UTF8; 
+					res.encoding_nfo.has_bom = true; 
+					break;
+				case (DWORD)LIST_ENCODINGS_UTF16LE:
+					res.encoding_nfo.encoding = TXT_ENCODING::UTF16; 
+					break;
+				case (DWORD)LIST_ENCODINGS_UTF16LEBOM:
+					res.encoding_nfo.encoding = TXT_ENCODING::UTF16; 
+					res.encoding_nfo.has_bom = true; 
+					break;
+				case (DWORD)LIST_ENCODINGS_UTF16BE:
+					res.encoding_nfo.encoding = TXT_ENCODING::UTF16; 
+					res.encoding_nfo.is_big_endian = true; 
+					break;
+				case (DWORD)LIST_ENCODINGS_UTF16BEBOM:
+					res.encoding_nfo.encoding = TXT_ENCODING::UTF16;
+					res.encoding_nfo.is_big_endian = true; 
+					res.encoding_nfo.has_bom = true; 
+					break;
+				case (DWORD)LIST_ENCODINGS_ANSI: 
+					res.encoding_nfo.encoding = TXT_ENCODING::ANSI; 
+					break;
 				default:Assert(0);
 				}
 			}
@@ -641,7 +778,7 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 
 	ReadTextResult text_res = ReadText(filename.c_str());
 
-	text_data.fileEncoding = text_res.encoding;
+	text_data.fileEncoding = text_res.encoding_nfo;
 
 	text_data.commentType = GetCommentType(text_res.text);
 
@@ -1211,13 +1348,13 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 			//should we create the tab or not allow to save?
 			TAB_INFO tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
 			if (tabnfo.hText) {
-				TXT_ENCODING og_encoding = tabnfo.fileEncoding;
+				text_encoding_nfo og_encoding = tabnfo.fileEncoding;
 				std::wstring og_extension = (std::filesystem::path(tabnfo.filePath)).extension();//TODO(fran): should I use tabnfo.fileFormat?
 				GetSaveAsStrResult saveas_res = GetSaveAsStr(state->settings->last_dir, og_extension, og_encoding);
 				if (saveas_res.savefile != L"") {
 					//NOTE: No backup since the idea is the user saves to a new file obviously
-					std::wstring filename_saved = DoSave(tabnfo.hText, saveas_res.savefile, saveas_res.encoding);
-					if (filename_saved[0]) {
+					std::wstring filename_saved = DoSave(tabnfo.hText, saveas_res.savefile, saveas_res.encoding_nfo);
+					if (!filename_saved.empty()) {
 
 						SetWindowText(state->controls.static_notify, RCS(LANG_SAVE_DONE)); //Notify success
 						//SetWindowTextW(hFile, filename_saved.c_str()); //Update filename viewer
@@ -1226,7 +1363,7 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 
 						int tabindex = (int)SendMessage(state->controls.tab, TCM_GETCURSEL, 0, 0);
 						TAB_INFO new_tabnfo = GetCurrentTabExtraInfo(state->controls.tab);
-						new_tabnfo.fileEncoding = saveas_res.encoding;
+						new_tabnfo.fileEncoding = saveas_res.encoding_nfo;
 						wcsncpy_s(new_tabnfo.filePath, filename_saved.c_str(), ARRAYSIZE(new_tabnfo.filePath));//Update tab item's filepath
 						SetTabExtraInfo(state->controls.tab, tabindex, new_tabnfo);
 					}

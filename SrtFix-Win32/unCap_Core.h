@@ -5,13 +5,28 @@
 #include "text_encoding_detect.h"
 
 enum TXT_ENCODING {
-	ANSI = 1, //TODO(fran): ansi may be too generic
+	ANSI = 1, //ANSI does not encode into utf8
 	UTF8,
 	UTF16, //Big endian or Little endian
 	//ASCII is easily encoded in utf8 without problems
 };
 
-struct ReadTextResult { std::wstring text; TXT_ENCODING encoding; };
+std::string DEBUG_get_txt_encoding_str(TXT_ENCODING e) {
+	switch (e) {
+	case TXT_ENCODING::ANSI: return "ANSI";
+	case TXT_ENCODING::UTF8: return "UTF8";
+	case TXT_ENCODING::UTF16: return "UTF16";
+	default:Assert(0); return "INVALID";
+	}
+}
+
+struct text_encoding_nfo {
+	TXT_ENCODING encoding;
+	bool is_big_endian;
+	bool has_bom;
+};
+
+struct ReadTextResult { std::wstring text; text_encoding_nfo encoding_nfo; };
 
 #if 0
 #include <codecvt>
@@ -111,16 +126,19 @@ ReadTextResult ReadText(const cstr* filepath) {
 }
 #else
 
-struct GetTextEncodingResult { TXT_ENCODING encoding; bool is_big_endian; bool has_bom; };
 //NOTE: intel is little endian
-GetTextEncodingResult GetTextEncoding(const u8* buf, u32 sz) {
-	GetTextEncodingResult res;
+text_encoding_nfo GetTextEncoding(const u8* buf, u32 sz) {
+	text_encoding_nfo res;
 	using AutoIt::Common::TextEncodingDetect;
 	TextEncodingDetect txtinspect; 
-	TextEncodingDetect::Encoding enc = txtinspect.DetectEncoding(buf,sz);
+	//TODO(fran): fails to detect ANSI if string ends with null terminator, I dont think it should, should it? sublime doesnt
+	TextEncodingDetect::Encoding enc = txtinspect.DetectEncoding(buf,sz);//TODO(fran): maybe we should adjust the null percentage for utf16 strings, see /Test/encoding/utf16_bug
 	switch (enc) {
-	case TextEncodingDetect::Encoding::None:
 	case TextEncodingDetect::Encoding::ANSI:
+	{
+		res.encoding = TXT_ENCODING::ANSI;
+	} break;
+	case TextEncodingDetect::Encoding::None:
 	case TextEncodingDetect::Encoding::ASCII:
 	case TextEncodingDetect::Encoding::UTF8_BOM:
 	case TextEncodingDetect::Encoding::UTF8_NOBOM:
@@ -179,14 +197,14 @@ ReadTextResult ReadText(const cstr* filepath) {
 
 	if (read_res.mem) {
 
-		GetTextEncodingResult enc_res = GetTextEncoding((u8*)read_res.mem, read_res.sz);
-		res.encoding = enc_res.encoding;
-		printf("Encoding Read: %d\n", res.encoding);
+		text_encoding_nfo enc_res = GetTextEncoding((u8*)read_res.mem, read_res.sz);
+		res.encoding_nfo = enc_res;
+		printf("Encoding Read: %s%s %s\n",DEBUG_get_txt_encoding_str(res.encoding_nfo.encoding).c_str(), res.encoding_nfo.encoding == TXT_ENCODING::UTF16? res.encoding_nfo.is_big_endian?"BE":"LE" : "", res.encoding_nfo.has_bom?"BOM":"");
 
 		//TODO(fran): consume BOM if present
 		//TODO(fran): big vs little endian utf16
 
-		if (res.encoding == TXT_ENCODING::UTF8) {
+		if (enc_res.encoding == TXT_ENCODING::UTF8) {
 			//INFO: MultiByteToWideChar already takes care of removing the BOM
 			int sz_char = MultiByteToWideChar(CP_UTF8, 0, (LPCCH)read_res.mem, read_res.sz, 0, 0);//NOTE: pre windows vista this may need a change
 				if (sz_char) {
@@ -198,7 +216,7 @@ ReadTextResult ReadText(const cstr* filepath) {
 					}
 				}
 		}
-		else if (res.encoding == TXT_ENCODING::UTF16) {
+		else if (enc_res.encoding == TXT_ENCODING::UTF16) {
 			if (enc_res.is_big_endian) {//gotta convert to little endian on windows
 				for (u32 i = 0, sz_char= read_res.sz/sizeof(WCHAR); i < sz_char; i++) {//TODO(fran):faster!!
 					((WCHAR*)read_res.mem)[i] = _byteswap_ushort(((WCHAR*)read_res.mem)[i]);
@@ -206,9 +224,21 @@ ReadTextResult ReadText(const cstr* filepath) {
 			}
 			res.text = (WCHAR*)read_res.mem;//INFO: strangely enough std::wstring also takes care of removing the BOM, even though they dont handle loading big endian format
 		}
-		else {
-			res.text = (WCHAR*)read_res.mem;
+		else if(enc_res.encoding == TXT_ENCODING::ANSI){
+			//TODO(fran): is there any way to know which ansi codepage to use?
+			//sublime gives the extra option to reload the file with a different encoding, that may be more intelligent than just guessing
+			int sz_char = MultiByteToWideChar(CP_ACP, 0, (LPCCH)read_res.mem, read_res.sz, 0, 0);
+			if (sz_char) {
+				void* mem = VirtualAlloc(0, sz_char * sizeof(WCHAR), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+				if (mem) {
+					MultiByteToWideChar(CP_ACP, 0, (LPCCH)read_res.mem, read_res.sz, (LPWSTR)mem, sz_char);
+					res.text = (WCHAR*)mem;
+					VirtualFree(mem, 0, MEM_RELEASE);
+				}
+			}
 		}
+		else Assert(0);
+
 		free_file_memory(read_res.mem);
 	}
 	return res;
@@ -382,7 +412,7 @@ size_t CommentRemovalSSA(std::wstring& text, utf16 start, utf16 end) {
 ///Every line separation(\r or \n or \r\n) will be transformed into \r\n
 void FixLineEndings(std::wstring &text) {
 	unsigned int pos = 0;
-
+	//TODO(fran): faster!!
 	while (pos <= text.length()) {//length doesnt include \0
 		if (text[pos] == L'\r') {
 			if (text[pos + 1] != L'\n') {
