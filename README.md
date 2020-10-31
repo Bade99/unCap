@@ -16,5 +16,17 @@ The focus here is placed on Windows 10 but most of the things I do are useful fo
 * Substation Alpha (.ssa)
 * Advanced Substation Alpha (.ass)
 
+### Supported File Encodings
+
+* UTF-8
+* UTF-8 BOM
+* UTF-16LE
+* UTF-16LE BOM
+* UTF-16BE
+* UTF-16BE BOM
+* ANSI
+* ASCII
+
+
 ### UI
 ![UI](https://i.imgur.com/sLkZMq0.png)
