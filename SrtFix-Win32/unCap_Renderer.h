@@ -150,10 +150,11 @@ mask_bilinear_sample sample_bilinear_mask(img* mask, i32 x, i32 y) {
 
 	u8 tex[4];
 
+	//TODO(fran): remove duplicate pixel reads by applying the "&" afterwards
 	tex[0] = (*(u8*)texel_ptr) & (1 << idx); //NOTE: For a better blend we pick the colors around the texel, movement is much smoother
-	tex[1]= idx==0 ? ( x<mask->width ? (*(u8*)(texel_ptr + 1)) & (1 << 7) : 0xFF) : tex[0];
+	tex[1]= idx==0 ? ( x<mask->width ? (*(u8*)(texel_ptr + 1)) & (1 << 7) : 0xFF) : (*(u8*)texel_ptr) & (1 << (idx-1));
 	tex[2]= y<mask->height ? (*(u8*)(texel_ptr + mask->pitch)) & (1 << idx) : 0xFF;
-	tex[3]= idx == 0 ? (x < mask->width ? (*(u8*)(texel_ptr + mask->pitch + 1)) & (1 << 7) : 0xFF) : tex[2];
+	tex[3] = idx == 0 ? (x < mask->width ? (*(u8*)(texel_ptr + mask->pitch + 1)) & (1 << 7) : 0xFF) : (y < mask->height ? (*(u8*)(texel_ptr + mask->pitch)) & (1 << (idx-1)) : 0xFF);
 
 	mask_bilinear_sample sample;
 	for(int i=0;i<4;i++)

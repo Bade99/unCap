@@ -18,9 +18,6 @@
 #include <string>
 #include <Commctrl.h>
 #include "LANGUAGE_MANAGER.h"
-#include "utf8.h" //Thanks to http://utfcpp.sourceforge.net/
-#include "text_encoding_detect.h" //Thanks to https://github.com/AutoItConsulting/text-encoding-detect
-#include "fmt.h"
 #include "unCap_Helpers.h"
 #include "unCap_Global.h"
 #include "unCap_uncapnc.h"

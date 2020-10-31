@@ -18,6 +18,8 @@
 // limitations under the License.
 // 
 
+//Thanks https://github.com/AutoItConsulting/text-encoding-detect
+
 // Includes
 #include <stddef.h>
 

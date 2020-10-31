@@ -25,6 +25,7 @@ DEALINGS IN THE SOFTWARE.
 */
 
 //v 2.3.4
+//Thanks http://utfcpp.sourceforge.net/
 
 #ifndef UTF8_FOR_CPP_2675DCD0_9480_4c0c_B92A_CC14C027B731
 #define UTF8_FOR_CPP_2675DCD0_9480_4c0c_B92A_CC14C027B731

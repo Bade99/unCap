@@ -1,11 +1,8 @@
 #pragma once
 #include <string>
 #include "unCap_Platform.h"
-#include <sstream>
-#include <locale>
-#include <codecvt>
-#include <fstream>
 #include <intrin.h>
+#include "text_encoding_detect.h"
 
 enum TXT_ENCODING {
 	ANSI = 1, //TODO(fran): ansi may be too generic
@@ -14,6 +11,13 @@ enum TXT_ENCODING {
 	//ASCII is easily encoded in utf8 without problems
 };
 
+struct ReadTextResult { std::wstring text; TXT_ENCODING encoding; };
+
+#if 0
+#include <codecvt>
+#include <fstream>
+#include <locale>
+#include <sstream>
 TXT_ENCODING GetTextEncoding(std::wstring filename) {
 
 	HANDLE file;
@@ -75,6 +79,38 @@ TXT_ENCODING GetTextEncoding(std::wstring filename) {
 	}
 }
 
+ReadTextResult ReadText(const cstr* filepath) {
+	//NOTE: on debug mode it takes 480ms!! to execute this whole function to process the 108KB subtitle for Amadeus, simply pathetic
+	//on release it goes down to 10ms, still no good
+	i64 cnt = StartCounter(); defer{ printf("READ ELAPSED: %f ms\n",EndCounter(cnt)); };
+
+	ReadTextResult res;
+
+	res.encoding = GetTextEncoding(filepath);//TODO(fran): this begins stupid, I need the bytes in ram first, then I can analyze all I want, right now Im doing two reads from disk of the same file
+	printf("Encoding Read: %d\n", res.encoding);
+
+	std::wifstream file(filepath, std::ios::binary);
+
+	if (file.is_open()) {
+
+		//set encoding for getline
+		if (res.encoding == TXT_ENCODING::UTF8)
+			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));//TODO(fran): shouldnt I use codecvt_utf8_utf16?
+		//maybe the only thing needed when utf8 is detected is to remove the BOM if it is there
+		else if (res.encoding == TXT_ENCODING::UTF16)
+			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::consume_header>));
+		//if encoding is ANSI we do nothing <-TODO(fran): is this correct?
+
+		std::wstringstream buffer;
+		buffer << file.rdbuf(); //TODO(fran): this is horribly slow, just useless
+		res.text = buffer.str();
+
+		file.close();
+	}
+	return res;
+}
+#else
+
 struct GetTextEncodingResult { TXT_ENCODING encoding; bool is_big_endian; bool has_bom; };
 //NOTE: intel is little endian
 GetTextEncodingResult GetTextEncoding(const u8* buf, u32 sz) {
@@ -129,39 +165,6 @@ GetTextEncodingResult GetTextEncoding(const u8* buf, u32 sz) {
 	return res;
 }
 
-struct ReadTextResult { std::wstring text; TXT_ENCODING encoding; };
-#if 0
-ReadTextResult ReadText(const cstr* filepath) {
-	//NOTE: on debug mode it takes 480ms!! to execute this whole function to process the 108KB subtitle for Amadeus, simply pathetic
-	//on release it goes down to 10ms, still no good
-	i64 cnt = StartCounter(); defer{ printf("READ ELAPSED: %f ms\n",EndCounter(cnt)); };
-
-	ReadTextResult res;
-
-	res.encoding = GetTextEncoding(filepath);//TODO(fran): this begins stupid, I need the bytes in ram first, then I can analyze all I want, right now Im doing two reads from disk of the same file
-	printf("Encoding Read: %d\n", res.encoding);
-
-	std::wifstream file(filepath, std::ios::binary);
-
-	if (file.is_open()) {
-
-		//set encoding for getline
-		if (res.encoding == TXT_ENCODING::UTF8)
-			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t, 0x10ffff, std::consume_header>));//TODO(fran): shouldnt I use codecvt_utf8_utf16?
-		//maybe the only thing needed when utf8 is detected is to remove the BOM if it is there
-		else if (res.encoding == TXT_ENCODING::UTF16)
-			file.imbue(std::locale(std::locale::empty(), new std::codecvt_utf16<wchar_t, 0x10ffff, std::consume_header>));
-		//if encoding is ANSI we do nothing <-TODO(fran): is this correct?
-
-		std::wstringstream buffer;
-		buffer << file.rdbuf(); //TODO(fran): this is horribly slow, just useless
-		res.text = buffer.str();
-
-		file.close();
-	}
-	return res;
-}
-#else
 //NOTE: thanks to being on windows we normalize to utf16/ucs2
 //TODO(fran): we're very close to not needing string, we still have FixLineEndings
 ReadTextResult ReadText(const cstr* filepath) {

@@ -4,7 +4,7 @@
 #include "unCap_Serialization.h"
 #include "unCap_Core.h"
 #include "LANGUAGE_MANAGER.h"
-#include "fmt/format.h"
+#include "fmt.h"
 #include "resource.h"
 #include "unCap_combobox.h"
 #include "unCap_uncapnc.h"
@@ -976,8 +976,10 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 				if (bitmap.bmBitsPixel == 1) {
 					//TODO(fran): there's no reason why I cant go in halves to, add extra if for bigger or smaller than bmp
 					int max_sz = roundNdown(bitmap.bmWidth, min(RECTWIDTH(close_button_rc), RECTHEIGHT(close_button_rc))); //HACK: instead use png + gdi+ + color matrices
-					if (!max_sz)max_sz = bitmap.bmWidth; //More HACKs
-
+					if (!max_sz) {
+						if ((bitmap.bmWidth % 2) == 0) max_sz = bitmap.bmWidth / 2;
+						else max_sz = bitmap.bmWidth; //More HACKs
+					}
 					int bmp_height = max_sz;
 					int bmp_width = bmp_height;
 					int bmp_align_width = item->rcItem.right - close_button_pad_right - bmp_width;
