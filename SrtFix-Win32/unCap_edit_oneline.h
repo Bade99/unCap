@@ -11,26 +11,23 @@ static LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPAR
 struct char_sel { u32 x, y; };//xth character of the yth row, goes left to right and top to bottom
 struct EditOnelineProcState {
 	HWND wnd;
-	union editonelinebrushes {
-		struct {
-			HBRUSH txt, bk, border;//NOTE: for now we use the border color for the caret
-			HBRUSH txt_dis, bk_dis, border_dis; //disabled
-		};
-		HBRUSH all[6];//REMEMBER TO UPDATE
-	} brushes;
-	u32 max_char_sz;//doesnt include terminating null, also we wont have terminating null
+	struct editonelinebrushes {
+		HBRUSH txt, bk, border;//NOTE: for now we use the border color for the caret
+		HBRUSH txt_dis, bk_dis, border_dis; //disabled
+	}brushes;
+	u32 char_max_sz;//doesnt include terminating null, also we wont have terminating null
 	HFONT font;
-	char_sel cur_sel;
+	char_sel char_cur_sel;//this is in "character" coordinates, first char will be 0, second 1 and so on
 	struct caretnfo {
 		HBITMAP bmp;
 		SIZE dim;
-		POINT pos;//client coords and it's also top down so this is the _top_ of the caret
-		int pad_x;//TODO: i dont think this should be inside caret
+		POINT pos;//client coords, it's also top down so this is the _top_ of the caret
 	}caret;
 
-
-	str text;//much simpler to work with and debug
-	std::vector<u32> char_pos;
+	str char_text;//much simpler to work with and debug
+	std::vector<int> char_dims;//NOTE: specifies, for each character, its width
+	//TODO(fran): it's probably better to use signed numbers in case the text overflows ths size of the control
+	u32 char_pad_x;//NOTE: specifies x offset from which characters start being placed on the screen, relative to the client area. For a left aligned control this will be offset from the left, for right aligned it'll be offset from the right, and for center alignment it'll be the left most position from where chars will be drawn
 };
 
 void init_wndclass_unCap_edit_oneline(HINSTANCE instance) {
@@ -43,7 +40,7 @@ void init_wndclass_unCap_edit_oneline(HINSTANCE instance) {
 	edit_oneline.cbWndExtra = sizeof(EditOnelineProcState*);
 	edit_oneline.hInstance = instance;
 	edit_oneline.hIcon = NULL;
-	edit_oneline.hCursor = LoadCursor(nullptr, IDC_ARROW);
+	edit_oneline.hCursor = LoadCursor(nullptr, IDC_IBEAM);
 	edit_oneline.hbrBackground = NULL;
 	edit_oneline.lpszMenuName = NULL;
 	edit_oneline.lpszClassName = unCap_wndclass_edit_oneline;
@@ -97,6 +94,37 @@ int EDITONELINE_calc_line_height_px(EditOnelineProcState* state) {
 	return res;
 }
 
+SIZE EDITONELINE_calc_char_dim(EditOnelineProcState* state, cstr c) {
+	Assert(c != _t('\t'));
+	SIZE res;
+	HDC dc = GetDC(state->wnd); defer{ ReleaseDC(state->wnd,dc); };
+	HFONT oldfont = SelectFont(dc, state->font); defer{ SelectFont(dc, oldfont); };
+	//UINT oldalign = GetTextAlign(dc); defer{ SetTextAlign(dc,oldalign); };
+	//SetTextAlign(dc, TA_LEFT);
+	GetTextExtentPoint32(dc, &c, 1, &res);
+	return res;
+}
+
+SIZE EDITONELINE_calc_text_dim(EditOnelineProcState* state) {
+	SIZE res;
+	HDC dc = GetDC(state->wnd); defer{ ReleaseDC(state->wnd,dc); };
+	HFONT oldfont = SelectFont(dc, state->font); defer{ SelectFont(dc, oldfont); };
+	//UINT oldalign = GetTextAlign(dc); defer{ SetTextAlign(dc,oldalign); };
+	//SetTextAlign(dc, TA_LEFT);
+	GetTextExtentPoint32(dc, state->char_text.c_str(), (int)state->char_text.length(), &res);
+	return res;
+}
+
+POINT EDITONELINE_calc_caret_p(EditOnelineProcState* state) {
+	Assert(state->char_cur_sel.x-1 < state->char_dims.size());
+	POINT res = { state->char_pad_x, 0 };
+	for (int i=0; i < state->char_cur_sel.x; i++) {
+		res.x+= state->char_dims[i];
+		//TODO(fran): probably wrong
+	}
+	return res;
+}
+
 //BUGs:
 //-caret stops blinking after a few seconds of being shown
 
@@ -104,19 +132,30 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	printf(msgToString(msg)); printf("\n");
 	EditOnelineProcState* state= EDITONELINE_get_state(hwnd);
 	switch (msg) {
+		//TODO(fran): on a WM_STYLECHANGING we should check if the alignment has changed and recalc/redraw every char, NOTE: I dont think windows' controls bother with this since it's not too common of a use case
 	case WM_NCCREATE: 
 	{ //1st msg received
 		CREATESTRUCT* creation_nfo = (CREATESTRUCT*)lparam;
 
 		Assert(!(creation_nfo->style & ES_MULTILINE));
+		Assert(!(creation_nfo->style & ES_RIGHT));//TODO(fran)
 
 		EditOnelineProcState* st = (EditOnelineProcState*)calloc(1, sizeof(EditOnelineProcState));
 		Assert(st);
 		EDITONELINE_set_state(hwnd, st);
 		st->wnd = hwnd;
-		st->max_char_sz = 32767;//default established by windows
-		st->caret.pad_x = 1;
-		st->text = str();//REMEMBER: this c++ guys dont like being calloc-ed, they need their constructor, or, in this case, someone else's, otherwise they are badly initialized
+		st->char_max_sz = 32767;//default established by windows
+		//NOTE: ES_LEFT==0, that was their way of defaulting to left
+		if (creation_nfo->style & ES_CENTER) {
+			//NOTE: ES_CENTER needs the pad to be recalculated all the time
+			
+			st->char_pad_x = abs(creation_nfo->cx / 2);//HACK
+		}
+		else {//we are either left or right
+			st->char_pad_x = 1;
+		}
+		st->char_text = str();//REMEMBER: this c++ guys dont like being calloc-ed, they need their constructor, or, in this case, someone else's, otherwise they are badly initialized
+		st->char_dims = std::vector<int>();
 		return TRUE; //continue creation
 	} break;
 	case WM_NCCALCSIZE: { //2nd msg received https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-nccalcsize
@@ -169,7 +208,7 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		//wparam = unsigned int with max char count ; lparam=0
 	{
 		//TODO(fran): docs says this shouldnt affect text already inside the control nor text set via WM_SETTEXT, not sure I agree with that
-		state->max_char_sz = (u32)wparam;
+		state->char_max_sz = (u32)wparam;
 		return 0;
 	} break;
 	case WM_SETFONT:
@@ -188,12 +227,6 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_NCDESTROY://Last msg. Sent _after_ WM_DESTROY
 	{
 		//NOTE: the brushes are deleted by whoever created them
-		//for (int i = 0; i < ARRAYSIZE(state->brushes.all);i++) {
-		//	if (state->brushes.all[i]) {
-		//		DeleteBrush(state->brushes.all[i]);
-		//		state->brushes.all[i] = 0;
-		//	}
-		//}
 		free(state);
 		return 0;
 	}break;
@@ -252,20 +285,20 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 				LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
 				//ES_LEFT ES_CENTER ES_RIGHT
 				//TODO(fran): store char positions in the vector
-				if (style & ES_LEFT) {
-					SetTextAlign(dc, TA_LEFT);
-					xPos = rc.left + state->caret.pad_x;
-				}
-				else if (style & ES_CENTER) {
+				if (style & ES_CENTER) {
 					SetTextAlign(dc, TA_CENTER);
 					xPos = (rc.right - rc.left) / 2;
 				}
 				else if (style & ES_RIGHT) {
 					SetTextAlign(dc, TA_RIGHT);
-					xPos = rc.right - state->caret.pad_x;
+					xPos = rc.right - state->char_pad_x;
+				}
+				else /*ES_LEFT*/ {//NOTE: ES_LEFT==0, that was their way of defaulting to left
+					SetTextAlign(dc, TA_LEFT);
+					xPos = rc.left + state->char_pad_x;
 				}
 
-				TextOut(dc, xPos, yPos, state->text.c_str(), (int)state->text.length());
+				TextOut(dc, xPos, yPos, state->char_text.c_str(), (int)state->char_text.length());
 			}
 		}
 		EndPaint(hwnd, &ps);
@@ -333,13 +366,37 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	{
 		//wparam = test for virtual keys pressed
 		POINT mouse = { GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };//Client coords, relative to upper-left corner of client area
-		if (state->text.empty()) state->cur_sel = { 0,0 };
+		int caret_x, caret_y= EDITONELINE_calc_line_height_px(state)*0;
+		if (state->char_text.empty()) {
+			state->char_cur_sel = { 0,0 };
+			caret_x = state->char_pad_x;//TODO(fran): how calcs the char_pad?
+		}
 		else {
 			//TODO
+			int mouse_x = mouse.x;
+			int dim_x = state->char_pad_x;
+			int char_cur_sel_x;
+			if ((mouse_x - dim_x) <= 0) {
+				caret_x = dim_x;
+				char_cur_sel_x = 0;
+			}
+			else {
+				int i = 0;
+				for (; i < (int)state->char_dims.size(); i++) {
+					dim_x += state->char_dims[i];
+					if ((mouse_x - dim_x) < 0) {
+						//if (i + 1 < (int)state->char_dims.size()) {//if there were more chars to go
+							dim_x -= state->char_dims[i];
+						//}
+						break;
+					}//TODO(fran): there's some bug here, selection change isnt as tight as it should, caret placement is correct but this overextends the size of the char
+				}
+				caret_x = dim_x;
+				char_cur_sel_x = i;
+			}
+			state->char_cur_sel.x = char_cur_sel_x;
 		}
-		int line_h = EDITONELINE_calc_line_height_px(state);
-		POINT caret_p = { state->caret.pad_x + 0/*xth char*/,line_h*0/*current line*/ };
-		SetCaretPos(caret_p.x, caret_p.y);
+		SetCaretPos(caret_x, caret_y);
 		InvalidateRect(state->wnd, NULL, TRUE);//TODO(fran): dont invalidate everything
 		return 0;
 	} break;
@@ -442,9 +499,23 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		{
 			//We have some normal character
 			//TODO(fran): what happens with surrogate pairs? I dont even know what they are -> READ
-			if (state->text.length() < state->max_char_sz) {
-				state->text += c;
-				wprintf(L"%s\n", state->text.c_str());
+			if (state->char_text.length() < state->char_max_sz) {
+				state->char_text += c;
+				state->char_cur_sel.x++;//TODO: this is wrong
+				state->char_dims.push_back(EDITONELINE_calc_char_dim(state,c).cx);//TODO(fran): also wrong, we'll need to insert in the middle if the cur_sel is not a the end
+
+				LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
+				if (style & ES_CENTER) {
+					//Recalc pad_x
+					RECT rc; GetClientRect(state->wnd, &rc);
+					state->char_pad_x = (RECTWIDTH(rc) - EDITONELINE_calc_text_dim(state).cx) / 2;
+
+					state->caret.pos = EDITONELINE_calc_caret_p(state);
+					SetCaretPos(state->caret.pos.x, state->caret.pos.y);
+
+				}
+
+				wprintf(L"%s\n", state->char_text.c_str());
 			}
 
 		}break;
