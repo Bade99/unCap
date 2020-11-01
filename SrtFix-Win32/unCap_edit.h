@@ -108,7 +108,7 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 		//MoveWindow(hwnd, TabOffset.leftOffset, TabOffset.topOffset, control_size->cx - TabOffset.rightOffset - TabOffset.leftOffset, control_size->cy - TabOffset.bottomOffset - TabOffset.topOffset, TRUE);
 		//x & y remain fixed and only width & height change
 
-		SendMessage(state->vscrollbar, U_SB_AUTORESIZE, 0, 0);
+		if(state->vscrollbar)SendMessage(state->vscrollbar, U_SB_AUTORESIZE, 0, 0);
 
 		EDIT_update_scrollbar(state); //NOTE: actually here you just need to update nPage
 
@@ -117,6 +117,7 @@ LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UIN
 	case WM_DESTROY:
 	{
 		free(state);
+		//return DefSubclassProc(hwnd, msg, wparam, lparam); //TODO(fran): shouldnt I call this?
 	}break;
 	//Messages that could trigger the need for updating the scrollbar
 	case WM_PAINT:

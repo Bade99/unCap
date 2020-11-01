@@ -6,7 +6,7 @@
 union UNCAP_COLORS {//TODO(fran): HBRUSH Border
 	struct {
 		//TODO(fran): macro magic to auto generate the appropriately sized HBRUSH array
-		//TODO(fran): we're in a bit of a problem here with the brush's default, we can override it since that'd mean leaking the default brush, we may need to add a step after serialization that checks for null hbrushes and only then default creates them 
+		//TODO(fran): add _disabled for at least txt,bk,border
 #define foreach_color(op) \
 		op(HBRUSH,ControlBk,CreateSolidBrush(RGB(40, 41, 35))) \
 		op(HBRUSH,ControlBkPush,CreateSolidBrush(RGB(0, 110, 200))) \

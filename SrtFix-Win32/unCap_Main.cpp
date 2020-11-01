@@ -202,6 +202,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstan
 
 	init_wndclass_unCap_button(hInstance);
 
+	init_wndclass_unCap_edit_oneline(hInstance);
+
 	RECT uncapnc_rc = UNCAPNC_calc_nonclient_rc_from_client(uncap_cl.rc,TRUE);
 
 	unCapNcLpParam nclpparam;

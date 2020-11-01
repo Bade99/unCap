@@ -18,6 +18,7 @@
 #include "unCap_edit.h"
 #include <Commdlg.h> //OPENFILENAME
 #include <Shellapi.h> //HDROP
+#include "unCap_edit_oneline.h"
 
 #define OPEN_FILE 11
 #define COMBO_BOX 12
@@ -692,7 +693,7 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 	//hReadFile = CreateWindowExW(0, PROGRESS_CLASS, (LPWSTR)NULL, WS_CHILD
 	//	, 10, y_pad, 664, 20, hwnd, (HMENU)NULL, NULL, NULL);
 
-	state->controls.static_removecomment = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE
+	state->controls.static_removecomment = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT
 		, 25, y_pad + 3, 155, 20, state->wnd, NULL, NULL, NULL);
 	AWT(state->controls.static_removecomment, LANG_CONTROL_REMOVECOMMENTWITH);
 
@@ -710,16 +711,24 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 	//WCHAR explain_combobox[] = L"Also separates the lines";
 	//CreateToolTip(COMBO_BOX, hwnd, explain_combobox);
 
-	state->controls.static_commentbegin = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED 
-		, 78, y_pad + 35, 105, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+	//TODO(fran): can I use an Edit control with ES_READONLY instead of a Static control?
+	state->controls.static_commentbegin = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT //| WS_DISABLED 
+		, 25, y_pad + 35, 155, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(state->controls.static_commentbegin, LANG_CONTROL_INITIALCHAR);
 
-	state->controls.edit_commentbegin = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
+	state->controls.edit_commentbegin = CreateWindowW(unCap_wndclass_edit_oneline, L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
 		, 195, y_pad + 34, 20, 21, state->wnd, NULL, NULL, NULL);
 	SendMessageW(state->controls.edit_commentbegin, EM_LIMITTEXT, 1, 0);
 
-	state->controls.static_commentend = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE //| WS_DISABLED
-		, 78, y_pad + 65, 105, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
+	EDITONELINE_set_brushes(state->controls.edit_commentbegin, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.Img, unCap_colors.ControlTxt_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.Img_Inactive);
+
+	//NOTE: SetWindowSubclass applies the subclassing to EVERY edit control, it basically applies it to the window class, not the specific window, I think maybe using SetWindowLongPtrW(wnd, GWL_WNDPROC, (LONG_PTR)MyProc); works, but the edit control is a complete disaster that does drawing all over the place
+
+
+	//SetWindowSubclass(state->controls.edit_commentbegin, EditOnelineProc, 0, (DWORD_PTR)calloc(1, sizeof(EditOnelineProcState)));
+
+	state->controls.static_commentend = CreateWindowW(L"Static", NULL, WS_VISIBLE | WS_CHILD | SS_CENTERIMAGE | SS_RIGHT //| WS_DISABLED
+		, 25, y_pad + 65, 155, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(state->controls.static_commentend, LANG_CONTROL_FINALCHAR);
 
 	state->controls.edit_commentend = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
