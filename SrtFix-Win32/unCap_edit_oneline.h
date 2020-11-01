@@ -8,7 +8,7 @@ constexpr TCHAR unCap_wndclass_edit_oneline[] = TEXT("unCap_wndclass_edit_onelin
 
 static LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
-struct char_sel { u32 x, y; };//xth character of the yth row, goes left to right and top to bottom
+struct char_sel { int x, y; };//xth character of the yth row, goes left to right and top to bottom
 struct EditOnelineProcState {
 	HWND wnd;
 	struct editonelinebrushes {
@@ -27,7 +27,7 @@ struct EditOnelineProcState {
 	str char_text;//much simpler to work with and debug
 	std::vector<int> char_dims;//NOTE: specifies, for each character, its width
 	//TODO(fran): it's probably better to use signed numbers in case the text overflows ths size of the control
-	u32 char_pad_x;//NOTE: specifies x offset from which characters start being placed on the screen, relative to the client area. For a left aligned control this will be offset from the left, for right aligned it'll be offset from the right, and for center alignment it'll be the left most position from where chars will be drawn
+	int char_pad_x;//NOTE: specifies x offset from which characters start being placed on the screen, relative to the client area. For a left aligned control this will be offset from the left, for right aligned it'll be offset from the right, and for center alignment it'll be the left most position from where chars will be drawn
 };
 
 void init_wndclass_unCap_edit_oneline(HINSTANCE instance) {
@@ -116,7 +116,7 @@ SIZE EDITONELINE_calc_text_dim(EditOnelineProcState* state) {
 }
 
 POINT EDITONELINE_calc_caret_p(EditOnelineProcState* state) {
-	Assert(state->char_cur_sel.x-1 < state->char_dims.size());
+	Assert(state->char_cur_sel.x-1 < (int)state->char_dims.size());
 	POINT res = { state->char_pad_x, 0 };
 	for (int i=0; i < state->char_cur_sel.x; i++) {
 		res.x+= state->char_dims[i];
@@ -125,14 +125,59 @@ POINT EDITONELINE_calc_caret_p(EditOnelineProcState* state) {
 	return res;
 }
 
+BOOL SetCaretPos(POINT p) {
+	BOOL res = SetCaretPos(p.x, p.y);
+	return res;
+}
+
 //BUGs:
 //-caret stops blinking after a few seconds of being shown
+
+bool operator==(POINT p1, POINT p2) {
+	bool res = p1.x == p2.x && p1.y == p2.y;
+	return res;
+}
+
+bool operator!=(POINT p1, POINT p2) {
+	bool res = !(p1 == p2);
+	return res;
+}
+
+//NOTE: pasting from the clipboard establishes a couple of invariants: lines end with \r\n, there's a null terminator, we gotta parse it carefully cause who knows whats inside
+void EDITONELINE_paste_from_clipboard(EditOnelineProcState* state, const cstr* txt) {
+	size_t char_sz = cstr_len(txt);//does not include null terminator
+	if ((size_t)state->char_max_sz >= state->char_text.length() + char_sz) {
+
+	}
+	else {
+		char_sz -= ((state->char_text.length() + char_sz) - (size_t)state->char_max_sz);
+	}
+	if (char_sz > 0) {
+		//TODO(fran): remove invalid chars (we dont know what could be inside)
+		state->char_text.insert((size_t)state->char_cur_sel.x, txt, char_sz);
+		for (size_t i = 0; i < char_sz; i++) state->char_dims.insert(state->char_dims.begin() + i, EDITONELINE_calc_char_dim(state, txt[i]).cx);
+		state->char_cur_sel.x += (int)char_sz;
+
+		LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
+		if (style & ES_CENTER) {
+			//Recalc pad_x
+			RECT rc; GetClientRect(state->wnd, &rc);
+			state->char_pad_x = (RECTWIDTH(rc) - EDITONELINE_calc_text_dim(state).cx) / 2;
+
+		}
+		state->caret.pos = EDITONELINE_calc_caret_p(state);
+		SetCaretPos(state->caret.pos);
+	}
+}
 
 LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	printf(msgToString(msg)); printf("\n");
 	EditOnelineProcState* state= EDITONELINE_get_state(hwnd);
 	switch (msg) {
 		//TODO(fran): on a WM_STYLECHANGING we should check if the alignment has changed and recalc/redraw every char, NOTE: I dont think windows' controls bother with this since it's not too common of a use case
+		//TODO(fran): region selection after WM_LBUTTONDOWN, do tracking
+		//TODO(fran): wm_gettetxlength
+
 	case WM_NCCREATE: 
 	{ //1st msg received
 		CREATESTRUCT* creation_nfo = (CREATESTRUCT*)lparam;
@@ -366,10 +411,10 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	{
 		//wparam = test for virtual keys pressed
 		POINT mouse = { GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };//Client coords, relative to upper-left corner of client area
-		int caret_x, caret_y= EDITONELINE_calc_line_height_px(state)*0;
+		POINT caret_p{ 0,EDITONELINE_calc_line_height_px(state) * 0 };
 		if (state->char_text.empty()) {
 			state->char_cur_sel = { 0,0 };
-			caret_x = state->char_pad_x;//TODO(fran): how calcs the char_pad?
+			caret_p.x = state->char_pad_x;//TODO(fran): who calcs the char_pad?
 		}
 		else {
 			//TODO
@@ -377,7 +422,7 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 			int dim_x = state->char_pad_x;
 			int char_cur_sel_x;
 			if ((mouse_x - dim_x) <= 0) {
-				caret_x = dim_x;
+				caret_p.x = dim_x;
 				char_cur_sel_x = 0;
 			}
 			else {
@@ -391,12 +436,13 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 						break;
 					}//TODO(fran): there's some bug here, selection change isnt as tight as it should, caret placement is correct but this overextends the size of the char
 				}
-				caret_x = dim_x;
+				caret_p.x = dim_x;
 				char_cur_sel_x = i;
 			}
 			state->char_cur_sel.x = char_cur_sel_x;
 		}
-		SetCaretPos(caret_x, caret_y);
+		state->caret.pos = caret_p;
+		SetCaretPos(state->caret.pos);
 		InvalidateRect(state->wnd, NULL, TRUE);//TODO(fran): dont invalidate everything
 		return 0;
 	} break;
@@ -459,44 +505,154 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	{
 		//TODO(fran): here we process things like VK_HOME VK_NEXT VK_LEFT VK_RIGHT VK_DELETE
 		//NOTE: there are some keys that dont get sent to WM_CHAR, we gotta handle them here, also there are others that get sent to both, TODO(fran): it'd be nice to have all the key things in only one place
+		//NOTE: for things like _shortcuts_ you wanna handle them here cause on WM_CHAR things like Ctrl+V get translated to something else
+		//		also you want to use the uppercase version of the letter, eg case _t('V'):
 		char vk = (char)wparam;
+		bool ctrl_is_down = HIBYTE(GetKeyState(VK_CONTROL));
 		switch (vk) {
 		case VK_HOME://Home
 		{
-
+			POINT oldcaretp = state->caret.pos;
+			state->char_cur_sel.x=0;
+			state->caret.pos = EDITONELINE_calc_caret_p(state);
+			if (oldcaretp != state->caret.pos) {
+				SetCaretPos(state->caret.pos);
+			}
 		} break;
+		case VK_END://End
+		{
+			POINT oldcaretp = state->caret.pos;
+			state->char_cur_sel.x = (int)state->char_text.length();
+			state->caret.pos = EDITONELINE_calc_caret_p(state);
+			if (oldcaretp != state->caret.pos) {
+				SetCaretPos(state->caret.pos);
+			}
+		} break;
+		case VK_LEFT://Left arrow
+		{
+			if (state->char_cur_sel.x > 0) {
+				state->char_cur_sel.x--;
+				state->caret.pos = EDITONELINE_calc_caret_p(state);
+				SetCaretPos(state->caret.pos);
+			}
+		} break;
+		case VK_RIGHT://Right arrow
+		{
+			if (state->char_cur_sel.x < state->char_text.length()) {
+				state->char_cur_sel.x++;
+				state->caret.pos = EDITONELINE_calc_caret_p(state);
+				SetCaretPos(state->caret.pos);
+			}
+		} break;
+		case VK_DELETE://What in spanish is the "Supr" key (delete character ahead of you)
+		{
+			if (state->char_cur_sel.x < state->char_text.length()) {
+				state->char_text.erase(state->char_cur_sel.x, 1);
 
+				//NOTE: there's actually only one case I can think of where you need to update the caret, that is on a ES_CENTER control
+				LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
+				if (style & ES_CENTER) {
+					//Recalc pad_x
+					RECT rc; GetClientRect(state->wnd, &rc);
+					state->char_pad_x = (RECTWIDTH(rc) - EDITONELINE_calc_text_dim(state).cx) / 2;
+
+					state->caret.pos = EDITONELINE_calc_caret_p(state);
+					SetCaretPos(state->caret.pos);
+				}
+			}
+		} break;
+		case _t('v'):
+		case _t('V'):
+		{
+			if (ctrl_is_down) {
+				PostMessage(state->wnd, WM_PASTE, 0, 0);
+			}
+		} break;
 		}
-		InvalidateRect(state->wnd, NULL, TRUE);//TODO(fran): dont invalidate everything
+		InvalidateRect(state->wnd, NULL, TRUE);//TODO(fran): dont invalidate everything, NOTE: also on each wm_paint the cursor will stop so we should add here a bool repaint; to avoid calling InvalidateRect when it isnt needed
 		return 0;
 	}break;
+	case WM_PASTE:
+	{
+		//TODO(fran): pasting onto the selected region
+		//TODO(fran): if no unicode is available we could get the ansi and convert it, if it is available. //NOTE: docs say the format is converted automatically to the one you ask for
+#ifdef UNICODE
+		UINT format = CF_UNICODETEXT;
+#else
+		UINT format = CF_TEXT;
+#endif
+		if (IsClipboardFormatAvailable(format)) {//NOTE: lines end with \r\n, has null terminator
+			if (OpenClipboard(state->wnd)) {
+				defer{ CloseClipboard(); };
+				HGLOBAL clipboard = GetClipboardData(format);
+				if (clipboard) {
+					cstr* clipboardtxt = (cstr*)GlobalLock(clipboard);
+					if (clipboardtxt)
+					{
+						defer{ GlobalUnlock(clipboard); };
+						EDITONELINE_paste_from_clipboard(state, clipboardtxt);
+					}
+
+				}
+			}
+		}
+	} break;
 	case WM_CHAR://When the user presses a non-system key this is the 2nd msg we receive
 	{//NOTE: a WM_KEYDOWN msg was translated by TranslateMessage() into WM_CHAR
 		TCHAR c = (TCHAR)wparam;
+		bool ctrl_is_down = HIBYTE(GetKeyState(VK_CONTROL));
 		//lparam = flags
 		switch (c) { //https://docs.microsoft.com/en-us/windows/win32/menurc/using-carets
 		case VK_BACK://Backspace
 		{
-			
+			if (!state->char_text.empty() && state->char_cur_sel.x>0) {
+				POINT oldcaretp = state->caret.pos;
+				state->char_cur_sel.x--;
+				Assert(state->char_cur_sel.x < (int)state->char_text.length() && state->char_cur_sel.x < (int)state->char_dims.size());
+				state->char_text.erase(state->char_cur_sel.x, 1);
+				state->char_dims.erase(state->char_dims.begin() + state->char_cur_sel.x);
+
+				//TODO(fran): join this calculations into one function since some require others to already by re-calculated
+				//Update pad if ES_CENTER
+				LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
+				if (style & ES_CENTER) {
+					//Recalc pad_x
+					RECT rc; GetClientRect(state->wnd, &rc);
+					state->char_pad_x = (RECTWIDTH(rc) - EDITONELINE_calc_text_dim(state).cx) / 2;
+
+				}
+
+				state->caret.pos = EDITONELINE_calc_caret_p(state);
+				if (oldcaretp != state->caret.pos) {
+					SetCaretPos(state->caret.pos);
+				}
+			}
 		}break;
 		case VK_TAB://Tab
 		{
-
+			//We dont handle tabs for now
 		}break;
-		case VK_RETURN://Carriage Return aka "Enter"
+		case VK_RETURN://Received when the user presses the "enter" key //Carriage Return aka \r
 		{
+			//NOTE: I wonder, it doesnt seem to send us \r\n so is that something that is manually done by the control?
+			//We dont handle "enter" for now
 
 		}break;
 		case VK_ESCAPE://Escape
 		{
-
+			//TODO(fran): should we do something?
 		}break;
-		case 0x0A://Linefeed, wtf is that
+		case 0x0A://Linefeed, aka \n
 		{
-
+			//I havent found which key triggers this
+			printf("WM_CHAR = linefeed\n");
 		}break;
 		default:
 		{
+			//TODO(fran): filter more values
+			if (c <= (TCHAR)0x14) break;//control chars
+			if (c <= (TCHAR)0x1f) break;//IME
+			
 			//We have some normal character
 			//TODO(fran): what happens with surrogate pairs? I dont even know what they are -> READ
 			if (state->char_text.length() < state->char_max_sz) {
@@ -511,7 +667,7 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 					state->char_pad_x = (RECTWIDTH(rc) - EDITONELINE_calc_text_dim(state).cx) / 2;
 
 					state->caret.pos = EDITONELINE_calc_caret_p(state);
-					SetCaretPos(state->caret.pos.x, state->caret.pos.y);
+					SetCaretPos(state->caret.pos);
 
 				}
 
@@ -528,6 +684,35 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		//TODO(fran): smth to do here?
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case WM_GETTEXT:
+	{
+		LRESULT res;
+		int char_cnt_with_null = max((int)wparam,0);//Includes null char
+		int char_text_cnt_with_null = (int)(state->char_text.length() + 1);
+		if (char_cnt_with_null > char_text_cnt_with_null) char_cnt_with_null = char_text_cnt_with_null;
+		cstr* buf = (cstr*)lparam;
+		if (buf) {//should I check?
+			StrCpyN(buf, state->char_text.c_str(), char_cnt_with_null);
+			if (char_cnt_with_null < char_text_cnt_with_null) buf[char_cnt_with_null - 1] = (cstr)0;
+			res = char_cnt_with_null - 1;
+		}
+		else res = 0;
+		return res;
+	} break;
+	case WM_SETTEXT:
+	{
+		BOOL res=FALSE;
+		cstr* buf = (cstr*)lparam;//null terminated
+		if (buf) {
+			size_t char_sz = cstr_len(buf);//not including null terminator
+			if (char_sz <= (size_t)state->char_max_sz) {
+				state->char_text = buf;
+				//TODO(fran): update cur_sel, char_pad, etc
+				res = TRUE;
+			}
+		}
+		return res;
+	}break;
 	default:
 	{
 #ifdef _DEBUG

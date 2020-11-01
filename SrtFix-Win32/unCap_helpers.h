@@ -18,6 +18,17 @@
 #define to_str(v) std::to_string(v)
 #endif
 
+//NOTE: do NOT include the null terminator
+#ifdef UNICODE
+static size_t cstr_len(const cstr* s) {
+	return wcslen(s);
+}
+#else
+static size_t cstr_len(const cstr* s) {
+	return strlen(s);
+}
+#endif
+
 //Thanks to https://handmade.network/forums/t/1273-post_your_c_c++_macro_tricks/3
 template <typename F> struct Defer { Defer(F f) : f(f) {} ~Defer() { f(); } F f; };
 template <typename F> Defer<F> makeDefer(F f) { return Defer<F>(f); };

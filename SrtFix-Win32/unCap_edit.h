@@ -40,6 +40,7 @@ void EDIT_update_scrollbar(EditProcState* state) {
 	}
 }
 LRESULT CALLBACK EditProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam, UINT_PTR /*uIdSubclass*/, DWORD_PTR dwRefData) {
+	//printf(msgToString(msg)); printf("\n");
 	Assert(dwRefData);
 	EditProcState* state = (EditProcState*)dwRefData;
 	if (!state->initialized) {
