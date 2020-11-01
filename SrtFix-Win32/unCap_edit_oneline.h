@@ -67,7 +67,7 @@ void EDITONELINE_set_brushes(HWND editoneline, BOOL repaint, HBRUSH txt, HBRUSH 
 	if (border)state->brushes.border = border;
 	if (txt_disabled)state->brushes.txt_dis = txt_disabled;
 	if (bk_disabled)state->brushes.bk_dis = bk_disabled;
-	if (border_disabled)state->brushes.txt_dis = border_disabled;
+	if (border_disabled)state->brushes.border_dis = border_disabled;
 	if (repaint)InvalidateRect(state->wnd, NULL, TRUE);
 }
 
@@ -155,7 +155,7 @@ void EDITONELINE_paste_from_clipboard(EditOnelineProcState* state, const cstr* t
 	if (char_sz > 0) {
 		//TODO(fran): remove invalid chars (we dont know what could be inside)
 		state->char_text.insert((size_t)state->char_cur_sel.x, txt, char_sz);
-		for (size_t i = 0; i < char_sz; i++) state->char_dims.insert(state->char_dims.begin() + i, EDITONELINE_calc_char_dim(state, txt[i]).cx);
+		for (size_t i = 0; i < char_sz; i++) state->char_dims.insert(state->char_dims.begin() + state->char_cur_sel.x + i, EDITONELINE_calc_char_dim(state, txt[i]).cx);
 		state->char_cur_sel.x += (int)char_sz;
 
 		LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
@@ -707,8 +707,22 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 			size_t char_sz = cstr_len(buf);//not including null terminator
 			if (char_sz <= (size_t)state->char_max_sz) {
 				state->char_text = buf;
-				//TODO(fran): update cur_sel, char_pad, etc
+				
+				for (size_t i = 0; i < char_sz; i++) state->char_dims.insert(state->char_dims.begin() + state->char_cur_sel.x + i, EDITONELINE_calc_char_dim(state, buf[i]).cx);
+				state->char_cur_sel.x = (int)char_sz;
+
+				LONG_PTR  style = GetWindowLongPtr(state->wnd, GWL_STYLE);
+				if (style & ES_CENTER) {
+					//Recalc pad_x
+					RECT rc; GetClientRect(state->wnd, &rc);
+					state->char_pad_x = (RECTWIDTH(rc) - EDITONELINE_calc_text_dim(state).cx) / 2;
+
+				}
+				state->caret.pos = EDITONELINE_calc_caret_p(state);
+				SetCaretPos(state->caret.pos);
+
 				res = TRUE;
+				InvalidateRect(state->wnd, NULL, TRUE);
 			}
 		}
 		return res;

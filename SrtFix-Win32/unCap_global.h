@@ -22,11 +22,14 @@ union UNCAP_COLORS {//TODO(fran): HBRUSH Border
 		op(HBRUSH,Img_Inactive,CreateSolidBrush(RGB(198, 198, 192))) \
 		op(HBRUSH,CaptionBk,CreateSolidBrush(RGB(20, 21, 15))) \
 		op(HBRUSH,CaptionBk_Inactive,CreateSolidBrush(RGB(60, 61, 65))) \
+		op(HBRUSH,ControlBk_Disabled,CreateSolidBrush(RGB(35, 36, 30))) \
+		op(HBRUSH,ControlTxt_Disabled,CreateSolidBrush(RGB(128, 128, 122))) \
+		op(HBRUSH,Img_Disabled,CreateSolidBrush(RGB(98, 98, 92))) \
 		
 		foreach_color(_generate_member_no_default_init);
 
 	};
-	HBRUSH brushes[14];//REMEMBER to update
+	HBRUSH brushes[17];//REMEMBER to update
 
 	_generate_default_struct_serialize(foreach_color);
 

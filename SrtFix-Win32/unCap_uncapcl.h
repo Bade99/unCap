@@ -716,11 +716,11 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 		, 25, y_pad + 35, 155, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(state->controls.static_commentbegin, LANG_CONTROL_INITIALCHAR);
 
-	state->controls.edit_commentbegin = CreateWindowW(unCap_wndclass_edit_oneline, L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
+	state->controls.edit_commentbegin = CreateWindowW(unCap_wndclass_edit_oneline, L"", WS_VISIBLE | WS_CHILD | ES_CENTER | WS_TABSTOP | WS_DISABLED
 		, 195, y_pad + 34, 20, 21, state->wnd, NULL, NULL, NULL);
 	SendMessageW(state->controls.edit_commentbegin, EM_LIMITTEXT, 1, 0);
 
-	EDITONELINE_set_brushes(state->controls.edit_commentbegin, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.Img, unCap_colors.ControlTxt_Inactive, unCap_colors.CaptionBk_Inactive, unCap_colors.Img_Inactive);
+	EDITONELINE_set_brushes(state->controls.edit_commentbegin, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.Img, unCap_colors.ControlTxt_Disabled, unCap_colors.ControlBk_Disabled, unCap_colors.Img_Disabled);
 
 	//NOTE: SetWindowSubclass applies the subclassing to EVERY edit control, it basically applies it to the window class, not the specific window, I think maybe using SetWindowLongPtrW(wnd, GWL_WNDPROC, (LONG_PTR)MyProc); works, but the edit control is a complete disaster that does drawing all over the place
 
@@ -731,9 +731,11 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 		, 25, y_pad + 65, 155, 20, state->wnd, (HMENU)INITIALFINALCHAR, NULL, NULL);
 	AWT(state->controls.static_commentend, LANG_CONTROL_FINALCHAR);
 
-	state->controls.edit_commentend = CreateWindowW(L"Edit", L"", WS_VISIBLE | WS_CHILD | WS_BORDER | ES_CENTER | WS_TABSTOP | WS_DISABLED
+	state->controls.edit_commentend = CreateWindowW(unCap_wndclass_edit_oneline, L"", WS_VISIBLE | WS_CHILD | ES_CENTER | WS_TABSTOP | WS_DISABLED
 		, 195, y_pad + 64, 20, 21, state->wnd, NULL, NULL, NULL);
 	SendMessageW(state->controls.edit_commentend, EM_LIMITTEXT, 1, 0);
+
+	EDITONELINE_set_brushes(state->controls.edit_commentend, TRUE, unCap_colors.ControlTxt, unCap_colors.ControlBk, unCap_colors.Img, unCap_colors.ControlTxt_Disabled, unCap_colors.ControlBk_Disabled, unCap_colors.Img_Disabled);
 
 	state->controls.button_removecomment = CreateWindowW(unCap_wndclass_button, NULL, WS_VISIBLE | WS_CHILD | WS_TABSTOP
 		, 256, y_pad + 44, 70, 30, state->wnd, (HMENU)REMOVE, NULL, NULL);
