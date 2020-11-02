@@ -196,11 +196,20 @@ struct unCapClProcState {
 		HMENU menu_file;
 		HMENU menu_lang;
 	};
-
-	struct unCapClControls {
-		HWND tab, combo_commentmarker, edit_commentbegin, edit_commentend, static_commentbegin, static_commentend, static_removecomment, button_removecomment, static_notify;
+	union unCapClControls {
+		struct {
+			HWND tab;
+			HWND combo_commentmarker;
+			HWND edit_commentbegin;
+			HWND edit_commentend;
+			HWND static_commentbegin;
+			HWND static_commentend;
+			HWND static_removecomment;
+			HWND button_removecomment;
+			HWND static_notify;
+		};
+		HWND all[9];//REMEMBER TO UPDATE
 	}controls;
-
 	unCapClSettings* settings;
 
 	bool is_commentmarker_other;//TODO(fran): remove once I paint my own static controls
@@ -759,16 +768,8 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 	SendMessage(state->controls.tab, TCM_SETITEMSIZE, 0, MAKELONG(tabWidth, tabHeight));
 	SetWindowSubclass(state->controls.tab, TabProc, 0, 0);
 
-	//SendMessage(hFile, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE); //TODO(fran): for loop with union struct
-	SendMessage(state->controls.static_removecomment, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.combo_commentmarker, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.static_commentbegin, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.edit_commentbegin, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.static_commentend, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.edit_commentend, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.button_removecomment, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.tab, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
-	SendMessage(state->controls.static_notify, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
+	for(auto ctl : state->controls.all)
+			SendMessage(ctl, WM_SETFONT, (WPARAM)unCap_fonts.General, TRUE);
 }
 
 
@@ -786,7 +787,7 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 	wcsncpy_s(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
 
 	int pos = TAB_get_next_pos(state->controls.tab);//NOTE: careful with multithreading here
-
+	//TODO(fran): time each part of this whole set up to find out where we are slow
 	ReadTextResult text_res = ReadText(filename.c_str());
 
 	text_data.fileEncoding = text_res.encoding_nfo;
@@ -1169,31 +1170,28 @@ LRESULT CALLBACK UncapClProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
 	{
 		//TODO(fran): check we are changing the right controls
 		HWND static_wnd = (HWND)lparam;
+		HDC dc = (HDC)wparam;
 		switch (GetDlgCtrlID(static_wnd)) {
 		case TIMEDMESSAGES:
 		{
-			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
-			SetTextColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlMsg));
+			SetBkColor(dc, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor(dc, ColorFromBrush(unCap_colors.ControlMsg));
 			return (LRESULT)unCap_colors.ControlBk;
-		}
+		}break;
 		case INITIALFINALCHAR:
 		{
-			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
-			COLORREF txt = NULL;
-			printf("enabled: %d\n", IsWindowEnabled(static_wnd));
-			if (state->is_commentmarker_other) {
-				txt = ColorFromBrush(unCap_colors.ControlTxt);
-			}
-			else txt = ColorFromBrush(unCap_colors.InitialFinalCharDisabled);
-			SetTextColor((HDC)wparam, txt);
-			return (LRESULT)unCap_colors.ControlBk;
-		}
-		default:
+			HBRUSH bk_br = unCap_colors.ControlBk;
+			SetBkColor(dc, ColorFromBrush(bk_br));
+			COLORREF txt = state->is_commentmarker_other ? ColorFromBrush(unCap_colors.ControlTxt) : ColorFromBrush(unCap_colors.ControlTxt_Disabled);
+			printf("enabled: %d\n", IsWindowEnabled(static_wnd));//NOTE: we dont disable this guys like we do with the edit control cause when they're disabled they render badly
+			SetTextColor(dc, txt);
+			return (LRESULT)bk_br;
+		}break;
+		default://NOTE: this is for state->controls.static_removecomment
 		{
-			//TODO(fran): there's something wrong with Initial & Final character controls when they are disabled, documentation says windows always uses same color
-			//text when window is disabled but it looks to me that it is using both this and its own color
-			SetBkColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlBk));
-			SetTextColor((HDC)wparam, ColorFromBrush(unCap_colors.ControlTxt));
+			//TODO(fran): there's something wrong with Initial & Final character controls when they are disabled, documentation says windows always uses same color text when window is disabled but it looks to me that it is using both this and its own color
+			SetBkColor(dc, ColorFromBrush(unCap_colors.ControlBk));
+			SetTextColor(dc, ColorFromBrush(unCap_colors.ControlTxt));
 			return (LRESULT)unCap_colors.ControlBk;
 		}
 		}

@@ -14,7 +14,6 @@ union UNCAP_COLORS {//TODO(fran): HBRUSH Border
 		op(HBRUSH,ControlTxt,CreateSolidBrush(RGB(248, 248, 242))) \
 		op(HBRUSH,ControlTxt_Inactive,CreateSolidBrush(RGB(208, 208, 202))) \
 		op(HBRUSH,ControlMsg,CreateSolidBrush(RGB(248, 230, 0))) \
-		op(HBRUSH,InitialFinalCharDisabled,CreateSolidBrush(RGB(128, 128, 128))) \
 		op(HBRUSH,Scrollbar,CreateSolidBrush(RGB(148, 148, 142))) \
 		op(HBRUSH,ScrollbarMouseOver,CreateSolidBrush(RGB(188, 188, 182))) \
 		op(HBRUSH,ScrollbarBk,CreateSolidBrush(RGB(50, 51, 45))) \

@@ -368,7 +368,7 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 				ExcludeClipRect(dc, top.left, top.top, top.right, top.bottom);
 				ExcludeClipRect(dc, right.left, right.top, right.right, right.bottom);
 				ExcludeClipRect(dc, bottom.left, bottom.top, bottom.right, bottom.bottom);
-				//TODO(fran): this aint to clever, it'd be easier to set the clipping region to the deflated rect
+				//TODO(fran): this aint too clever, it'd be easier to set the clipping region to the deflated rect
 			}
 			//Draw
 

@@ -451,18 +451,35 @@ return DefWindowProc(hwnd, msg, wparam, lparam);
 		//TODO(fran): check that we are painting at a new position, if not do not paint
 
 		//Paint the bar
+#define _TRANSPARENTSB 1
+#if _TRANSPARENTSB
+		int sb_border_thickness = 1;
+		FillRectBorder(dc, sb_rc, sb_border_thickness, sb_br, BORDERLEFT | BORDERTOP | BORDERRIGHT | BORDERBOTTOM);
+#else
 		FillRect(dc, &sb_rc, sb_br);//TODO(fran): bilinear blend, aka subpixel precision rendering so we dont get bar hickups 
-	//}
+#endif
 
 		//Clip the drawing region
-		HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(dc, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }
-		ExcludeClipRect(dc, sb_rc.left, sb_rc.top, sb_rc.right, sb_rc.bottom);
-		//Draw
-		RECT rc;
-		GetClientRect(state->wnd, &rc);
-		FillRect(dc, &rc, unCap_colors.ScrollbarBk);
-		//Restore old region
-		SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion);
+		{
+			HRGN restoreRegion = CreateRectRgn(0, 0, 0, 0); if (GetClipRgn(dc, restoreRegion) != 1) { DeleteObject(restoreRegion); restoreRegion = NULL; }defer{ SelectClipRgn(dc, restoreRegion); if (restoreRegion != NULL) DeleteObject(restoreRegion); };
+#if _TRANSPARENTSB
+			RECT left = rectNpxL(sb_rc, sb_border_thickness);
+			RECT top = rectNpxT(sb_rc, sb_border_thickness);
+			RECT right = rectNpxR(sb_rc, sb_border_thickness);
+			RECT bottom = rectNpxB(sb_rc, sb_border_thickness);
+			ExcludeClipRect(dc, left.left, left.top, left.right, left.bottom);
+			ExcludeClipRect(dc, top.left, top.top, top.right, top.bottom);
+			ExcludeClipRect(dc, right.left, right.top, right.right, right.bottom);
+			ExcludeClipRect(dc, bottom.left, bottom.top, bottom.right, bottom.bottom);
+#else
+			ExcludeClipRect(dc, sb_rc.left, sb_rc.top, sb_rc.right, sb_rc.bottom);
+#endif
+			//Draw bk
+			RECT rc;
+			GetClientRect(state->wnd, &rc);
+			FillRect(dc, &rc, unCap_colors.ScrollbarBk);
+			//Restore old region
+		}
 
 		EndPaint(state->wnd, &ps);
 		return 0;
