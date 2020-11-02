@@ -4,6 +4,8 @@
 #include "windows_msg_mapper.h"
 #include "windows_undoc.h"
 
+//NOTE: this took two days to fully implement, certainly a hard control but not as much as it's made to believe, obviously im just doing single line but extrapolating to multiline isnt much harder now a single line works "all right"
+
 constexpr TCHAR unCap_wndclass_edit_oneline[] = TEXT("unCap_wndclass_edit_oneline");
 
 static LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -89,8 +91,7 @@ int EDITONELINE_calc_line_height_px(EditOnelineProcState* state) {
 	HFONT oldfont = SelectFont(dc, state->font); defer{ SelectFont(dc, oldfont); };
 	TEXTMETRIC tm;
 	GetTextMetrics(dc, &tm);
-	int avg_height = tm.tmHeight;
-	res = avg_height;
+	res = tm.tmHeight;
 	return res;
 }
 
@@ -122,6 +123,11 @@ POINT EDITONELINE_calc_caret_p(EditOnelineProcState* state) {
 		res.x+= state->char_dims[i];
 		//TODO(fran): probably wrong
 	}
+	//NOTE: we are single line so we always want the text to be vertically centered, same goes for the caret
+	RECT rc; GetClientRect(state->wnd, &rc);
+	int wnd_h = RECTHEIGHT(rc);
+	int caret_h = state->caret.dim.cy;
+	res.y = (wnd_h - state->caret.dim.cy) / 2;
 	return res;
 }
 
@@ -130,8 +136,8 @@ BOOL SetCaretPos(POINT p) {
 	return res;
 }
 
-//BUGs:
-//-caret stops blinking after a few seconds of being shown
+//TODOs:
+//-caret stops blinking after a few seconds of being shown, this seems to be a windows """feature""", we may need to set a timer to re-blink the caret every so often while we have keyboard focus
 
 bool operator==(POINT p1, POINT p2) {
 	bool res = p1.x == p2.x && p1.y == p2.y;
@@ -226,9 +232,12 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	printf(msgToString(msg)); printf("\n");
 	EditOnelineProcState* state= EDITONELINE_get_state(hwnd);
 	switch (msg) {
-		//TODO(fran): on a WM_STYLECHANGING we should check if the alignment has changed and recalc/redraw every char, NOTE: I dont think windows' controls bother with this since it's not too common of a use case
-		//TODO(fran): region selection after WM_LBUTTONDOWN, do tracking
-		//TODO(fran): wm_gettetxlength
+		//TODOs(fran):
+		//-on a WM_STYLECHANGING we should check if the alignment has changed and recalc/redraw every char, NOTE: I dont think windows' controls bother with this since it's not too common of a use case
+		//-region selection after WM_LBUTTONDOWN, do tracking
+		//-wm_gettetxlength
+		//-copy,cut,... (I already have paste) https://docs.microsoft.com/en-us/windows/win32/dataxchg/using-the-clipboard?redirectedfrom=MSDN#_win32_Copying_Information_to_the_Clipboard
+		//- https://docs.microsoft.com/en-us/windows/win32/intl/ime-window-class
 
 	case WM_NCCREATE: 
 	{ //1st msg received
@@ -463,13 +472,13 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	{
 		//wparam = test for virtual keys pressed
 		POINT mouse = { GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam) };//Client coords, relative to upper-left corner of client area
-		POINT caret_p{ 0,EDITONELINE_calc_line_height_px(state) * 0 };
+		//TODO(fran): unify with EDITONELINE_calc_caret_p
+		POINT caret_p{ 0,EDITONELINE_calc_caret_p(state).y };
 		if (state->char_text.empty()) {
 			state->char_cur_sel = { 0,0 };
 			caret_p.x = state->char_pad_x;//TODO(fran): who calcs the char_pad?
 		}
 		else {
-			//TODO
 			int mouse_x = mouse.x;
 			int dim_x = state->char_pad_x;
 			int char_cur_sel_x;
