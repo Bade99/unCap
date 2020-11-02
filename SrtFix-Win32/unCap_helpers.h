@@ -23,10 +23,13 @@
 static size_t cstr_len(const cstr* s) {
 	return wcslen(s);
 }
+#define cstr_printf(...)  wprintf(__VA_ARGS__)
 #else
 static size_t cstr_len(const cstr* s) {
 	return strlen(s);
 }
+
+#define cstr_printf(...)  printf(__VA_ARGS__)
 #endif
 
 //Thanks to https://handmade.network/forums/t/1273-post_your_c_c++_macro_tricks/3

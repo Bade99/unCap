@@ -727,8 +727,65 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		}
 		return res;
 	}break;
+	case WM_SYSKEYDOWN://1st msg received after the user presses F10 or Alt+some key
+	{
+		//TODO(fran): notify the parent?
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_SYSKEYUP:
+	{
+		//TODO(fran): notify the parent?
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_IME_REQUEST://After Alt+Shift to change the keyboard (and some WM_IMENOTIFY) we receive this msg
+	{
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_INPUTLANGCHANGE://After Alt+Shift to change the keyboard (and some WM_IMENOTIFY) and WM_IME_REQUEST we receive this msg
+	{
+		//wparam = charset of the new locale
+		//lparam = input locale identifier... wtf
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_IME_STARTCOMPOSITION://On japanese keyboard, after we press a key to start writing this is 1st msg received
+	{
+		//doc:Sent immediately before the IME generates the composition string as a result of a keystroke
+		//This is a notification to an IME window to open its composition window. An application should process this message if it displays composition characters itself.
+		//If an application has created an IME window, it should pass this message to that window.The DefWindowProc function processes the message by passing it to the default IME window.
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_IME_COMPOSITION://On japanese keyboard, after we press a key to start writing this is 1st msg received
+	{//doc: sent when IME changes composition status cause of keystroke
+		//wparam = DBCS char for latest change to composition string, TODO(fran): find out about DBCS
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
+	case WM_IME_CHAR://WM_CHAR from the IME window, this are generated once the user has pressed enter on the IME window, so more than one char will probably be coming
+	{
+		//UNICODE: wparam=utf16 char ; ANSI: DBCS char
+		//lparam= the same flags as WM_CHAR
+#ifndef UNICODE
+		Assert(0);//TODO(fran): DBCS
+#endif 
+		PostMessage(state->wnd, WM_CHAR, wparam, lparam);
+
+		return 0;//docs dont mention return value so I guess it dont matter
+	} break;
+	case WM_IME_ENDCOMPOSITION://After the chars are sent from the IME window it hides/destroys itself (idk)
+	{
+		//TODO: Handle once we process our own IME
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
 	default:
 	{
+
+		if (msg >= 0xC000 && msg <= 0xFFFF) {//String messages for use by applications  
+			TCHAR arr[256];
+			int res = GetClipboardFormatName(msg, arr, 256);
+			cstr_printf(arr); printf("\n");
+			//After Alt+Shift to change the keyboard (and some WM_IMENOTIFY) we receive "MSIMEQueryPosition"
+			return DefWindowProc(hwnd, msg, wparam, lparam);
+		}
+
 #ifdef _DEBUG
 		Assert(0);
 #else 
