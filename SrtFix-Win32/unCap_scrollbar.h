@@ -101,6 +101,8 @@ static RECT SCROLL_calc_scrollbar(ScrollProcState* state) {
 	return sb_rc;
 }
 
+//TODO(fran): the scrollbar doesnt go with the style of the application, we should probably make it be just borders or something like that
+
 static LRESULT CALLBACK ScrollProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	/*INFO:
 		-the scrollbars decide position and size on their own based on their parent and whether they are horizontal or vertical

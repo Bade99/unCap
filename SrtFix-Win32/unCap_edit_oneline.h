@@ -170,6 +170,45 @@ void EDITONELINE_paste_from_clipboard(EditOnelineProcState* state, const cstr* t
 	}
 }
 
+void EDITONELINE_set_composition_pos(EditOnelineProcState* state)//TODO(fran): this must set the other stuff too
+{
+	HIMC imc = ImmGetContext(state->wnd);
+	if (imc != NULL) {
+		defer{ ImmReleaseContext(state->wnd, imc); };
+		COMPOSITIONFORM cf;
+		//NOTE immgetcompositionwindow fails
+#if 0 //IME window no longer draws the unnecessary border with resizing and button, it is placed at cf.ptCurrentPos and extends down after each character
+		cf.dwStyle = CFS_POINT;
+		
+		if (GetFocus() == state->wnd) {
+			//NOTE: coords are relative to your window area/nc area, _not_ screen coords
+			cf.ptCurrentPos.x = state->caret.pos.x;
+			cf.ptCurrentPos.y = state->caret.pos.y + state->caret.dim.cy;
+		}
+		else {
+			cf.ptCurrentPos.x = 0;
+			cf.ptCurrentPos.y = 0;
+		}
+#else //IME window no longer draws the unnecessary border with resizing and button, it is placed at cf.ptCurrentPos and has a max size of cf.rcArea in the x axis, the y axis can extend a lot longer, basically it does what it wants with y
+		cf.dwStyle = CFS_RECT;
+
+		if (GetFocus() == state->wnd) {
+			cf.ptCurrentPos.x = state->caret.pos.x;
+			cf.ptCurrentPos.y = state->caret.pos.y + state->caret.dim.cy;
+			//TODO(fran): programatically set a good x axis size
+			cf.rcArea = { state->caret.pos.x , state->caret.pos.y + state->caret.dim.cy,state->caret.pos.x+100,state->caret.pos.y + state->caret.dim.cy+100 };
+		}
+		else {
+			cf.rcArea = {0,0,0,0};
+			cf.ptCurrentPos.x = 0;
+			cf.ptCurrentPos.y = 0;
+		}
+#endif
+		BOOL res = ImmSetCompositionWindow(imc, &cf); Assert(res);
+	}
+}
+
+
 LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	printf(msgToString(msg)); printf("\n");
 	EditOnelineProcState* state= EDITONELINE_get_state(hwnd);
@@ -457,6 +496,8 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		u32 disp_flags = (u32)lparam;
 		//NOTE: if we draw the composition window we have to modify some of the lparam values before calling defwindowproc or ImmIsUIMessage
 
+		//NOTE: here you can hide the default IME window and all its candidate windows
+
 		//If we have created an IME window, call ImmIsUIMessage. Otherwise pass this message to DefWindowProc
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	}break;
@@ -492,14 +533,6 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		DestroyCaret();
 		//Also says to not display/activate a window here cause we can lock the thread
 		return 0;
-	} break;
-	case WM_IME_NOTIFY:
-	{
-		//Notifies about changes to the IME window
-		//TODO(fran): process this msgs once we manage the ime window
-		u32 command = (u32)wparam;
-		//lparam = command specific data
-		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_KEYDOWN://When the user presses a non-system key this is the 1st msg we receive
 	{
@@ -737,8 +770,21 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		//TODO(fran): notify the parent?
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	case WM_IME_NOTIFY:
+	{
+		//Notifies about changes to the IME window
+		//TODO(fran): process this msgs once we manage the ime window
+		u32 command = (u32)wparam;
+		
+		//IMN_SETCOMPOSITIONWINDOW IMN_SETSTATUSWINDOWPOS
+		//printf("WM_IME_NOTIFY: wparam = 0x%08x\n", command);
+
+		//lparam = command specific data
+		return DefWindowProc(hwnd, msg, wparam, lparam);
+	} break;
 	case WM_IME_REQUEST://After Alt+Shift to change the keyboard (and some WM_IMENOTIFY) we receive this msg
 	{
+		//printf("WM_IME_REQUEST: wparam = 0x%08x\n", wparam);
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
 	case WM_INPUTLANGCHANGE://After Alt+Shift to change the keyboard (and some WM_IMENOTIFY) and WM_IME_REQUEST we receive this msg
@@ -752,9 +798,11 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		//doc:Sent immediately before the IME generates the composition string as a result of a keystroke
 		//This is a notification to an IME window to open its composition window. An application should process this message if it displays composition characters itself.
 		//If an application has created an IME window, it should pass this message to that window.The DefWindowProc function processes the message by passing it to the default IME window.
+		EDITONELINE_set_composition_pos(state);
+
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
-	case WM_IME_COMPOSITION://On japanese keyboard, after we press a key to start writing this is 1st msg received
+	case WM_IME_COMPOSITION://On japanese keyboard, after we press a key to start writing this is 2nd msg received
 	{//doc: sent when IME changes composition status cause of keystroke
 		//wparam = DBCS char for latest change to composition string, TODO(fran): find out about DBCS
 		return DefWindowProc(hwnd, msg, wparam, lparam);
@@ -775,6 +823,11 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		//TODO: Handle once we process our own IME
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
+	//case WM_IME_CONTROL: //NOTE: I feel like this should be received by the wndproc of the IME, I dont think I can get DefWndProc to send it there for me
+	//{
+	//	//Used to manually send some msg to the IME window, in my case I use it so DefWindowProc sends my msg to it IME default wnd
+	//	return DefWindowProc(hwnd, msg, wparam, lparam);
+	//}break;
 	default:
 	{
 

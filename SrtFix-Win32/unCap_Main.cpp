@@ -36,6 +36,7 @@
 #pragma comment(lib,"propsys.lib") //open save file handler
 #pragma comment(lib,"shlwapi.lib") //open save file handler
 #pragma comment(lib,"UxTheme.lib") // setwindowtheme
+#pragma comment(lib,"Imm32.lib") // IME related stuff
 
 #pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"") 
 //#pragma comment(lib,"User32.lib")

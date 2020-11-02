@@ -13,6 +13,9 @@ struct ComboProcState {
 #define CB_SETDROPDOWNIMG (WM_USER+1) //Only accepts monochrome bitmaps (.bmp), wparam=HBITMAP ; lparam=0
 #define CB_GETDROPDOWNIMG (WM_USER+2) //wparam=0 ; lparam=0 ; returns HBITMAP
 
+//BUGs:
+//-when the user opens the combobox there's a small window of time where the text shown on top will get changed if the mouse got over some item of the list. To replicate: press combobox and quickly move the mouse straight down
+
 LRESULT CALLBACK ComboProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lParam, UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
 
 	//printf(msgToString(msg)); printf("\n");
