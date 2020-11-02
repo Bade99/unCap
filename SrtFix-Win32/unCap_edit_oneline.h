@@ -192,6 +192,7 @@ void EDITONELINE_set_composition_pos(EditOnelineProcState* state)//TODO(fran): t
 #else //IME window no longer draws the unnecessary border with resizing and button, it is placed at cf.ptCurrentPos and has a max size of cf.rcArea in the x axis, the y axis can extend a lot longer, basically it does what it wants with y
 		cf.dwStyle = CFS_RECT;
 
+		//TODO(fran): should I place the IME in line with the caret or below so the user can see what's already written in that line?
 		if (GetFocus() == state->wnd) {
 			cf.ptCurrentPos.x = state->caret.pos.x;
 			cf.ptCurrentPos.y = state->caret.pos.y + state->caret.dim.cy;
@@ -208,7 +209,19 @@ void EDITONELINE_set_composition_pos(EditOnelineProcState* state)//TODO(fran): t
 	}
 }
 
+void EDITONELINE_set_composition_font(EditOnelineProcState* state)//TODO(fran): this must set the other stuff too
+{
+	HIMC imc = ImmGetContext(state->wnd);
+	if (imc != NULL) {
+		defer{ ImmReleaseContext(state->wnd, imc); };
+		LOGFONT lf;
+		int getobjres = GetObject(state->font, sizeof(lf), &lf); Assert(getobjres == sizeof(lf));
 
+		BOOL setres = ImmSetCompositionFont(imc,&lf); Assert(setres);
+	}
+}
+
+//TODO(fran): some day paint/handle my own IME window
 LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	printf(msgToString(msg)); printf("\n");
 	EditOnelineProcState* state= EDITONELINE_get_state(hwnd);
@@ -799,6 +812,7 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 		//This is a notification to an IME window to open its composition window. An application should process this message if it displays composition characters itself.
 		//If an application has created an IME window, it should pass this message to that window.The DefWindowProc function processes the message by passing it to the default IME window.
 		EDITONELINE_set_composition_pos(state);
+		EDITONELINE_set_composition_font(state);//TODO(fran): should I place this somewhere else?
 
 		return DefWindowProc(hwnd, msg, wparam, lparam);
 	} break;
