@@ -29,4 +29,4 @@ The focus here is placed on Windows 10 but most of the things I do are useful fo
 
 
 ### UI
-![UI](https://i.imgur.com/sLkZMq0.png)
+![UI](https://i.imgur.com/DJ3VAFb.png)

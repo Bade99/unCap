@@ -451,7 +451,7 @@ return DefWindowProc(hwnd, msg, wparam, lparam);
 		//TODO(fran): check that we are painting at a new position, if not do not paint
 
 		//Paint the bar
-#define _TRANSPARENTSB 1
+#define _TRANSPARENTSB 1 /*TODO(fran): this can be made into a user definable style*/
 #if _TRANSPARENTSB
 		int sb_border_thickness = 1;
 		FillRectBorder(dc, sb_rc, sb_border_thickness, sb_br, BORDERLEFT | BORDERTOP | BORDERRIGHT | BORDERBOTTOM);
