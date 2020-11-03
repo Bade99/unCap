@@ -147,6 +147,13 @@ v2 GetDPI(HWND hwnd)//https://docs.microsoft.com/en-us/windows/win32/learnwin32/
 	return dpi;
 }
 
+#ifdef _DEBUG
+//TODO(fran): change to logging
+#define _SHOWCONSOLE
+#else
+//#define _SHOWCONSOLE
+#endif
+
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstance*/, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow)
 {
 	UNREFERENCED_PARAMETER(lpCmdLine);//TODO(fran): get dropped files (CommandLineToArgvW)
@@ -160,7 +167,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE /*hPrevInstan
 	BOOL comm_res = InitCommonControlsEx(&icc);
 	Assert(comm_res);
 
-#ifdef _DEBUG
+#ifdef _SHOWCONSOLE
 	AllocConsole();
 	FILE* ___s; defer{ fclose(___s); };
 	freopen_s(&___s, "CONIN$", "r", stdin);

@@ -189,7 +189,7 @@ ReadTextResult ReadText(const cstr* filepath) {
 	//TODO(fran): look at https://docs.microsoft.com/en-us/windows/win32/intl/using-unicode-normalization-to-represent-strings
 	//NOTE: on debug mode it takes 1ms!!!! to execute this whole function to process the 108KB subtitle for Amadeus, simply amazing compared to the other garbage, 480 times faster and we are running MultiByteToWideChar twice, we could preallocate say twice the original sz which would cover us 99% of the times
 	//on release it goes a little faster 0.9ms - 0.7ms
-	i64 cnt = StartCounter(); defer{ printf("READ ELAPSED: %f ms\n",EndCounter(cnt)); };
+	//i64 cnt = StartCounter(); defer{ printf("READ ELAPSED: %f ms\n",EndCounter(cnt)); };
 
 	ReadTextResult res;
 

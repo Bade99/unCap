@@ -775,6 +775,9 @@ void UNCAPCL_add_controls(unCapClProcState* state, HINSTANCE hInstance) {
 
 void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 	//TODO(fran): multithreading for multiple files?
+	printf("TIMING ACCEPTEDFILE:\n");
+
+	i64 prep_dt = StartCounter();
 
 	//save file dir
 	state->settings->last_dir = filename.substr(0, filename.find_last_of(L"\\") + 1);
@@ -787,28 +790,46 @@ void AcceptedFile(unCapClProcState* state, std::wstring filename) {
 	wcsncpy_s(text_data.filePath, filename.c_str(), sizeof(text_data.filePath) / sizeof(text_data.filePath[0]));
 
 	int pos = TAB_get_next_pos(state->controls.tab);//NOTE: careful with multithreading here
-	//TODO(fran): time each part of this whole set up to find out where we are slow
+	
+	printf("PREP ELAPSED: %f ms\n", EndCounter(prep_dt));
+
+	i64 read_dt = StartCounter(); 
 	ReadTextResult text_res = ReadText(filename.c_str());
+	printf("READ ELAPSED: %f ms\n", EndCounter(read_dt));
 
 	text_data.fileEncoding = text_res.encoding_nfo;
 
+	i64 comment_dt = StartCounter();
 	text_data.commentType = GetCommentType(text_res.text);
+	printf("GETCOMMENT ELAPSED: %f ms\n", EndCounter(comment_dt));
 
+	i64 fmt_dt = StartCounter();
 	text_data.fileFormat = GetFileFormat(filename);
+	printf("GETFILEFORMAT ELAPSED: %f ms\n", EndCounter(fmt_dt));
 
+	i64 line_dt = StartCounter();
 	FixLineEndings(text_res.text);
+	printf("FIXLINEENDINGS ELAPSED: %f ms\n", EndCounter(line_dt));
 
+
+	i64 addtab_dt = StartCounter();
 	int res = AddTab(state->controls.tab, pos, (LPWSTR)accepted_file_name_with_ext.c_str(), text_data);
 	Assert(res != -1);
+	printf("ADDTAB ELAPSED: %f ms\n", EndCounter(addtab_dt));
 
 	TAB_INFO new_text_data = GetTabExtraInfo(state->controls.tab, res);
 
-	SetWindowTextW(new_text_data.hText, text_res.text.c_str());
+	i64 settext_dt = StartCounter();
+	SetWindowTextW(new_text_data.hText, text_res.text.c_str());//TODO(fran): this is by far the slowest part, for a 250KB file it took 140ms while the rest combined took 20ms (14ms being post_dt), we need a custom multiline edit control
+	printf("SETTEXT ELAPSED: %f ms\n", EndCounter(settext_dt));
 
+	i64 post_dt = StartCounter();
 	//enable buttons and text editor
 	EnableWindow(state->controls.button_removecomment, TRUE); //TODO(fran): this could also be a saved parameter
 
 	TAB_change_selected(state->controls.tab, res);
+
+	printf("POST ELAPSED: %f ms\n", EndCounter(post_dt));
 }
 
 inline BOOL isMultiFile(LPWSTR file, WORD offsetToFirstFile) {

@@ -333,6 +333,11 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 	case WM_NCDESTROY://Last msg. Sent _after_ WM_DESTROY
 	{
 		//NOTE: the brushes are deleted by whoever created them
+		if (state->caret.bmp) {
+			DeleteBitmap(state->caret.bmp);
+			state->caret.bmp = 0;
+		}
+		//TODO(fran): we need to manually free the vector and the string, im pretty sure they'll leak after the free()
 		free(state);
 		return 0;
 	}break;
@@ -537,8 +542,16 @@ LRESULT CALLBACK EditOnelineProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpar
 			int sz = caret_dim.cy*pitch;
 			u32* mem = (u32*)malloc(sz); defer{ free(mem); };
 			COLORREF color = ColorFromBrush(state->brushes.txt_dis);
+			
+			//IMPORTANT: changing caret color is gonna be a pain, docs: To display a solid caret (NULL in hBitmap), the system inverts every pixel in the rectangle; to display a gray caret ((HBITMAP)1 in hBitmap), the system inverts every other pixel; to display a bitmap caret, the system inverts only the white bits of the bitmap.
+			//Aka we either calculate how to arrive at the color we want from the caret's bit flipping (will invert bits with 1) or we give up, we should do our own caret
+			//NOTE: since the caret is really fucked up we'll average the pixel color so we at least get grays
+			//TODO(fran): decide what to do, the other CreateCaret options work as bad or worse so we have to go with this, do we create a separate brush so the user can mix and match till they find a color that blends well with the bk?
+			u8 gray = ((u16)(u8)(color >> 16) + (u16)(u8)(color >> 8) + (u16)(u8)color) / 3;
+			color = RGB(gray, gray, gray);
+
 			int px_count = sz / 4;
-			for (int i = 0; i < px_count; i++) *mem = color;
+			for (int i = 0; i < px_count; i++) mem[i] = color;
 			state->caret.bmp = CreateBitmap(caret_dim.cx, caret_dim.cy, 1, 32, (void*)mem);
 			state->caret.dim = caret_dim;
 		}
