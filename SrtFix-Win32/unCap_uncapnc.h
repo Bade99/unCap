@@ -301,6 +301,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			int icon_align_width = icon_align_height;
 			state->rc_icon = rectWH(icon_align_height, icon_align_width, icon_width, icon_height);
 			MYICON_INFO iconnfo = MyGetIconInfo(icon);
+			//TODO(fran): the last pixels from the circle dont seem to get rendered
 			urender::draw_icon(dc, icon_align_height, icon_align_width, icon_width, icon_height, icon, 0, 0, iconnfo.nWidth, iconnfo.nHeight);
 
 			int yPos = (state->rc_caption.bottom + state->rc_caption.top - tm.tmHeight) / 2;
@@ -330,6 +331,7 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			UNCAPBTN_set_brushes(state->btn_max, TRUE, btn_border, btn_bk, btn_fore, btn_bk_push, btn_bk_mouseover);
 		}
 
+		//TODO(fran): move the menu up to get more screen real state, visual studio differentiates the menu items from the window title by rendering a darker square around the latter
 		if (RECT menurc = UNCAPNC_calc_menu_rc(state); state->menu && rcs_overlap(menurc,ps.rcPaint)) {
 			
 			MENUINFO mi{ sizeof(mi) };
