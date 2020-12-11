@@ -744,11 +744,14 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				{
 					txt_br = unCap_colors.ControlTxt;
 					Assert((UINT)(UINT_PTR)item->hwndItem);
-					MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
-					//GetMenuInfo((HMENU)item->hwndItem, &mnfo); //We will not ask our "parent" hmenu since sometimes it decides it doesnt have the hbrush, we'll go straight to the menu bar
-					GetMenuInfo(state->menu, &mnfo);
+					//GetMenuInfo((HMENU)item->hwndItem, &mnfo); //We will not ask our "parent" hmenu since sometimes it decides it doesnt have the hbrush, we'll go straight to the menu bar, if there is one
+					if (state->menu) {
+						MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
+						GetMenuInfo(state->menu, &mnfo);
+						bk_br = mnfo.hbrBack;
+					}
+					else bk_br = unCap_colors.CaptionBk;
 
-					bk_br = mnfo.hbrBack; //TODO: unfinished trash
 				}
 				clrPrevText = SetTextColor(item->hDC, ColorFromBrush(txt_br));//TODO(fran): separate menu brushes
 				clrPrevBkgnd = SetBkColor(item->hDC, ColorFromBrush(bk_br));
@@ -915,9 +918,13 @@ LRESULT CALLBACK UncapNcProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			{
 				const int separator_x_padding = 3;
 
-				MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
-				GetMenuInfo(state->menu, &mnfo);
-				HBRUSH bk_br = mnfo.hbrBack;
+				HBRUSH bk_br;
+				if (state->menu) {
+					MENUINFO mnfo{ sizeof(mnfo) }; mnfo.fMask = MIM_BACKGROUND;
+					GetMenuInfo(state->menu, &mnfo);
+					bk_br = mnfo.hbrBack; //TODO: unfinished trash
+				}
+				else bk_br = unCap_colors.CaptionBk;
 
 				FillRect(item->hDC, &item->rcItem, bk_br);
 				RECT separator_rc;

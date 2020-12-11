@@ -148,8 +148,12 @@ static str load_file_serialized(std::wstring folder = L"\\unCap", std::wstring f
 static void save_to_file_serialized(str content, std::wstring folder = L"\\unCap", std::wstring filename= L"\\serialized.txt") {
 	PWSTR general_folder;
 	SHGetKnownFolderPath(FOLDERID_RoamingAppData, 0, NULL, &general_folder);
+	std::wstring dir = general_folder + folder;
 	std::wstring path = general_folder + folder + filename;
 	CoTaskMemFree(general_folder);
+
+	//SUPERTODO(fran): gotta create the folder first, if the folder isnt there the function fails
+	CreateDirectoryW(dir.c_str(), 0);//Create the folder where info will be stored, since windows wont do it
 
 	HANDLE file_handle = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_DELETE | FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (file_handle != INVALID_HANDLE_VALUE) {
